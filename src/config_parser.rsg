@@ -1,0 +1,276 @@
+
+extern crate gramatica;
+
+use std::cmp::Ordering;
+use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,AmbiguityInfo,ParsingError};
+
+
+use std::rc::Rc;
+use std::fmt::{Display,Formatter,Error};
+
+#[derive(Clone,Debug,PartialEq,PartialOrd)]
+//FIXME: we need support in `gramatica` for `pub`.
+pub enum ConfigurationValue
+{
+	Literal(String),
+	Number(f64),
+	Object(String,Vec<(String,ConfigurationValue)>),
+	Array(Vec<ConfigurationValue>),
+	Experiments(Vec<ConfigurationValue>),
+	True,
+	False,
+	Where(Rc<ConfigurationValue>,Expr),
+	Expression(Expr),
+}
+
+impl ConfigurationValue
+{
+	fn write(&self, f: &mut Formatter, indent:usize) -> Result<(),Error>
+	{
+		let is=String::from("\t").repeat(indent);
+		//FIXME: we need support in the `gramatica` crate for `write!()?`.
+		write!(f,"{}",is)?;
+		match self
+		{
+			&ConfigurationValue::Literal(ref s) => write!(f,"{}",s)?,
+			&ConfigurationValue::Number(v) => write!(f,"{}",v)?,
+			&ConfigurationValue::Object(ref name, ref list) =>
+			{
+				writeln!(f,"{}\n{}{{",name,is)?;
+				for &(ref attr_name,ref attr_value) in list.iter()
+				{
+					writeln!(f,"{}\t{}:",is,attr_name)?;
+					attr_value.write(f,indent+1)?;
+					writeln!(f,",")?;
+				}
+				writeln!(f,"{}}}",is)?;
+			},
+			&ConfigurationValue::Array(ref list) =>
+			{
+				writeln!(f,"[")?;
+				for elem in list.iter()
+				{
+					elem.write(f,indent+1)?;
+					writeln!(f,",")?;
+				}
+				writeln!(f,"{}]",is)?;
+			},
+			&ConfigurationValue::Experiments(ref _list) => write!(f,"FIXME")?,
+			&ConfigurationValue::True => write!(f,"true")?,
+			&ConfigurationValue::False => write!(f,"false")?,
+			&ConfigurationValue::Where(ref cv, ref _expr) => write!(f,"{} where FIXME",cv)?,
+			&ConfigurationValue::Expression(ref e) => write!(f,"= {}",e)?,
+		};
+		Ok(())
+	}
+}
+
+impl Display for ConfigurationValue
+{
+	fn fmt(&self, f: &mut Formatter) -> Result<(),Error>
+	{
+		self.write(f,0)
+	}
+}
+
+#[derive(Clone,Debug,PartialEq,PartialOrd)]
+pub enum Expr
+{
+	Equality(Rc<Expr>,Rc<Expr>),
+	Literal(String),
+	Number(f64),
+	Ident(String),
+	Member(Rc<Expr>,String),
+	Parentheses(Rc<Expr>),
+	///Gets the name of an object: @expr
+	Name(Rc<Expr>),
+}
+
+impl Display for Expr
+{
+	fn fmt(&self, f: &mut Formatter) -> Result<(),Error>
+	{
+		match self
+		{
+			&Expr::Literal(ref s) => write!(f,"{}",s),
+			&Expr::Number(ref v) => write!(f,"{}",v),
+			&Expr::Ident(ref s) => write!(f,"{}",s),
+			&Expr::Member(ref expr,ref s) => write!(f,"{}.{}",expr,s),
+			&Expr::Name(ref expr) => write!(f,"@{}",expr),
+			_ => write!(f,"fix this expr <{:?}>",self),
+		}
+	}
+}
+
+
+// ---- Start of the grammar ----
+keyword_terminal!(True,"true");
+keyword_terminal!(False,"false");
+keyword_terminal!(Where,"where");
+
+re_terminal!(Number(f64),"-?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?");
+
+terminal LitStr(String)
+{
+	//This function has limited escaping capabilities
+	fn _match(parser: &mut Parser<Token,ParsingTables>, source:&str) -> Option<(usize,String)>
+	{
+		let mut ret=None;
+		let mut characters=source.chars();
+		if (characters.next())!=(Some('"'))
+		{
+		}
+		else
+		{
+			let mut size=1;
+			let mut r=String::from("\"");
+			loop
+			{
+				match characters.next()
+				{
+					None => break,
+					Some('"') =>
+					{
+						ret=(Some((size+1,r+&"\"")));
+						break;
+					},
+					Some('\\') =>
+					{
+						match characters.next()
+						{
+							None => break,
+							//Some(c) => r+='\\'+c,
+							Some(c) =>
+							{
+								r.push('\\');
+								r.push(c);
+							}
+						};
+						size+=2;
+					},
+					Some(c) =>
+					{
+						//r+=&String::from(c);
+						r.push(c);
+						size+=1;
+					},
+				};
+			}
+		}
+		ret
+	}
+}
+
+re_terminal!(Ident(String),"[a-zA-Z\\x80-\\xff_][a-zA-Z0-9\\x80-\\xff_]*");
+
+re_terminal!(EqualEqual,"==");
+
+re_terminal!(LBrace,"\\{");
+re_terminal!(RBrace,"\\}");
+re_terminal!(LBracket,"\\[");
+re_terminal!(RBracket,"\\]");
+re_terminal!(LPar,"\\(");
+re_terminal!(RPar,"\\)");
+re_terminal!(Comma,",");
+re_terminal!(Colon,":");
+re_terminal!(Bang,"!");
+re_terminal!(At,"@");
+re_terminal!(Equal,"=");
+re_terminal!(Dot,"\\.");
+re_terminal!(_,"\\s+|\n|//[^\n]*\n|/\\*([^*]|\\*+[^/])*\\*+/");//Otherwise skip spaces and comments
+
+nonterminal Value(ConfigurationValue)
+{
+	(LitStr(ref s)) => ConfigurationValue::Literal(s.clone()),
+	(Number(v)) => ConfigurationValue::Number(v),
+	(Object(ref value)) => value.clone(),
+	(Array(ref list)) => ConfigurationValue::Array(list.clone()),
+	(Bang,Array(ref list)) => ConfigurationValue::Experiments(list.clone()),
+	(True) => ConfigurationValue::True,
+	(False) => ConfigurationValue::False,
+	(Value(ref value),Where,Expression(ref expr)) => ConfigurationValue::Where(Rc::new(value.clone()),expr.clone()),
+	(Equal,Expression(ref e)) => ConfigurationValue::Expression(e.clone()),
+}
+
+nonterminal Object(ConfigurationValue)
+{
+	(Ident(ref name)) => ConfigurationValue::Object(name.clone(),vec![]),
+	(Ident(ref name),LBrace,RBrace) => ConfigurationValue::Object(name.clone(),vec![]),
+	(Ident(ref name),LBrace,Members(ref list),RBrace) => ConfigurationValue::Object(name.clone(),list.clone()),
+	(Ident(ref name),LBrace,Members(ref list),Comma,RBrace) => ConfigurationValue::Object(name.clone(),list.clone()),
+}
+
+nonterminal Members(Vec<(String,ConfigurationValue)>)
+{
+	(Pair(ref s,ref value)) => vec![(s.clone(),value.clone())],
+	//(Pair,Comma,Members) => (),
+	(Members(ref list),Comma,Pair(ref s,ref value)) =>
+	{
+		let mut new=(list.clone());
+		new.push((s.clone(),value.clone()));
+		new
+	},
+}
+
+nonterminal Pair(String,ConfigurationValue)
+{
+	(Ident(ref s),Colon,Value(ref value)) => (s.clone(),value.clone()),
+}
+
+nonterminal Array(Vec<ConfigurationValue>)
+{
+	(LBracket,RBracket) => vec![],
+	(LBracket,Elements(ref list),RBracket) => list.clone(),
+	(LBracket,Elements(ref list),Comma,RBracket) => list.clone(),
+}
+
+nonterminal Elements(Vec<ConfigurationValue>)
+{
+	(Value(ref value)) => vec![value.clone()],
+	//(Value,Comma,Elements) => (),
+	(Elements(ref list),Comma,Value(ref value)) =>
+	{
+		let mut new=(list.clone());
+		new.push(value.clone());
+		new
+	},
+}
+
+nonterminal Expression(Expr)
+{
+	#[priority(comparison)]
+	(Expression(ref left),EqualEqual,Expression(ref right)) => Expr::Equality(Rc::new(left.clone()),Rc::new(right.clone())),
+	(LitStr(ref s)) => Expr::Literal(s.clone()),
+	(Number(v)) => Expr::Number(v),
+	(Ident(ref s)) => Expr::Ident(s.clone()),
+	#[priority(membership)]
+	(Expression(ref path),Dot,Ident(ref element)) => Expr::Member(Rc::new(path.clone()),element.clone()),
+	(LPar,Expression(ref expr),RPar) => Expr::Parentheses(Rc::new(expr.clone())),
+	#[priority(getname)]
+	(At,Expression(ref expr)) => Expr::Name(Rc::new(expr.clone())),
+}
+
+ordering!(membership,getname,comparison);
+
+// ---- End of the grammar ----
+
+//use std::io::{BufRead,Read};
+//
+//fn main()
+//{
+//	let stdin=std::io::stdin();
+//	let mut buf=String::new();
+//	stdin.lock().read_to_string(&mut buf);
+//	match Parser::<Token,ParsingTables>::parse(&buf,None)
+//	{
+//		Err(x) => println!("error parsing: {:?}",x),
+//		Ok(x) => println!("parsed correctly: {:?}",x),
+//	};
+//}
+
+pub fn parse(source:&str) -> Result<Token,ParsingError>
+{
+	Parser::<Token,ParsingTables>::parse(source,None)
+}
+
+
