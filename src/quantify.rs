@@ -54,6 +54,22 @@ impl<A:Quantifiable, B:Quantifiable> Quantifiable for (A,B)
 	}
 }
 
+impl<T:Quantifiable> Quantifiable for [T;2]
+{
+	fn total_memory(&self) -> usize
+	{
+		return self[0].total_memory()+self[1].total_memory();
+	}
+	fn print_memory_breakdown(&self)
+	{
+		unimplemented!();
+	}
+	fn forecast_total_memory(&self) -> usize
+	{
+		unimplemented!();
+	}
+}
+
 macro_rules! quantifiable_simple
 {
 	($t:ty) =>

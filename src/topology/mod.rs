@@ -2,6 +2,8 @@
 pub mod cartesian;
 pub mod neighbourslists;
 pub mod dragonfly;
+pub mod projective;
+pub mod slimfly;
 
 use std::cell::{RefCell};
 use ::rand::{StdRng};
@@ -9,6 +11,8 @@ use quantifiable_derive::Quantifiable;//the derive macro
 use self::cartesian::{Mesh,Torus,CartesianData,Hamming};
 use self::neighbourslists::NeighboursLists;
 use self::dragonfly::CanonicDragonfly;
+use self::projective::{Projective,LeviProjective};
+use self::slimfly::SlimFly;
 use crate::config_parser::ConfigurationValue;
 use crate::matrix::Matrix;
 use crate::quantify::Quantifiable;
@@ -363,7 +367,8 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 							{
 								*near_matrix.get_mut(origin,target) += 1;
 							}
-						}
+						},
+						(Location::None,_link_class) => continue,//ignore disconnected ports
 						_ => panic!("what?"),
 					}
 				}
@@ -382,15 +387,25 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	///Check pairs (port,vc) with
 	/// * non-matching endpoint (this is, going backwards a wire you should return to the same router/server)
 	/// * breaking the servers-last rule
-	fn check_adjacency_consistency(&self)
+	/// * optionally check that the link class is within bounds.
+	fn check_adjacency_consistency(&self,amount_link_classes: Option<usize>)
 	{
 		let n=self.num_routers();
+		let mut max_link_class=0;
 		for router_index in 0..n
 		{
 			let deg = self.degree(router_index);
 			for port_index in 0..self.ports(router_index)
 			{
 				let (neighbour_location, link_class) = self.neighbour(router_index, port_index);
+				if let Some(bound) = amount_link_classes
+				{
+					assert!(link_class<bound,"link class {} out of bound {} for port {} of router {}",link_class,bound,port_index,router_index);
+				}
+				if link_class>max_link_class
+				{
+					max_link_class=link_class;
+				}
 				match neighbour_location
 				{
 					Location::RouterPort{
@@ -398,6 +413,13 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						router_port: neighbour_port,
 					} =>
 					{
+						if let Some(bound) = amount_link_classes
+						{
+							if link_class+1==bound
+							{
+								println!("WARNING: using last link class ({}) for a router to router link.",link_class);
+							}
+						}
 						let (rev_location, rev_link_class) = self.neighbour(neighbour_router, neighbour_port);
 						match rev_location
 						{
@@ -452,6 +474,13 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 				}
 			}
 		}
+		if let Some(bound)=amount_link_classes
+		{
+			if bound!=max_link_class+1
+			{
+				println!("WARNING: quering {} link classes when the topology has {}",bound,max_link_class+1);
+			}
+		}
 	}
 }
 
@@ -483,6 +512,9 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"RandomRegularGraph" | "File" => Box::new(NeighboursLists::new_cfg(arg.cv,arg.rng)),
 			"Hamming" => Box::new(Hamming::new(arg.cv)),
 			"CanonicDragonfly" => Box::new(CanonicDragonfly::new(arg.cv)),
+			"Projective" => Box::new(Projective::new(arg)),
+			"LeviProjective" => Box::new(LeviProjective::new(arg)),
+			"SlimFly" => Box::new(SlimFly::new(arg)),
 			_ => panic!("Unknown topology {}",cv_name),
 		}
 	}

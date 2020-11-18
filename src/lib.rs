@@ -1020,14 +1020,14 @@ impl<'a> Simulation<'a>
 		let maximum_packet_size=maximum_packet_size.expect("There were no maximum_packet_size");
 		let router_cfg=router_cfg.expect("There were no router");
 		let mut routing=routing.expect("There were no routing");
-		let link_classes=link_classes.expect("There were no link_classes");
+		let link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
 		let rng=RefCell::new(StdRng::from_seed(&[seed]));
 		let topology=new_topology(TopologyBuilderArgument{
 			cv:topology,
 			plugs,
 			rng:&rng,
 		});
-		topology.check_adjacency_consistency();
+		topology.check_adjacency_consistency(Some(link_classes.len()));
 		routing.initialize(&topology,&rng);
 		let num_routers=topology.num_routers();
 		let num_servers=topology.num_servers();

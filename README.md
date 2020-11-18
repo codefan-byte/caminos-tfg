@@ -124,10 +124,10 @@ Configuration
 	link_classes: [
 		//We can set the delays of different class of links. The number of classes depends on the topology.
 		LinkClass {
-			//The first class always correspond to the links between server and router
+			//In random regular graphs all router--router links have the same class.
 			delay:1,
 		},
-		//In random regular graphs all router--router links have the same class.
+		//The last class always correspond to the links between server and router
 		LinkClass { delay: 1},
 		//In a dragonfly topology we would have 0=server, 1=routers from same group, 2=routers from different groups.
 	],
