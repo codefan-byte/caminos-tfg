@@ -47,13 +47,17 @@ impl RoutingInfo
 
 ///Represent a port plus additional information that a routing algorithm can determine on how a packet must advance to the next router or server.
 #[derive(Clone)]
-#[derive(Debug)]
+#[derive(Debug,Default)]
 pub struct CandidateEgress
 {
 	pub port: usize,
 	pub virtual_channel: usize,
 	pub label: i32,
 	pub estimated_remaining_hops: Option<usize>,
+
+	///The routing must set this as false.
+	///The `Router` can set it to `Some(true)` when it satisfies all flow-cotrol criteria and to `Some(false)` when it fails any criterion.
+	pub router_allows: Option<bool>,
 }
 
 impl CandidateEgress
@@ -65,6 +69,7 @@ impl CandidateEgress
 			virtual_channel,
 			label: 0,
 			estimated_remaining_hops: None,
+			router_allows: None,
 		}
 	}
 }
@@ -599,7 +604,9 @@ impl Routing for SumRouting
 				let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
 				let r=routing.next(&meta[0].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
 				//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
-				r.into_iter().map( |CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}| CandidateEgress{port,virtual_channel:allowed_virtual_channels[virtual_channel],label,estimated_remaining_hops} ).collect()
+				r.into_iter()
+				//.map( |CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}| CandidateEgress{port,virtual_channel:allowed_virtual_channels[virtual_channel],label,estimated_remaining_hops} ).collect()
+				.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],..candidate} ).collect()
 			}
 		}
 	}

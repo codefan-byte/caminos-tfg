@@ -492,17 +492,18 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 							Location::RouterPort{router_index,router_port:_} =>router_index,
 							_ => panic!("The server is not attached to a router"),
 						};
-						let mut good_ports=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng).into_iter().filter(|&CandidateEgress{port:f_port,virtual_channel:f_virtual_channel,label:_,estimated_remaining_hops:_}|{
+						let mut good_ports=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng).into_iter().filter_map(|candidate|{
+							let CandidateEgress{port:f_port,virtual_channel:f_virtual_channel,..} = candidate;
 							//We analyze each candidate output port, considering whether they are in use (port or virtual channel).
 							match self.selected_input[f_port][f_virtual_channel]
 							{
 								//Some((s_port,s_virtual_channel))=> s_port==entry_port && s_virtual_channel==entry_vc,
-								Some(_) => false,
+								Some(_) => None,
 								None =>
 								{
 									let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,f_port);
 									//if self.transmission_port_status[f_port].can_transmit(&phit,f_virtual_channel,transmit_auxiliar_info)
-									if self.can_phit_advance(&phit,f_port,f_virtual_channel,bubble_in_use)
+									let allowed = if self.can_phit_advance(&phit,f_port,f_virtual_channel,bubble_in_use)
 									{
 										if self.allow_request_busy_port
 										{
@@ -516,7 +517,8 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 									else
 									{
 										false
-									}
+									};
+									Some(CandidateEgress{router_allows:Some(allowed), ..candidate})
 								}
 							}
 						}).collect::<Vec<_>>();
@@ -561,7 +563,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						}
 						match good_ports[0]
 						{
-							CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_}=>(port,virtual_channel,label),
+							CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
 						}
 					},
 					Some((ref _packet,port,vc)) => (port,vc,0),//FIXME: perhaps 0 changes into None?

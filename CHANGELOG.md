@@ -6,6 +6,9 @@
 
 Implemented `{Mesh,Torus}::diameter`.
 git commit -m "Provided diameter for meshes and tori."
+New member `CandidateEgress::router_allows: Option<bool>` to capture whether the router consider the egress to satisfy the flow-control.
+Moved pre-request checking of flow-control into a new `EnforceFlowControl` policy.
+git commit -m "Moved pre-request checking of flow-control into a new EnforceFlowControl policy."
 
 # 2020-11-18
 

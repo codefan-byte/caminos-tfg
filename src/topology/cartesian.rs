@@ -1495,7 +1495,7 @@ impl Routing for OmniDimensionalDeroute
 						//r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
 						if self.include_labels && topology.distance(router_index,target_router)>=distance
 						{
-							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,estimated_remaining_hops:None}));
+							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,estimated_remaining_hops:None,router_allows:None}));
 						}
 						else
 						{
