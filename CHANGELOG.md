@@ -2,6 +2,11 @@
 
 ## [0.1.0] 
 
+# 2020-11-19
+
+Implemented `{Mesh,Torus}::diameter`.
+git commit -m "Provided diameter for meshes and tori."
+
 # 2020-11-18
 
 git commit -m "Added slimfly and proyective topologies for prime fields."

@@ -139,7 +139,7 @@ impl Topology for Mesh
 	}
 	fn diameter(&self) -> usize
 	{
-		unimplemented!();
+		self.cartesian_data.sides.iter().map(|s|s-1).sum()
 	}
 	fn average_distance(&self) -> f32
 	{
@@ -331,7 +331,7 @@ impl Topology for Torus
 	}
 	fn diameter(&self) -> usize
 	{
-		unimplemented!();
+		self.cartesian_data.sides.iter().map(|s|s/2).sum()
 	}
 	fn average_distance(&self) -> f32
 	{
