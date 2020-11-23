@@ -2,6 +2,11 @@
 
 ## [0.1.0] 
 
+# 2020-11-23
+Changed `Topology::coordinated_routing_record` to optionally receive a random number generator.
+The torus topology now uses the random number generator to generate fair routing records to the opposing location for even sides.
+git commit -m "Balanced routng records for torus."
+
 # 2020-11-19
 
 Implemented `{Mesh,Torus}::diameter`.

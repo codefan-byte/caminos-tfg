@@ -1,4 +1,6 @@
 
+use std::cell::RefCell;
+use ::rand::{StdRng};
 use std::fmt::Debug;
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::{
@@ -422,7 +424,7 @@ impl Topology for Projective
 		None
 	}
 	///Specific for some toologies, but must be checkable for anyone
-	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		unimplemented!()
 	}
@@ -644,7 +646,7 @@ impl Topology for LeviProjective
 		None
 	}
 	///Specific for some toologies, but must be checkable for anyone
-	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		unimplemented!()
 	}

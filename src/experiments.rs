@@ -1047,7 +1047,7 @@ impl<'a> Experiment<'a>
 		let username = self.remote_username.as_ref().expect("there is no username").to_owned();
 		let raw_methods = session.auth_methods(&username).unwrap();
 		let methods: HashSet<&str> = raw_methods.split(',').collect();
-		println!("{} available authentication mehotds ({})",methods.len(),raw_methods);
+		println!("{} available authentication methods ({})",methods.len(),raw_methods);
 		//if !session.authenticated() && methods.contains("publickey")
 		if !session.authenticated() && methods.contains("password")
 		{

@@ -190,7 +190,7 @@ impl Topology for Mesh
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		//In a Mesh the routing record is just the difference in coordinates.
 		(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
@@ -341,7 +341,7 @@ impl Topology for Torus
 	{
 		let coord_origin=self.cartesian_data.unpack(origin);
 		let coord_destination=self.cartesian_data.unpack(destination);
-		let rr=self.coordinated_routing_record(&coord_origin,&coord_destination);
+		let rr=self.coordinated_routing_record(&coord_origin,&coord_destination,None);
 		rr.iter().map(|x|x.abs() as usize).sum()
 	}
 	fn amount_shortest_paths(&self,_origin:usize,_destination:usize) -> usize
@@ -376,7 +376,7 @@ impl Topology for Torus
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>, rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		//In a Torus the routing record is for every difference of coordinates `d`, the minimum among `d` and `side-d` with the appropiate sign.
 		(0..coordinates_a.len()).map(|i|{
@@ -384,14 +384,21 @@ impl Topology for Torus
 			let side=self.cartesian_data.sides[i] as i32;
 			let a=(side + coordinates_b[i] as i32-coordinates_a[i] as i32) % side;
 			let b=(side + coordinates_a[i] as i32-coordinates_b[i] as i32) % side;
-			//FIXME: randomize when equal?
-			if a<b
+			if a==b
 			{
-				a
+				if let Some(rng)=rng
+				{
+					let r=rng.borrow_mut().gen_range(0,2);
+					if r==0 { a } else { -b }
+				}
+				else
+				{
+					a
+				}
 			}
 			else
 			{
-				-b
+				if a<b { a } else { -b }
 			}
 		}).collect()
 	}
@@ -577,7 +584,7 @@ impl Topology for Hamming
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		//In Hamming we put the difference as in the mesh, but any number can be advanced in a single hop.
 		(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
@@ -765,7 +772,7 @@ impl Routing for DOR
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, _rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -778,7 +785,7 @@ impl Routing for DOR
 		let up_current=cartesian_data.unpack(current_router);
 		let up_target=cartesian_data.unpack(target_router);
 		//let routing_record=(0..up_current.len()).map(|i|up_target[i] as i32-up_current[i] as i32).collect();//FIXME: torus
-		let routing_record=topology.coordinated_routing_record(&up_current,&up_target);
+		let routing_record=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
 		routing_info.borrow_mut().routing_record=Some(routing_record);
 	}
@@ -1063,7 +1070,7 @@ impl Routing for ValiantDOR
 		let up_current=cartesian_data.unpack(current_router);
 		let mut up_target=cartesian_data.unpack(target_router);
 		//let routing_record=(0..up_current.len()).map(|i|up_target[i] as i32-up_current[i] as i32).collect();//FIXME: torus
-		let routing_record=topology.coordinated_routing_record(&up_current,&up_target);
+		let routing_record=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
 		routing_info.borrow_mut().routing_record=Some(routing_record);
 		let mut offset=0;
@@ -1075,7 +1082,7 @@ impl Routing for ValiantDOR
 			let side=cartesian_data.sides[dim];
 		 	let t=rng.borrow_mut().gen_range(0,side);
 			up_target[dim]=t;
-			let aux_rr=topology.coordinated_routing_record(&up_current,&up_target);
+			let aux_rr=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 			r=aux_rr[dim];
 			if r!=0
 			{
@@ -1160,7 +1167,7 @@ impl Routing for ValiantDOR
 						};
 						let mut up_target=cartesian_data.unpack(target_router);
 						up_target[dim]=t;
-						let aux_rr=topology.coordinated_routing_record(&up_current,&up_target);
+						let aux_rr=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 						r=aux_rr[dim];
 					}
 					if r==0
@@ -1344,7 +1351,7 @@ impl Routing for O1TURN
 		let up_current=cartesian_data.unpack(current_router);
 		let up_target=cartesian_data.unpack(target_router);
 		//let routing_record=(0..up_current.len()).map(|i|up_target[i] as i32-up_current[i] as i32).collect();//FIXME: torus
-		let routing_record=topology.coordinated_routing_record(&up_current,&up_target);
+		let routing_record=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
 		routing_info.borrow_mut().routing_record=Some(routing_record);
 		routing_info.borrow_mut().selections=Some(vec![{

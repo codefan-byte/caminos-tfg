@@ -147,7 +147,7 @@ impl Topology for NeighboursLists
 	{
 		None
 	}
-	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		//(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
 		unimplemented!();

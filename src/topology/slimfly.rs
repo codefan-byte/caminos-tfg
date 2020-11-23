@@ -1,4 +1,6 @@
 
+use std::cell::RefCell;
+use ::rand::{StdRng};
 use std::fmt::Debug;
 use std::convert::TryInto;
 use quantifiable_derive::Quantifiable;//the derive macro
@@ -331,7 +333,7 @@ impl Topology for SlimFly
 		None
 	}
 	///Specific for some toologies, but must be checkable for anyone
-	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&Vec<usize>, _coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		unimplemented!()
 	}
