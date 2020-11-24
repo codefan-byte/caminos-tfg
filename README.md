@@ -107,7 +107,7 @@ Configuration
 		buffer_size: 64,//phits available in each input buffer
 		bubble: false,//to enable bubble mechanism in Cartesian topologies.
 		flit_size: 16,//set to maximum_packet_size to have Virtual Cut-Through.
-		intransit_priority: false,//whether to give preference to ???
+		intransit_priority: false,//whether to give preference to transit over injection.
 		allow_request_busy_port: true,//whether to allow input buffer to make requests to ports that are transmitting
 		output_buffer_size:32,//Available phits in each output_buffer.
 	},

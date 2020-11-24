@@ -2,6 +2,10 @@
 
 ## [0.1.0] 
 
+# 2020-11-24
+git tag 0.1.0 -m "v0.1.0"
+git commit -m "Updated metdata for publication."
+
 # 2020-11-23
 Changed `Topology::coordinated_routing_record` to optionally receive a random number generator.
 The torus topology now uses the random number generator to generate fair routing records to the opposing location for even sides.
