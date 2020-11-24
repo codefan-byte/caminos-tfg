@@ -21,4 +21,5 @@ ssh2 = "0.8.2"
 rpassword = "5.0"
 indicatif = "0.15.0"
 lazy_static = "1.4.0" #somehow not automatically added by indicatif
-quantifiable-derive = { path = "./quantifiable-derive" }
+quantifiable-derive = "0.1.0"
+#quantifiable-derive = { path = "../quantifiable-derive" }
