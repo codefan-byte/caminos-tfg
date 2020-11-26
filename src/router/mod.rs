@@ -38,6 +38,13 @@ pub trait Router: Eventful + Quantifiable
 	///Get the index of the router in the topology.
 	///To be used in policies such as VirtualChannelPolicy::LowestSinghWeight.
 	fn get_index(&self)->Option<usize>;
+	///To optionally write router statistics into the simulation output.
+	///Each router receives the aggregate of the statistics of the previous routers.
+	///In the frist router we have `statistics=None` and `router_index=0`.
+	///In the last router we have `router_index+1==total_routers==topology.routers.len()`, that may be used for final normalizations.
+	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:usize) -> Option<ConfigurationValue>;
+	///Clears all collected statistics
+	fn reset_statistics(&mut self,next_cycle:usize);
 }
 
 #[non_exhaustive]
@@ -229,6 +236,10 @@ pub trait SpaceAtReceptor
 	fn extract(&mut self, virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),()>;
 	///Iterates over all the stored phits. Do not assume any ordering.
 	fn iter_phits(&self) -> Box<dyn Iterator<Item=Rc<Phit>>>;
+	///Consult currently available space in phits dedicated to a virtual channel.
+	fn available_dedicated_space(&self, virtual_channel:usize) -> Option<usize>;
+	///Consult current number of phits in space dedicated to a virtual channel.
+	fn occupied_dedicated_space(&self, virtual_channel:usize) -> Option<usize>;
 }
 
 ///A message send from the receptor to the emissor when the receptor state changes.
@@ -433,6 +444,15 @@ impl SpaceAtReceptor for ParallelBuffers
 	{
 		Box::new(self.buffers.iter().flat_map(|buffer|buffer.iter_phits()).collect::<Vec<_>>().into_iter())
 	}
+	fn available_dedicated_space(&self, _virtual_channel:usize) -> Option<usize>
+	{
+		//We are not storing this size...
+		None
+	}
+	fn occupied_dedicated_space(&self, virtual_channel:usize) -> Option<usize>
+	{
+		Some(self.buffers[virtual_channel].len())
+	}
 }
 
 //pub struct AcknowledgeSinglePhit();
@@ -556,6 +576,14 @@ impl SpaceAtReceptor for NoSpace
 		//Is there a better empty iterator?
 		//Box::new(Vec::new().into_iter())
 		unimplemented!()
+	}
+	fn available_dedicated_space(&self, _virtual_channel:usize) -> Option<usize>
+	{
+		Some(0)
+	}
+	fn occupied_dedicated_space(&self, _virtual_channel:usize) -> Option<usize>
+	{
+		Some(0)
 	}
 }
 
@@ -745,6 +773,14 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 	fn iter_phits(&self) -> Box<dyn Iterator<Item=Rc<Phit>>>
 	{
 		Box::new(self.buffers.iter().flat_map(|buffer|buffer.iter_phits()).collect::<Vec<_>>().into_iter())
+	}
+	fn available_dedicated_space(&self, virtual_channel:usize) -> Option<usize>
+	{
+		Some(self.buffer_size - self.buffers[virtual_channel].len())
+	}
+	fn occupied_dedicated_space(&self, virtual_channel:usize) -> Option<usize>
+	{
+		Some(self.buffers[virtual_channel].len())
 	}
 }
 

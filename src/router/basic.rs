@@ -70,6 +70,14 @@ pub struct Basic<TM:TransmissionMechanism>
 	time_at_input_head: Vec<Vec<usize>>,
 	///And arbiter of the physical output port.
 	output_arbiter: OutputArbiter,
+
+	//statistics:
+	///The first cycle included in the statistics.
+	statistics_begin_cycle: usize,
+	///Accumulated over time, averaged per port.
+	statistics_output_buffer_occupation_per_vc: Vec<f64>,
+	///Accumulated over time, averaged per port.
+	statistics_reception_space_occupation_per_vc: Vec<f64>,
 }
 
 impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
@@ -112,6 +120,139 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 	fn get_index(&self)->Option<usize>
 	{
 		Some(self.router_index)
+	}
+	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:usize) -> Option<ConfigurationValue>
+	{
+		//let n_ports = self.selected_input.len();
+		//let n_vcs = self.selected_input[0].len();
+		//let mut output_buffer_occupation_per_vc:Option<Vec<f64>>= if self.output_buffer_size==0 {None} else
+		//{
+		//	Some((0..n_vcs).map(|vc|self.output_buffers.iter().map(|port|port[vc].len()).sum::<usize>() as f64).collect())
+		//};
+		let cycle_span = cycle - self.statistics_begin_cycle;
+		let mut reception_space_occupation_per_vc:Option<Vec<f64>> = Some(self.statistics_reception_space_occupation_per_vc.iter().map(|x|x/cycle_span as f64).collect());
+		let mut output_buffer_occupation_per_vc:Option<Vec<f64>> = Some(self.statistics_output_buffer_occupation_per_vc.iter().map(|x|x/cycle_span as f64).collect());
+		if let Some(previous)=statistics
+		{
+			if let ConfigurationValue::Object(cv_name,previous_pairs) = previous
+			{
+				if cv_name!="Basic"
+				{
+					panic!("incompatible statistics, should be `Basic` object not `{}`",cv_name);
+				}
+				for (ref name,ref value) in previous_pairs
+				{
+					match name.as_ref()
+					{
+						"average_output_buffer_occupation_per_vc" => match value
+						{
+							&ConfigurationValue::Array(ref prev_a) =>
+							{
+								if let Some(ref mut curr_a) = output_buffer_occupation_per_vc
+								{
+									for (c,p) in curr_a.iter_mut().zip(prev_a.iter())
+									{
+										if let ConfigurationValue::Number(x)=p
+										{
+											*c += x;
+										}
+										else
+										{
+											panic!("The non-number {:?} cannot be added",p);
+										}
+									}
+								}
+								else
+								{
+									println!("Ignoring average_output_buffer_occupation_per_vc.");
+								}
+							}
+							_ => panic!("bad value for average_output_buffer_occupation_per_vc"),
+						},
+						"average_reception_space_occupation_per_vc" => match value
+						{
+							&ConfigurationValue::Array(ref prev_a) =>
+							{
+								if let Some(ref mut curr_a) = output_buffer_occupation_per_vc
+								{
+									for (c,p) in curr_a.iter_mut().zip(prev_a.iter())
+									{
+										if let ConfigurationValue::Number(x)=p
+										{
+											*c += x;
+										}
+										else
+										{
+											panic!("The non-number {:?} cannot be added",p);
+										}
+									}
+								}
+								else
+								{
+									println!("Ignoring average_output_buffer_occupation_per_vc.");
+								}
+							}
+							_ => panic!("bad value for average_output_buffer_occupation_per_vc"),
+						},
+						_ => panic!("Nothing to do with field {} in Basic statistics",name),
+					}
+				}
+			}
+			else
+			{
+				panic!("received incompatible statistics");
+			}
+		}
+		let mut result_content : Vec<(String,ConfigurationValue)> = vec![
+			//(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
+			//(String::from("accepted_load"),ConfigurationValue::Number(accepted_load)),
+			//(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay)),
+			//(String::from("server_generation_jain_index"),ConfigurationValue::Number(jsgp)),
+			//(String::from("server_consumption_jain_index"),ConfigurationValue::Number(jscp)),
+			//(String::from("average_packet_hops"),ConfigurationValue::Number(average_packet_hops)),
+			//(String::from("total_packet_per_hop_count"),ConfigurationValue::Array(total_packet_per_hop_count)),
+			//(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
+			//(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
+			//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
+		];
+		let is_last = router_index+1==total_routers;
+		if let Some(ref mut content)=output_buffer_occupation_per_vc
+		{
+			if is_last
+			{
+				let factor=1f64 / total_routers as f64;
+				for x in content.iter_mut()
+				{
+					*x *= factor;
+				}
+			}
+			result_content.push((String::from("average_output_buffer_occupation_per_vc"),ConfigurationValue::Array(content.iter().map(|x|ConfigurationValue::Number(*x)).collect())));
+		}
+		if let Some(ref mut content)=reception_space_occupation_per_vc
+		{
+			if is_last
+			{
+				let factor=1f64 / total_routers as f64;
+				for x in content.iter_mut()
+				{
+					*x *= factor;
+				}
+			}
+			result_content.push((String::from("average_reception_space_occupation_per_vc"),ConfigurationValue::Array(content.iter().map(|x|ConfigurationValue::Number(*x)).collect())));
+		}
+		Some(ConfigurationValue::Object(String::from("Basic"),result_content))
+	}
+	fn reset_statistics(&mut self, next_cycle:usize)
+	{
+		self.statistics_begin_cycle=next_cycle;
+		for x in self.statistics_output_buffer_occupation_per_vc.iter_mut()
+		{
+			*x=0f64;
+		}
+		for x in self.statistics_reception_space_occupation_per_vc.iter_mut()
+		{
+			*x=0f64;
+		}
 	}
 }
 
@@ -278,6 +419,9 @@ impl Basic<SimpleVirtualChannels>
 			selected_output,
 			time_at_input_head,
 			output_arbiter: OutputArbiter::Token{port_token: vec![0;input_ports]},
+			statistics_begin_cycle: 0,
+			statistics_output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
+			statistics_reception_space_occupation_per_vc: vec![0f64;virtual_channels],
 		}));
 		//r.borrow_mut().self_rc=r.downgrade();
 		r.borrow_mut().self_rc=Rc::<_>::downgrade(&r);
@@ -343,8 +487,10 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 	///main routine of the router. Do all things that must be done in a cycle, if any.
 	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>
 	{
+		let mut cycles_span = 1;//cycles since last checked
 		if let Some(ref last)=self.last_process_at_cycle
 		{
+			cycles_span = simulation.cycle - *last;
 			if *last >= simulation.cycle
 			{
 				panic!("Trying to process at cycle {} a router::Basic already processed at {}",simulation.cycle,last);
@@ -357,6 +503,23 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		self.last_process_at_cycle = Some(simulation.cycle);
 		let mut request:Vec<PortRequest>=vec![];
 		let topology = simulation.network.topology.as_ref();
+		
+		let amount_virtual_channels=self.num_virtual_channels();
+		//-- gather cycle statistics
+		for port_space in self.reception_port_space.iter()
+		{
+			for vc in 0..amount_virtual_channels
+			{
+				self.statistics_reception_space_occupation_per_vc[vc]+=(port_space.available_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64;
+			}
+		}
+		for output_port in self.output_buffers.iter()
+		{
+			for (vc,buffer) in output_port.iter().enumerate()
+			{
+				self.statistics_reception_space_occupation_per_vc[vc]+=(buffer.len()*cycles_span) as f64;
+			}
+		}
 
 		//-- Precompute whatever polcies ask for.
 		let server_ports : Option<Vec<usize>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_server_ports())
@@ -376,7 +539,6 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		{
 			None
 		};
-		let amount_virtual_channels=self.num_virtual_channels();
 		let busy_ports:Vec<bool> = self.transmission_port_status.iter().enumerate().map(|(port,ref _status)|{
 			let mut is_busy = false;
 			for vc in 0..amount_virtual_channels
@@ -561,6 +723,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						{
 							panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
 						}
+						simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
 						match good_ports[0]
 						{
 							CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),

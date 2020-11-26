@@ -703,6 +703,10 @@ impl Statistics
 		{
 			server.statistics.reset();
 		}
+		for router in network.routers.iter()
+		{
+			router.borrow_mut().reset_statistics(next_cycle);
+		}
 		for router_links in self.link_statistics.iter_mut()
 		{
 			for link in router_links.iter_mut()
@@ -1108,6 +1112,7 @@ impl<'a> Simulation<'a>
 			if self.cycle==self.warmup
 			{
 				self.statistics.reset(self.cycle,&mut self.network);
+				self.routing.reset_statistics(self.cycle);
 			}
 			if self.traffic.is_finished()
 			{
@@ -1404,7 +1409,7 @@ impl<'a> Simulation<'a>
 		let maximum_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).max().unwrap()).max().unwrap();
 		let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
 		let git_id=get_git_id();
-		let result=ConfigurationValue::Object(String::from("Result"),vec![
+		let mut result_content = vec![
 			(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
 			(String::from("accepted_load"),ConfigurationValue::Number(accepted_load)),
 			(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay)),
@@ -1415,7 +1420,16 @@ impl<'a> Simulation<'a>
 			(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
 			(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
 			(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
-		]);
+		];
+		if let Some(content)=self.routing.statistics(self.cycle)
+		{
+			result_content.push((String::from("routing_statistics"),content));
+		}
+		if let Some(content) = self.network.routers.iter().enumerate().fold(None,|maybe_stat,(index,router)|router.borrow().aggregate_statistics(maybe_stat,index,self.network.routers.len(),self.cycle))
+		{
+			result_content.push((String::from("router_aggregated_statistics"),content));
+		}
+		let result=ConfigurationValue::Object(String::from("Result"),result_content);
 		writeln!(output,"{}",result).unwrap();
 	}
 }

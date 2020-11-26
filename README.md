@@ -9,10 +9,18 @@ This crate is `caminos-lib`. To use it add `caminos-lib` to your dependencies in
 
 ```toml
 [dependencies]
-caminos-lib = "0.1"
+caminos-lib = "0.2"
 ```
 
 Alternatively, consider whether the binary crate `caminos` fits your intended use.
+
+# Breaking changes
+
+## [0.1.0] to [0.2.0]
+
+* Added methods to `Routing` and `Router` traits to gather statistics.
+* Added method `Routing::performed_request` to allow routings to make decisions when the router makes a request to a candidate.
+
 
 # Public Interface
 

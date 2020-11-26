@@ -45,6 +45,14 @@ impl RoutingInfo
 	}
 }
 
+///Annotations by the routing to keep track of the candidates.
+#[derive(Clone,Debug,Default)]
+pub struct RoutingAnnotation
+{
+	values: Vec<i32>,
+	meta: Vec<Option<RoutingAnnotation>>,
+}
+
 ///Represent a port plus additional information that a routing algorithm can determine on how a packet must advance to the next router or server.
 #[derive(Clone)]
 #[derive(Debug,Default)]
@@ -58,6 +66,10 @@ pub struct CandidateEgress
 	///The routing must set this as false.
 	///The `Router` can set it to `Some(true)` when it satisfies all flow-cotrol criteria and to `Some(false)` when it fails any criterion.
 	pub router_allows: Option<bool>,
+
+	///Annotations for the routing to know to what candidate the router refers.
+	///It should be preserved by the policies.
+	pub annotation: Option<RoutingAnnotation>,
 }
 
 impl CandidateEgress
@@ -70,6 +82,7 @@ impl CandidateEgress
 			label: 0,
 			estimated_remaining_hops: None,
 			router_allows: None,
+			annotation: None,
 		}
 	}
 }
@@ -88,6 +101,12 @@ pub trait Routing : Debug
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize,rng: &RefCell<StdRng>);
 	///Prepares the routing to be utilized. Perhaps by precomputing routing tables.
 	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>);
+	///To be called by the router when one of the candidates is requested.
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>);
+	///To optionally write routing statistics into the simulation output.
+	fn statistics(&self,cycle:usize) -> Option<ConfigurationValue>;
+	///Clears all collected statistics
+	fn reset_statistics(&mut self,next_cycle:usize);
 }
 
 ///The argument of a builder function for `Routings`.
@@ -122,6 +141,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"Sum" => Box::new(SumRouting::new(arg)),
 			"Mindless" => Box::new(Mindless::new(arg)),
 			"WeighedShortest" => Box::new(WeighedShortest::new(arg)),
+			"Stubborn" => Box::new(Stubborn::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}
@@ -188,6 +208,16 @@ impl Routing for Shortest
 	{
 	}
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
 	{
 	}
 }
@@ -381,6 +411,18 @@ impl Routing for Valiant
 	}
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
+		//TODO: recurse over routings
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+		//TODO: recurse over routings
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
 	}
 }
 
@@ -522,6 +564,16 @@ impl<R:SourceRouting+Debug> Routing for R
 	{
 		self.initialize(topology,rng);
 	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
 }
 
 
@@ -533,6 +585,7 @@ impl<R:SourceRouting+Debug> Routing for R
 pub enum SumRoutingPolicy
 {
 	Random,
+	TryBoth,
 }
 
 pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
@@ -542,6 +595,7 @@ pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
 		match cv_name.as_ref()
 		{
 			"Random" => SumRoutingPolicy::Random,
+			"TryBoth" => SumRoutingPolicy::TryBoth,
 			//"Shortest" => SumRoutingPolicy::Shortest,
 			//"Hops" => SumRoutingPolicy::Hops,
 			_ => panic!("Unknown sum routing policy {}",cv_name),
@@ -600,28 +654,45 @@ impl Routing for SumRouting
 			}
 			Some(ref s) =>
 			{
-				let routing=if s[0]==0 { &self.first_routing } else { &self.second_routing };
-				let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
-				let r=routing.next(&meta[0].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
-				//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
-				r.into_iter()
-				//.map( |CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}| CandidateEgress{port,virtual_channel:allowed_virtual_channels[virtual_channel],label,estimated_remaining_hops} ).collect()
-				.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],..candidate} ).collect()
+				//let both = if let &SumRoutingPolicy::TryBoth=&self.policy { routing_info.hops==0 } else { false };
+				//if both
+				if s.len()==2
+				{
+					let avc0=&self.first_allowed_virtual_channels;
+					let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+					let avc1=&self.first_allowed_virtual_channels;
+					let r1=self.second_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+					r0.chain(r1).collect()
+				}
+				else
+				{
+					let routing=if s[0]==0 { &self.first_routing } else { &self.second_routing };
+					let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
+					let r=routing.next(&meta[0].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
+					//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
+					r.into_iter()
+					//.map( |CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}| CandidateEgress{port,virtual_channel:allowed_virtual_channels[virtual_channel],label,estimated_remaining_hops} ).collect()
+					.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],..candidate} ).collect()
+				}
 			}
 		}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
-		let s=match self.policy
+		let all = match self.policy
 		{
-			SumRoutingPolicy::Random => rng.borrow_mut().gen_range(0,2),
+			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0,2)],
+			SumRoutingPolicy::TryBoth => vec![0,1],
 		};
 		let mut bri=routing_info.borrow_mut();
-		bri.selections=Some(vec![s as i32]);
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new())]);
-		let routing=if s==0 { &self.first_routing } else { &self.second_routing };
-		routing.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,target_server,rng)
+		for &s in all.iter()
+		{
+			let routing=if s==0 { &self.first_routing } else { &self.second_routing };
+			routing.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,target_server,rng)
+		}
+		bri.selections=Some(all);
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -640,6 +711,27 @@ impl Routing for SumRouting
 	{
 		self.first_routing.initialize(topology,rng);
 		self.second_routing.initialize(topology,rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+		let mut bri=routing_info.borrow_mut();
+		if let SumRoutingPolicy::TryBoth=self.policy
+		{
+			let &CandidateEgress{ref annotation,..} = requested;
+			if let Some(annotation) = annotation.as_ref()
+			{
+				let s = annotation.values[0];
+				bri.selections=Some(vec![s]);
+			}
+		}
+		//TODO: recurse over subroutings
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
 	}
 }
 
@@ -764,6 +856,16 @@ impl Routing for Mindless
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
 	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
 }
 
 impl Mindless
@@ -864,6 +966,16 @@ impl Routing for WeighedShortest
 	{
 		self.distance_matrix=topology.compute_distance_matrix(Some(&self.class_weight));
 	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
 }
 
 impl WeighedShortest
@@ -909,4 +1021,116 @@ impl WeighedShortest
 	}
 }
 
+
+///Stubborn routing
+///Wraps a routing so that only one request is made in every router.
+///The first time the router make a port request, that request is stored and repeated in further calls to `next` until reaching a new router.
+///Stores port, virtual_channel, label into routing_info.selections.
+#[derive(Debug)]
+pub struct Stubborn
+{
+	routing: Box<dyn Routing>,
+}
+
+impl Routing for Stubborn
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+		if target_router==current_router
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+					}
+				}
+			}
+			unreachable!();
+		}
+		if let Some(ref sel)=routing_info.selections
+		{
+			return vec![CandidateEgress{port:sel[0] as usize,virtual_channel:sel[1] as usize,label:sel[2],..Default::default()}]
+		}
+		//return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
+		return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect()
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		let meta_routing_info=RefCell::new(RoutingInfo::new());
+		self.routing.initialize_routing_info(&meta_routing_info, topology, current_router, target_server, rng);
+		routing_info.borrow_mut().meta = Some(vec![meta_routing_info]);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
+	{
+		routing_info.borrow_mut().selections=None;
+	}
+	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+		let &CandidateEgress{port,virtual_channel,ref annotation,..} = requested;
+		if let Some(annotation) = annotation.as_ref()
+		{
+			let label = annotation.values[0];
+			routing_info.borrow_mut().selections=Some(vec![port as i32, virtual_channel as i32, label]);
+			//TODO: recurse over routing
+		}
+		//otherwise it is direct to server
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
+}
+
+impl Stubborn
+{
+	pub fn new(arg: RoutingBuilderArgument) -> Stubborn
+	{
+		let mut routing=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Stubborn"
+			{
+				panic!("A Stubborn must be created from a `Stubborn` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"routing" =>
+					{
+						routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg}));
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in Stubborn",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Stubborn from a non-Object");
+		}
+		let routing=routing.expect("There were no routing");
+		Stubborn{
+			routing,
+		}
+	}
+}
 

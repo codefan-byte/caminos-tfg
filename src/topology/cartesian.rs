@@ -834,6 +834,16 @@ impl Routing for DOR
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
 	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
 }
 
 impl DOR
@@ -1190,6 +1200,16 @@ impl Routing for ValiantDOR
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
 	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
 }
 
 impl ValiantDOR
@@ -1375,6 +1395,16 @@ impl Routing for O1TURN
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
 	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
 }
 
 impl O1TURN
@@ -1502,7 +1532,7 @@ impl Routing for OmniDimensionalDeroute
 						//r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
 						if self.include_labels && topology.distance(router_index,target_router)>=distance
 						{
-							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,estimated_remaining_hops:None,router_allows:None}));
+							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,..Default::default()}));
 						}
 						else
 						{
@@ -1552,6 +1582,16 @@ impl Routing for OmniDimensionalDeroute
 		}
 	}
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
 	{
 	}
 }
