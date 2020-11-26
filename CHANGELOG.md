@@ -10,6 +10,7 @@ Implemented a Stubborn meta routing, what always repeat the same request over an
 Added `SumRoutingPolicy::TryBoth`.
 git commit -m "Added statistics to routings and routers. Routers now inform routings of the candidate they finally request."
 git commit -m "Divided occpation in statistics by number of ports."
+git commit -m "Added extra label parameter to SumRouting."
 
 ## [0.1.0] 
 

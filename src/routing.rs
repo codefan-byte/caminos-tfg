@@ -616,6 +616,8 @@ pub struct SumRouting
 	second_routing:Box<dyn Routing>,
 	first_allowed_virtual_channels: Vec<usize>,
 	second_allowed_virtual_channels: Vec<usize>,
+	first_extra_label: i32,
+	second_extra_label: i32,
 }
 
 impl Routing for SumRouting
@@ -659,20 +661,23 @@ impl Routing for SumRouting
 				if s.len()==2
 				{
 					let avc0=&self.first_allowed_virtual_channels;
-					let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+					let el0=self.first_extra_label;
+					let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
 					let avc1=&self.first_allowed_virtual_channels;
-					let r1=self.second_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+					let el1=self.second_extra_label;
+					let r1=self.second_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
 					r0.chain(r1).collect()
 				}
 				else
 				{
 					let routing=if s[0]==0 { &self.first_routing } else { &self.second_routing };
 					let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
+					let extra_label = if s[0]==0 { self.first_extra_label } else { self.second_extra_label };
 					let r=routing.next(&meta[0].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
 					//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
 					r.into_iter()
 					//.map( |CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}| CandidateEgress{port,virtual_channel:allowed_virtual_channels[virtual_channel],label,estimated_remaining_hops} ).collect()
-					.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],..candidate} ).collect()
+					.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],label:candidate.label+extra_label,..candidate} ).collect()
 				}
 			}
 		}
@@ -744,6 +749,8 @@ impl SumRouting
 		let mut second_routing=None;
 		let mut first_allowed_virtual_channels=None;
 		let mut second_allowed_virtual_channels=None;
+		let mut first_extra_label=0i32;
+		let mut second_extra_label=0i32;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
 			if cv_name!="Sum"
@@ -774,6 +781,16 @@ impl SumRouting
 						}).collect()),
 						_ => panic!("bad value for first_allowed_virtual_channels"),
 					}
+					"first_extra_label" => match value
+					{
+						&ConfigurationValue::Number(x) => first_extra_label=x as i32,
+						_ => panic!("bad value for first_extra_label"),
+					},
+					"second_extra_label" => match value
+					{
+						&ConfigurationValue::Number(x) => second_extra_label=x as i32,
+						_ => panic!("bad value for second_extra_label"),
+					},
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in SumRouting",name),
 				}
@@ -794,6 +811,8 @@ impl SumRouting
 			second_routing,
 			first_allowed_virtual_channels,
 			second_allowed_virtual_channels,
+			first_extra_label,
+			second_extra_label,
 		}
 	}
 }
