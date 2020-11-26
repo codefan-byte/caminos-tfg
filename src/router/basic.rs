@@ -510,14 +510,14 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		{
 			for vc in 0..amount_virtual_channels
 			{
-				self.statistics_reception_space_occupation_per_vc[vc]+=(port_space.available_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64;
+				self.statistics_reception_space_occupation_per_vc[vc]+=(port_space.available_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64 / self.reception_port_space.len() as f64;
 			}
 		}
 		for output_port in self.output_buffers.iter()
 		{
 			for (vc,buffer) in output_port.iter().enumerate()
 			{
-				self.statistics_reception_space_occupation_per_vc[vc]+=(buffer.len()*cycles_span) as f64;
+				self.statistics_reception_space_occupation_per_vc[vc]+=(buffer.len()*cycles_span) as f64 / self.output_buffers.len() as f64;
 			}
 		}
 
