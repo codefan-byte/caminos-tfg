@@ -11,6 +11,7 @@ Added `SumRoutingPolicy::TryBoth`.
 git commit -m "Added statistics to routings and routers. Routers now inform routings of the candidate they finally request."
 git commit -m "Divided occpation in statistics by number of ports."
 git commit -m "Added extra label parameter to SumRouting."
+git commit -m "Fixed annotation on SumRouting."
 
 ## [0.1.0] 
 
