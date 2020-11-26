@@ -12,6 +12,7 @@ git commit -m "Added statistics to routings and routers. Routers now inform rout
 git commit -m "Divided occpation in statistics by number of ports."
 git commit -m "Added extra label parameter to SumRouting."
 git commit -m "Fixed annotation on SumRouting."
+git commit -m "More fixes on SumRouting."
 
 ## [0.1.0] 
 

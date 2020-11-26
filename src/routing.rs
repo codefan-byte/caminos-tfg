@@ -665,15 +665,16 @@ impl Routing for SumRouting
 					let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
 					let avc1=&self.first_allowed_virtual_channels;
 					let el1=self.second_extra_label;
-					let r1=self.second_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
+					let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
 					r0.chain(r1).collect()
 				}
 				else
 				{
+					let index=s[0] as usize;
 					let routing=if s[0]==0 { &self.first_routing } else { &self.second_routing };
 					let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
 					let extra_label = if s[0]==0 { self.first_extra_label } else { self.second_extra_label };
-					let r=routing.next(&meta[0].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
+					let r=routing.next(&meta[index].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
 					//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
 					r.into_iter()
 					//.map( |CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}| CandidateEgress{port,virtual_channel:allowed_virtual_channels[virtual_channel],label,estimated_remaining_hops} ).collect()
@@ -684,18 +685,18 @@ impl Routing for SumRouting
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
-		let all = match self.policy
+		let all:Vec<i32> = match self.policy
 		{
 			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0,2)],
 			SumRoutingPolicy::TryBoth => vec![0,1],
 		};
 		let mut bri=routing_info.borrow_mut();
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
-		bri.meta=Some(vec![RefCell::new(RoutingInfo::new())]);
+		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
 		for &s in all.iter()
 		{
 			let routing=if s==0 { &self.first_routing } else { &self.second_routing };
-			routing.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,target_server,rng)
+			routing.initialize_routing_info(&bri.meta.as_ref().unwrap()[s as usize],topology,current_router,target_server,rng)
 		}
 		bri.selections=Some(all);
 	}
@@ -705,12 +706,12 @@ impl Routing for SumRouting
 		let s=match bri.selections
 		{
 			None => unreachable!(),
-			Some(ref t) => t[0],
+			Some(ref t) => t[0] as usize,
 		};
 		let routing=if s==0 { &self.first_routing } else { &self.second_routing };
 		let meta=bri.meta.as_mut().unwrap();
-		meta[0].borrow_mut().hops+=1;
-		routing.update_routing_info(&meta[0],topology,current_router,current_port,target_server,rng);
+		meta[s].borrow_mut().hops+=1;
+		routing.update_routing_info(&meta[s],topology,current_router,current_port,target_server,rng);
 	}
 	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
 	{
