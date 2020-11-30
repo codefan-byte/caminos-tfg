@@ -8,12 +8,14 @@ use std::io::prelude::*;
 use std::io::{stdout,BufReader};
 use std::path::{Path,PathBuf};
 use std::process::Command;
-use crate::{Simulation,flatten_configuration_value,Plugs};
-use ssh2::Session;
-use crate::output::create_output;
 use std::net::TcpStream;
 use std::collections::{HashSet};
+
+use ssh2::Session;
 use indicatif::{ProgressBar,ProgressStyle};
+
+use crate::{Simulation,flatten_configuration_value,Plugs};
+use crate::output::{create_output,evaluate};
 
 #[derive(Debug,Clone,Copy)]
 pub enum Action
@@ -234,6 +236,8 @@ pub struct ExperimentOptions
 	pub start_index: Option<usize>,
 	///Experiment index in which to end the actions (excluded).
 	pub end_index: Option<usize>,
+	///Expression of expriments to be included.
+	pub where_clause: Option<config_parser::Expr>,
 }
 
 ///An `Experiment` object encapsulates the operations that are performed over a folder containing an experiment.
@@ -701,6 +705,15 @@ impl<'a> Experiment<'a>
 		for (experiment_index,experiment) in experiments.iter().enumerate().skip(start_index).take(end_index-start_index)
 		{
 			progress_bar.inc(1);
+			if let Some(ref expr) = self.options.where_clause
+			{
+				match evaluate(&expr,experiment)
+				{
+					ConfigurationValue::True => (),//good
+					ConfigurationValue::False => continue,//discard this index
+					x => panic!("The where clause evaluate to a non-bool type ({:?})",x),
+				}
+			}
 			let experiment_path=runs_path.join(format!("run{}",experiment_index));
 			if !experiment_path.is_dir()
 			{

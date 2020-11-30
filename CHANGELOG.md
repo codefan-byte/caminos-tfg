@@ -2,6 +2,18 @@
 
 ## next? [0.2.0]
 
+### 2020-11-30
+Added to the grammar function calls. To be used as "=functionname{key1:expr1, key2:expr2,}".
+Added the config function `lt'.
+Added member `ExperimentOptions::where_clause' to receive --where parameters.
+The output::evaluate funtion made public.
+Added `config_parser::parse_expression' to be used to capture the --where=expr clause.
+git commit -m "Improved grammar: added named experiments and function calls."
+
+### 2020-11-27
+Added 'named experiments' to the grammar. This is, to use `key: expa![val1,val2,val3]` and in other place `other_key: expa![wok1,wok2,wok3]`. Intended to get the matches `[{key:val1,other_key_wok1},{key:val2,other_key_wok2},{key:val3,other_key_wok3}]` instead of the whole of combinations.
+Changed `flatten_configuration_value` to expand named experiments correctly.
+
 ### 2020-11-26
 Added methods `Routing::{statistics,reset_statistics}` and `Router::{aggregate_statistics,reset_statistics}` to gather specific statistics of each type.
 Added routing annotations.

@@ -247,6 +247,7 @@ use std::ops::DerefMut;
 use std::path::{Path};
 use std::mem::{size_of};
 use std::fmt::Debug;
+//use std::borrow::Cow;
 use rand::{StdRng,SeedableRng};
 
 use config_parser::{ConfigurationValue};
@@ -837,6 +838,15 @@ fn vec_product<T:Clone>(a:&Vec<Vec<T>>,b:&Vec<T>) -> Vec<Vec<T>>
 ///whose elements are free of them.
 fn flatten_configuration_value(value:&ConfigurationValue) -> ConfigurationValue
 {
+	let mut names = BTreeMap::new();//name -> range
+	let experiments = flatten_configuration_value_gather_names(value, &mut names);
+	println!("got names {:?}",names);
+	expand_named_experiments_range(experiments,&names)
+}
+
+
+fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mut BTreeMap<String,usize>) -> ConfigurationValue
+{
 	match value
 	{
 		&ConfigurationValue::Object(ref name, ref list) =>
@@ -844,7 +854,7 @@ fn flatten_configuration_value(value:&ConfigurationValue) -> ConfigurationValue
 			let mut r=vec![ vec![] ];
 			for &(ref name, ref v) in list
 			{
-				let fv=flatten_configuration_value(v);
+				let fv=flatten_configuration_value_gather_names(v,names);
 				if let ConfigurationValue::Experiments(vlist) = fv
 				{
 					let factor=vlist.iter().map(|x|(name.clone(),x.clone())).collect::<Vec<(String,ConfigurationValue)>>();
@@ -865,7 +875,7 @@ fn flatten_configuration_value(value:&ConfigurationValue) -> ConfigurationValue
 			let mut r=vec![ vec![] ];
 			for ref v in list
 			{
-				let fv=flatten_configuration_value(v);
+				let fv=flatten_configuration_value_gather_names(v,names);
 				if let ConfigurationValue::Experiments(vlist) = fv
 				{
 					//let factor=vlist.iter().map(|x|x.clone()).collect::<Vec<ConfigurationValue>>();
@@ -887,7 +897,7 @@ fn flatten_configuration_value(value:&ConfigurationValue) -> ConfigurationValue
 			let mut r:Vec<ConfigurationValue>=vec![];
 			for experiment in experiments
 			{
-				let flat=flatten_configuration_value(experiment);
+				let flat=flatten_configuration_value_gather_names(experiment,names);
 				if let ConfigurationValue::Experiments(ref flist) = flat
 				{
 					r.extend(flist.iter().map(|x|x.clone()));
@@ -899,10 +909,92 @@ fn flatten_configuration_value(value:&ConfigurationValue) -> ConfigurationValue
 			}
 			ConfigurationValue::Experiments(r)
 		},
+		&ConfigurationValue::NamedExperiments(ref name, ref experiments) =>
+		{
+			if let Some(&size) = names.get(name)
+			{
+				if size != experiments.len()
+				{
+					panic!("{}! has different lengths {} vs {}",name,size,experiments.len());
+				}
+			}
+			else
+			{
+				names.insert(name.to_string(),experiments.len());
+			}
+			value.clone()
+		},
 		&ConfigurationValue::Where(ref v, ref _expr) =>
 		{
-			flatten_configuration_value(v)//FIXME, filterby expr
+			flatten_configuration_value_gather_names(v,names)//FIXME, filterby expr
 		},
+		_ => value.clone(),
+	}
+}
+
+fn expand_named_experiments_range(experiments:ConfigurationValue, names:&BTreeMap<String,usize>) -> ConfigurationValue
+{
+	let mut r = experiments;
+	for name in names.keys()
+	{
+		let size=*names.get(name).unwrap();
+		//r=ConfigurationValue::Experiments((0..size).map(|index|{
+		//	let mut context = BTreeMap::new();
+		//	context.insert(key,index);
+		//	match particularize_named_experiments_selected(experiments,&context)
+		//	{
+		//		ConfigurationValue::Experiments(ref exps) => exps,
+		//		x => &vec![x],
+		//	}.iter()
+		//}).flatten().collect());
+		let collected : Vec<Vec<ConfigurationValue>>= (0..size).map(|index|{
+			let mut context : BTreeMap<String,usize> = BTreeMap::new();
+			context.insert(name.to_string(),index);
+			match particularize_named_experiments_selected(&r,&context)
+			{
+				ConfigurationValue::Experiments(exps) => exps,
+				x => vec![x],
+			}
+		}).collect();
+		r=ConfigurationValue::Experiments(collected.into_iter().map(|t|t.into_iter()).flatten().collect());
+	}
+	r
+}
+
+fn particularize_named_experiments_selected(value:&ConfigurationValue, names:&BTreeMap<String,usize>) -> ConfigurationValue
+{
+	match value
+	{
+		&ConfigurationValue::Object(ref name, ref list) =>
+		{
+			let plist = list.iter().map(|(key,x)|(key.to_string(),particularize_named_experiments_selected(x,names))).collect();
+			ConfigurationValue::Object(name.to_string(),plist)
+		},
+		&ConfigurationValue::Array(ref list) =>
+		{
+			let plist = list.iter().map(|x|particularize_named_experiments_selected(x,names)).collect();
+			ConfigurationValue::Array(plist)
+		},
+		&ConfigurationValue::Experiments(ref list) =>
+		{
+			let plist = list.iter().map(|x|particularize_named_experiments_selected(x,names)).collect();
+			ConfigurationValue::Experiments(plist)
+		},
+		&ConfigurationValue::NamedExperiments(ref name, ref list) =>
+		{
+			if let Some(&index) = names.get(name)
+			{
+				list[index].clone()
+			}
+			else
+			{
+				value.clone()
+			}
+		},
+		//&ConfigurationValue::Where(ref v, ref _expr) =>
+		//{
+		//	flatten_configuration_value_gather_names(v,names)//FIXME, filterby expr
+		//},
 		_ => value.clone(),
 	}
 }

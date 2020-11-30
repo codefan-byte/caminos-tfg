@@ -17,6 +17,7 @@ pub enum ConfigurationValue
 	Object(String,Vec<(String,ConfigurationValue)>),
 	Array(Vec<ConfigurationValue>),
 	Experiments(Vec<ConfigurationValue>),
+	NamedExperiments(String,Vec<ConfigurationValue>),
 	True,
 	False,
 	Where(Rc<ConfigurationValue>,Expr),
@@ -56,6 +57,7 @@ impl ConfigurationValue
 				writeln!(f,"{}]",is)?;
 			},
 			&ConfigurationValue::Experiments(ref _list) => write!(f,"FIXME")?,
+			&ConfigurationValue::NamedExperiments(ref _name, ref _list) => write!(f,"FIXME")?,
 			&ConfigurationValue::True => write!(f,"true")?,
 			&ConfigurationValue::False => write!(f,"false")?,
 			&ConfigurationValue::Where(ref cv, ref _expr) => write!(f,"{} where FIXME",cv)?,
@@ -84,6 +86,7 @@ pub enum Expr
 	Parentheses(Rc<Expr>),
 	///Gets the name of an object: @expr
 	Name(Rc<Expr>),
+	FunctionCall(String,Vec<(String,Expr)>),
 }
 
 impl Display for Expr
@@ -186,6 +189,7 @@ nonterminal Value(ConfigurationValue)
 	(Object(ref value)) => value.clone(),
 	(Array(ref list)) => ConfigurationValue::Array(list.clone()),
 	(Bang,Array(ref list)) => ConfigurationValue::Experiments(list.clone()),
+	(Ident(ref name),Bang,Array(ref list)) => ConfigurationValue::NamedExperiments(name.clone(),list.clone()),
 	(True) => ConfigurationValue::True,
 	(False) => ConfigurationValue::False,
 	(Value(ref value),Where,Expression(ref expr)) => ConfigurationValue::Where(Rc::new(value.clone()),expr.clone()),
@@ -248,6 +252,32 @@ nonterminal Expression(Expr)
 	(LPar,Expression(ref expr),RPar) => Expr::Parentheses(Rc::new(expr.clone())),
 	#[priority(getname)]
 	(At,Expression(ref expr)) => Expr::Name(Rc::new(expr.clone())),
+	(FunctionCall(ref value)) => value.clone(),
+}
+
+nonterminal FunctionCall(Expr)
+{
+	//(Ident(ref name)) => Expr::FunctionCall(name.clone(),vec![]),
+	(Ident(ref name),LBrace,RBrace) => Expr::FunctionCall(name.clone(),vec![]),
+	(Ident(ref name),LBrace,Arguments(ref list),RBrace) => Expr::FunctionCall(name.clone(),list.clone()),
+	(Ident(ref name),LBrace,Arguments(ref list),Comma,RBrace) => Expr::FunctionCall(name.clone(),list.clone()),
+}
+
+nonterminal Arguments(Vec<(String,Expr)>)
+{
+	(ExprPair(ref s,ref value)) => vec![(s.clone(),value.clone())],
+	//(ExprPair,Comma,Arguments) => (),
+	(Arguments(ref list),Comma,ExprPair(ref s,ref value)) =>
+	{
+		let mut new=(list.clone());
+		new.push((s.clone(),value.clone()));
+		new
+	},
+}
+
+nonterminal ExprPair(String,Expr)
+{
+	(Ident(ref s),Colon,Expression(ref expr)) => (s.clone(),expr.clone()),
 }
 
 ordering!(membership,getname,comparison);
@@ -271,6 +301,11 @@ ordering!(membership,getname,comparison);
 pub fn parse(source:&str) -> Result<Token,ParsingError>
 {
 	Parser::<Token,ParsingTables>::parse(source,None)
+}
+
+pub fn parse_expression(source:&str) -> Result<Token,ParsingError>
+{
+	Parser::<Token,ParsingTables>::parse(source,Some(26))
 }
 
 

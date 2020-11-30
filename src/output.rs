@@ -842,7 +842,7 @@ fn combine(configuration:&ConfigurationValue, result:&ConfigurationValue) -> Con
 
 ///Evaluates an expression given in a context.
 ///For example the expression `=Alpha.beta` will return 42 for the context `Alpha{beta:42}`.
-fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
+pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 {
 	match expr
 	{
@@ -905,6 +905,46 @@ fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 				_ => panic!("{} has no name as it is not object",value),
 			}
 		},
+		&Expr::FunctionCall(ref function_name, ref arguments) =>
+		{
+			match function_name.as_ref()
+			{
+				"lt" =>
+				{
+					let mut first=None;
+					let mut second=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"first" =>
+							{
+								first=Some(evaluate(val,context));
+							},
+							"second" =>
+							{
+								second=Some(evaluate(val,context));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let first=first.expect("first argument of lt not given.");
+					let second=second.expect("second argument of lt not given.");
+					let first=match first
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("first argument of lt evaluated to a non-nmber ({}:?)",first),
+					};
+					let second=match second
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("second argument of lt evaluated to a non-nmber ({}:?)",second),
+					};
+					if first<second { ConfigurationValue::True } else { ConfigurationValue::False }
+				}
+				_ => panic!("Unknown function `{}'",function_name),
+			}
+		}
 	}
 }
 
