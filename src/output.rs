@@ -1,13 +1,15 @@
 
-use crate::config_parser::{ConfigurationValue,Expr};
 use std::path::Path;
 use std::fs::{self,File};
 use std::io::{Write,Read};
 use std::cmp::Ordering;
 use std::process::Command;
 use std::collections::HashSet;
-use crate::get_git_id;
 use std::rc::Rc;
+
+use crate::config_parser::{ConfigurationValue,Expr};
+use crate::config::{combine,evaluate,reevaluate,values_to_f32};
+use crate::get_git_id;
 
 ///Creates some output using an output description object as guide.
 pub fn create_output(description: &ConfigurationValue, results: &Vec<(ConfigurationValue,ConfigurationValue)>, total_experiments:usize, path:&Path)
@@ -829,151 +831,6 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		.output()
 		.expect("pdflatex failed to start");
 	fs::copy(&tmp_path.join("tmp.pdf"),&pdf_path).expect("copying temporal pdf failed.");
-}
-
-///Just returns a `Context{configuration:<configuration>, result:<result>}`.
-fn combine(configuration:&ConfigurationValue, result:&ConfigurationValue) -> ConfigurationValue
-{
-	ConfigurationValue::Object(String::from("Context"),vec![
-		(String::from("configuration"),configuration.clone()),
-		(String::from("result"),result.clone()),
-	])
-}
-
-///Evaluates an expression given in a context.
-///For example the expression `=Alpha.beta` will return 42 for the context `Alpha{beta:42}`.
-pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
-{
-	match expr
-	{
-		&Expr::Equality(ref a,ref b) =>
-		{
-			let va=evaluate(a,context);
-			let vb=evaluate(b,context);
-			if va==vb
-			{
-				ConfigurationValue::True
-			}
-			else
-			{
-				ConfigurationValue::False
-			}
-		},
-		&Expr::Literal(ref s) => ConfigurationValue::Literal(s.clone()),
-		&Expr::Number(f) => ConfigurationValue::Number(f),
-		&Expr::Ident(ref s) => match context
-		{
-			&ConfigurationValue::Object(ref _name, ref attributes) =>
-			{
-				for &(ref attr_name,ref attr_value) in attributes.iter()
-				{
-					if attr_name==s
-					{
-						return attr_value.clone();
-					}
-				};
-				panic!("There is not attribute {} in {}",s,context);
-			},
-			_ => panic!("Cannot evaluate identifier in non-object"),
-		},
-		&Expr::Member(ref expr, ref attribute) =>
-		{
-			let value=evaluate(expr,context);
-			match value
-			{
-				ConfigurationValue::Object(ref _name, ref attributes) =>
-				{
-					for &(ref attr_name,ref attr_value) in attributes.iter()
-					{
-						if attr_name==attribute
-						{
-							return attr_value.clone();
-						}
-					};
-					panic!("There is not member {} in {}",attribute,value);
-				},
-				_ => panic!("There is no member {} in {}",attribute,value),
-			}
-		},
-		&Expr::Parentheses(ref expr) => evaluate(expr,context),
-		&Expr::Name(ref expr) =>
-		{
-			let value=evaluate(expr,context);
-			match value
-			{
-				ConfigurationValue::Object(ref name, ref _attributes) => ConfigurationValue::Literal(name.clone()),
-				_ => panic!("{} has no name as it is not object",value),
-			}
-		},
-		&Expr::FunctionCall(ref function_name, ref arguments) =>
-		{
-			match function_name.as_ref()
-			{
-				"lt" =>
-				{
-					let mut first=None;
-					let mut second=None;
-					for (key,val) in arguments
-					{
-						match key.as_ref()
-						{
-							"first" =>
-							{
-								first=Some(evaluate(val,context));
-							},
-							"second" =>
-							{
-								second=Some(evaluate(val,context));
-							},
-							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
-						}
-					}
-					let first=first.expect("first argument of lt not given.");
-					let second=second.expect("second argument of lt not given.");
-					let first=match first
-					{
-						ConfigurationValue::Number(x) => x,
-						_ => panic!("first argument of lt evaluated to a non-nmber ({}:?)",first),
-					};
-					let second=match second
-					{
-						ConfigurationValue::Number(x) => x,
-						_ => panic!("second argument of lt evaluated to a non-nmber ({}:?)",second),
-					};
-					if first<second { ConfigurationValue::True } else { ConfigurationValue::False }
-				}
-				_ => panic!("Unknown function `{}'",function_name),
-			}
-		}
-	}
-}
-
-/// Evaluate some expressions inside a ConfigurationValue
-fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue) -> ConfigurationValue
-{
-	//if let &ConfigurationValue::Expression(ref expr)=value
-	//{
-	//	evaluate(expr,context)
-	//}
-	//else
-	//{
-	//	value.clone()
-	//}
-	match value
-	{
-		&ConfigurationValue::Expression(ref expr) => evaluate(expr,context),
-		&ConfigurationValue::Array(ref l) => ConfigurationValue::Array(l.iter().map(|e|reevaluate(e,context)).collect()),
-		_ => value.clone(),
-	}
-}
-
-///Get a vector of `f32` from a vector of `ConfigurationValue`s, skipping non-numeric values.
-fn values_to_f32(list:&Vec<ConfigurationValue>) -> Vec<f32>
-{
-	list.iter().filter_map(|v|match v{
-		&ConfigurationValue::Number(f) => Some(f as f32),
-		_ => None
-	}).collect()
 }
 
 /// Calculates the average and deviation of the values in a Vec.

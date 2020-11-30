@@ -9,6 +9,8 @@ Added member `ExperimentOptions::where_clause' to receive --where parameters.
 The output::evaluate funtion made public.
 Added `config_parser::parse_expression' to be used to capture the --where=expr clause.
 git commit -m "Improved grammar: added named experiments and function calls."
+New file config.rs to encapsulate all the processing of ConfigurationValue and expressions.
+git commit -m "Moved config-processing aspects into new file config.rs."
 
 ### 2020-11-27
 Added 'named experiments' to the grammar. This is, to use `key: expa![val1,val2,val3]` and in other place `other_key: expa![wok1,wok2,wok3]`. Intended to get the matches `[{key:val1,other_key_wok1},{key:val2,other_key_wok2},{key:val3,other_key_wok3}]` instead of the whole of combinations.

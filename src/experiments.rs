@@ -1,7 +1,5 @@
 
 use std::fmt;
-use crate::config_parser;
-use crate::config_parser::{ConfigurationValue};
 use std::fs::{self,File,OpenOptions};
 use std::str::FromStr;
 use std::io::prelude::*;
@@ -14,8 +12,10 @@ use std::collections::{HashSet};
 use ssh2::Session;
 use indicatif::{ProgressBar,ProgressStyle};
 
-use crate::{Simulation,flatten_configuration_value,Plugs};
-use crate::output::{create_output,evaluate};
+use crate::config_parser::{self,ConfigurationValue};
+use crate::{Simulation,Plugs};
+use crate::output::{create_output};
+use crate::config::{evaluate,flatten_configuration_value};
 
 #[derive(Debug,Clone,Copy)]
 pub enum Action
