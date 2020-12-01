@@ -288,14 +288,82 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 					let first=match first
 					{
 						ConfigurationValue::Number(x) => x,
-						_ => panic!("first argument of lt evaluated to a non-nmber ({}:?)",first),
+						_ => panic!("first argument of lt evaluated to a non-number ({}:?)",first),
 					};
 					let second=match second
 					{
 						ConfigurationValue::Number(x) => x,
-						_ => panic!("second argument of lt evaluated to a non-nmber ({}:?)",second),
+						_ => panic!("second argument of lt evaluated to a non-number ({}:?)",second),
 					};
 					if first<second { ConfigurationValue::True } else { ConfigurationValue::False }
+				}
+				"if" =>
+				{
+					let mut condition=None;
+					let mut true_expression=None;
+					let mut false_expression=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"condition" =>
+							{
+								condition=Some(evaluate(val,context));
+							},
+							"true_expression" =>
+							{
+								true_expression=Some(evaluate(val,context));
+							},
+							"false_expression" =>
+							{
+								false_expression=Some(evaluate(val,context));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let condition=condition.expect("condition argument of if not given.");
+					let true_expression=true_expression.expect("true_expression argument of if not given.");
+					let false_expression=false_expression.expect("false_expression argument of if not given.");
+					let condition = match condition
+					{
+						ConfigurationValue::True => true,
+						ConfigurationValue::False => false,
+						_ => panic!("if function condition did not evaluate into a Boolean value."),
+					};
+					if condition { true_expression } else { false_expression }
+				}
+				"add" =>
+				{
+					let mut first=None;
+					let mut second=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"first" =>
+							{
+								first=Some(evaluate(val,context));
+							},
+							"second" =>
+							{
+								second=Some(evaluate(val,context));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let first=first.expect("first argument of and not given.");
+					let second=second.expect("second argument of and not given.");
+					let first=match first
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("first argument of add evaluated to a non-number ({}:?)",first),
+					};
+					let second=match second
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("second argument of add evaluated to a non-number ({}:?)",second),
+					};
+					ConfigurationValue::Number(first+second)
 				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}

@@ -920,6 +920,7 @@ impl<'a> Simulation<'a>
 						&ConfigurationValue::Array(ref l) => launch_configurations=l.clone(),
 						_ => panic!("bad value for launch_configurations"),
 					}
+					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in Configuration",name),
 				}
 			}

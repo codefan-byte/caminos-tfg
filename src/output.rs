@@ -133,6 +133,7 @@ struct Plotkind<'a>
 	abscissas: Option<&'a ConfigurationValue>,
 	ordinates: Option<&'a ConfigurationValue>,
 	histogram: Option<&'a ConfigurationValue>,
+	array: Option<&'a ConfigurationValue>,
 	label_abscissas: String,
 	label_ordinates: String,
 	min_ordinate: Option<f32>,
@@ -147,6 +148,7 @@ impl<'a> Plotkind<'a>
 		let mut abscissas=None;
 		let mut ordinates=None;
 		let mut histogram=None;
+		let mut array=None;
 		let mut label_abscissas=None;
 		let mut label_ordinates=None;
 		let mut min_ordinate=None;
@@ -165,6 +167,7 @@ impl<'a> Plotkind<'a>
 					"abscissas" => abscissas=Some(value),
 					"ordinates" => ordinates=Some(value),
 					"histogram" => histogram=Some(value),
+					"array" => array=Some(value),
 					"label_abscissas" => match value
 					{
 						&ConfigurationValue::Literal(ref s) => label_abscissas=Some(s[1..s.len()-1].to_string()),
@@ -199,6 +202,7 @@ impl<'a> Plotkind<'a>
 			abscissas,
 			ordinates,
 			histogram,
+			array,
 			label_abscissas,
 			label_ordinates,
 			min_ordinate,
@@ -255,30 +259,48 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationVa
 		//And there should be a plot for each value of selector. Should this be a list or another map?
 		//But first we compute (selector,legend_value,abscissa_value,ordinate_value) for each result.
 		let mut records=Vec::with_capacity(results.len());
-		if let Some(histogram)=pk.histogram
+		let array = if let Some(ref data) = pk.histogram { Some(data) }
+			else if let Some(ref data) = pk.array { Some(data)} else {None};
+		//if let Some(histogram)=pk.histogram
+		if let Some(data)=array
 		{
 			for &(ref configuration,ref result) in results.iter()
 			{
 				let context=combine(configuration,result);
-				let histogram_values=reevaluate(histogram,&context);
+				let histogram_values=reevaluate(data,&context);
 				let selector=reevaluate(&selector,&context);
 				let legend=reevaluate(&legend,&context);
 				let git_id = evaluate(&git_id_expr,&context);
 				if let ConfigurationValue::Array(ref l)=histogram_values
 				{
-					let total:f64 = l.iter().map(|cv|match cv{
-						ConfigurationValue::Number(x) => x,
-						_ => panic!("adding an array of non-numbers for a histogram"),
-					}).sum();
+					//let total:f64 = l.iter().map(|cv|match cv{
+					//	ConfigurationValue::Number(x) => x,
+					//	_ => panic!("adding an array of non-numbers for a histogram"),
+					//}).sum();
+					let factor:Option<f64> = if let Some(_)=pk.histogram
+					{
+						let total:f64 = l.iter().map(|cv|match cv{
+							ConfigurationValue::Number(x) => x,
+							_ => panic!("adding an array of non-numbers for a histogram"),
+						}).sum();
+						Some(1f64 / total)
+					} else { None };
 					for (h_index,h_value) in l.iter().enumerate()
 					{
-						let ordinate=if let ConfigurationValue::Number(amount)=h_value
+						let ordinate=if let &ConfigurationValue::Number(amount)=h_value
 						{
-							ConfigurationValue::Number(amount / total)
+							if let Some(factor)=factor
+							{
+								ConfigurationValue::Number(amount * factor)
+							}
+							else
+							{
+								ConfigurationValue::Number(amount)
+							}
 						}
 						else
 						{
-							panic!("A histogram count should be a number");
+							panic!("A histogram count/array value should be a number");
 						};
 						let record=RawRecord{
 							selector:selector.clone(),
@@ -294,7 +316,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationVa
 				}
 				else
 				{
-					panic!("histogram from non-Array");
+					panic!("histogram/array from non-Array");
 				}
 			}
 		}
@@ -666,6 +688,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		%height=115pt,%may fit 3figures with 1 line caption
 		height=105pt,%may fit 3figures with 2 line caption
 		width=174pt,
+		scaled ticks=false,
 		xticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
 		yticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
 		x label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{x label}},anchor=north,font=\scriptsize}},
