@@ -6,7 +6,10 @@ pub mod projective;
 pub mod slimfly;
 
 use std::cell::{RefCell};
+use std::fs::File;
 use ::rand::{StdRng};
+use std::io::{Write};
+
 use quantifiable_derive::Quantifiable;//the derive macro
 use self::cartesian::{Mesh,Torus,CartesianData,Hamming};
 use self::neighbourslists::NeighboursLists;
@@ -29,6 +32,20 @@ pub enum Location
 	},
 	ServerPort(usize),
 	None,
+}
+
+///Item for iterators of neighbour routers.
+#[derive(Debug)]
+pub struct NeighbourRouterIteratorItem
+{
+	///Port of the current router that goes to the neighbour.
+	pub port_index:usize,
+	///Link class of the link to the neighbour router.
+	pub link_class:usize,
+	///The index of the neighbour router.
+	pub neighbour_router: usize,
+	///The port index of the neighbour router corresponding to the same physical link.
+	pub neighbour_port: usize,
 }
 
 ///A topology describes how routers and servers are connected.
@@ -61,11 +78,32 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	//fn eigenvalue_powerdouble(&self) -> f32
 	fn maximum_degree(&self) -> usize;
 	fn minimum_degree(&self) -> usize;
-	/// Number of ports used to other routers. FIXME: Should iclude NULL ports?
+	/// Number of ports used to other routers.
+	/// This does not include non-connected ports.
+	/// This should not be used as a range of valid ports. A non-connected port can be before some other valid port to a router.
+	/// Use `neighbour_router_iter()' or `0..ports()' to iterate over valid ranges.
 	fn degree(&self, router_index: usize) -> usize;
 	fn ports(&self, router_index: usize) -> usize;
 	//std::vector<std::vector<length> >* nonEdgeDistances()const;
 	//length girth()const;
+	///Iterate over the neighour routers, skipping non-connected ports and ports towards servers.
+	///You may want to reimplement this when implementing the trait for your type.
+	fn neighbour_router_iter<'a>(&'a self, router_index:usize) -> Box<dyn Iterator<Item=NeighbourRouterIteratorItem> + 'a>
+	{
+		let np = self.ports(router_index);
+		let iterator = (0..np).filter_map(move |port_index|{
+			let (location,link_class) = self.neighbour(router_index,port_index);
+			match location
+			{
+				Location::RouterPort {router_index: neighbour_router, router_port: neighbour_port} =>
+				{
+					Some(NeighbourRouterIteratorItem{port_index,link_class,neighbour_router,neighbour_port})
+				},
+				_ => None,
+			}
+		});
+		Box::new(iterator)
+	}
 	
 	///Specific for some toologies, but must be checkable for anyone
 	fn cartesian_data(&self) -> Option<&CartesianData>;
@@ -102,43 +140,71 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 			//let alt=R[best]+1;
 			//let alt=R[best].saturating_add(1);
 			//std::vector<vertex_index> nbor=neighbours(best);
-			let degree=self.degree(best);
-			for i in 0..degree
+			//let degree=self.degree(best);
+			//for i in 0..degree
+			//{
+			//	match self.neighbour(best,i)
+			//	{
+			//		(Location::RouterPort{
+			//			router_index,
+			//			router_port: _,
+			//		},link_class) =>
+			//		{
+			//			let weight= if let Some(ref v)=class_weight
+			//			{
+			//				if link_class>=v.len()
+			//				{
+			//					continue//next neighbour
+			//				}
+			//				let x=v[link_class];
+			//				if x==<usize>::max_value()
+			//				{
+			//					continue//next neighbour
+			//				}
+			//				x
+			//			}
+			//			else
+			//			{
+			//				1
+			//			};
+			//			let alt=R[best].saturating_add(weight);
+			//			if alt<R[router_index]
+			//			{
+			//				//println!("router_index={} n={} queue_write_index={} queue_read_index={}",router_index,n,queue_write_index,queue_read_index);
+			//				R[router_index]=alt;
+			//				queue[queue_write_index]=router_index;
+			//				queue_write_index+=1;
+			//			}
+			//		}
+			//		_ => panic!("what?"),
+			//	}
+			//}
+			for NeighbourRouterIteratorItem{link_class,neighbour_router:router_index,..} in self.neighbour_router_iter(best)
 			{
-				match self.neighbour(best,i)
+				let weight= if let Some(ref v)=class_weight
 				{
-					(Location::RouterPort{
-						router_index,
-						router_port: _,
-					},link_class) =>
+					if link_class>=v.len()
 					{
-						let weight= if let Some(ref v)=class_weight
-						{
-							if link_class>=v.len()
-							{
-								continue//next neighbour
-							}
-							let x=v[link_class];
-							if x==<usize>::max_value()
-							{
-								continue//next neighbour
-							}
-							x
-						}
-						else
-						{
-							1
-						};
-						let alt=R[best].saturating_add(weight);
-						if alt<R[router_index]
-						{
-							//println!("router_index={} n={} queue_write_index={} queue_read_index={}",router_index,n,queue_write_index,queue_read_index);
-							R[router_index]=alt;
-							queue[queue_write_index]=router_index;
-							queue_write_index+=1;
-						}
+						continue//next neighbour
 					}
-					_ => panic!("what?"),
+					let x=v[link_class];
+					if x==<usize>::max_value()
+					{
+						continue//next neighbour
+					}
+					x
+				}
+				else
+				{
+					1
+				};
+				let alt=R[best].saturating_add(weight);
+				if alt<R[router_index]
+				{
+					//println!("router_index={} n={} queue_write_index={} queue_read_index={}",router_index,n,queue_write_index,queue_read_index);
+					R[router_index]=alt;
+					queue[queue_write_index]=router_index;
+					queue_write_index+=1;
 				}
 			}
 		}
@@ -179,20 +245,24 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		//for(i=0;i<n;i++)
 		for i in 0..n
 		{
-			//std::vector<vertex_index> nbor=neighbours(i);
-			let degree=self.degree(i);
-			//for(j=0;j<nbor.size();j++)
-			for j in 0..degree
+			// //std::vector<vertex_index> nbor=neighbours(i);
+			// let degree=self.degree(i);
+			// //for(j=0;j<nbor.size();j++)
+			// for j in 0..degree
+			// {
+			// 	//matrix->get(i,nbor[j])=1;
+			// 	match self.neighbour(i,j).0
+			// 	{
+			// 		Location::RouterPort{
+			// 			router_index,
+			// 			router_port: _,
+			// 		} => *matrix.get_mut(i,router_index)=1,
+			// 		_ => panic!("what?"),
+			// 	}
+			// }
+			for NeighbourRouterIteratorItem{neighbour_router:router_index,..} in self.neighbour_router_iter(i)
 			{
-				//matrix->get(i,nbor[j])=1;
-				match self.neighbour(i,j).0
-				{
-					Location::RouterPort{
-						router_index,
-						router_port: _,
-					} => *matrix.get_mut(i,router_index)=1,
-					_ => panic!("what?"),
-				}
+				*matrix.get_mut(i,router_index)=1;
 			}
 		}
 		//for(k=0;k<n;k++)
@@ -257,7 +327,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 				let best=queue[queue_read_index];
 				queue_read_index+=1;
 				//std::vector<vertex_index> nbor=neighbours(best);
-				let degree=self.degree(best);
+				//let degree=self.degree(best);
 				//length bd=distanceMatrix->get(origin,best);
 				let bd=*distance_matrix.get(origin,best);
 				//length alt=bd+1;
@@ -265,31 +335,46 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 				//long ba=amountMinimumPathsMatrix->get(origin,best);
 				let ba=*amount_matrix.get(origin,best);
 				//for(std::vector<vertex_index>::iterator it=nbor.begin();it!=nbor.end();++it)
-				for i in 0..degree
+				//for i in 0..degree
+				//{
+				//	match self.neighbour(best,i).0
+				//	{
+				//		Location::RouterPort{
+				//			router_index,
+				//			router_port: _,
+				//		} =>
+				//		{
+				//			//length old=distanceMatrix->get(origin,*it);
+				//			let old=*distance_matrix.get(origin,router_index);
+				//			if alt<old
+				//			{
+				//				*distance_matrix.get_mut(origin,router_index)=alt;
+				//				*amount_matrix.get_mut(origin,router_index)=ba;
+				//				queue[queue_write_index]=router_index;
+				//				queue_write_index+=1;
+				//			}
+				//			else if alt==old
+				//			{
+				//				//amountMinimumPathsMatrix->get(origin,*it)+=ba;
+				//				*amount_matrix.get_mut(origin,router_index)+=ba;
+				//			}
+				//		}
+				//		_ => panic!("what?"),
+				//	}
+				//}
+				for NeighbourRouterIteratorItem{neighbour_router:router_index,..} in self.neighbour_router_iter(best)
 				{
-					match self.neighbour(best,i).0
+					let old=*distance_matrix.get(origin,router_index);
+					if alt<old
 					{
-						Location::RouterPort{
-							router_index,
-							router_port: _,
-						} =>
-						{
-							//length old=distanceMatrix->get(origin,*it);
-							let old=*distance_matrix.get(origin,router_index);
-							if alt<old
-							{
-								*distance_matrix.get_mut(origin,router_index)=alt;
-								*amount_matrix.get_mut(origin,router_index)=ba;
-								queue[queue_write_index]=router_index;
-								queue_write_index+=1;
-							}
-							else if alt==old
-							{
-								//amountMinimumPathsMatrix->get(origin,*it)+=ba;
-								*amount_matrix.get_mut(origin,router_index)+=ba;
-							}
-						}
-						_ => panic!("what?"),
+						*distance_matrix.get_mut(origin,router_index)=alt;
+						*amount_matrix.get_mut(origin,router_index)=ba;
+						queue[queue_write_index]=router_index;
+						queue_write_index+=1;
+					}
+					else if alt==old
+					{
+						*amount_matrix.get_mut(origin,router_index)+=ba;
 					}
 				}
 			}
@@ -347,29 +432,42 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 			// But we just check the distance function.
 			for target in 0..n
 			{
-				let degree=self.degree(target);
-				for index in 0..degree
+				//let degree=self.degree(target);
+				//for index in 0..degree
+				//{
+				//	let dist = self.distance(origin,target);
+				//	match self.neighbour(target,index)
+				//	{
+				//		(Location::RouterPort{
+				//			router_index: w,
+				//			router_port: _,
+				//		},_link_class) =>
+				//		{
+				//			let alt = self.distance(origin,w);
+				//			if alt>dist
+				//			{
+				//				*far_matrix.get_mut(origin,target) += 1;
+				//			}
+				//			else if alt<dist
+				//			{
+				//				*near_matrix.get_mut(origin,target) += 1;
+				//			}
+				//		},
+				//		(Location::None,_link_class) => continue,//ignore disconnected ports
+				//		_ => panic!("what?"),
+				//	}
+				//}
+				let dist = self.distance(origin,target);
+				for NeighbourRouterIteratorItem{neighbour_router:w,..} in self.neighbour_router_iter(target)
 				{
-					let dist = self.distance(origin,target);
-					match self.neighbour(target,index)
+					let alt = self.distance(origin,w);
+					if alt>dist
 					{
-						(Location::RouterPort{
-							router_index: w,
-							router_port: _,
-						},_link_class) =>
-						{
-							let alt = self.distance(origin,w);
-							if alt>dist
-							{
-								*far_matrix.get_mut(origin,target) += 1;
-							}
-							else if alt<dist
-							{
-								*near_matrix.get_mut(origin,target) += 1;
-							}
-						},
-						(Location::None,_link_class) => continue,//ignore disconnected ports
-						_ => panic!("what?"),
+						*far_matrix.get_mut(origin,target) += 1;
+					}
+					else if alt<dist
+					{
+						*near_matrix.get_mut(origin,target) += 1;
 					}
 				}
 			}
@@ -482,9 +580,26 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 			}
 		}
 	}
+	///Dump the adjacencies into a file.
+	///You may use NeighboursLists::file_adj to load them.
+	fn write_adjacencies_to_file(&self, file:&mut File, _format:usize)->Result<(),std::io::Error>
+	{
+		let n=self.num_routers();
+		writeln!(file,"NODOS {}",n)?;
+		writeln!(file,"GRADO {}",self.maximum_degree())?;
+		//for (router_index,neighbour_list) in self.list.iter().enumerate()
+		for router_index in 0..n
+		{
+			writeln!(file,"N {}",router_index)?;
+			let neighbour_string=self.neighbour_router_iter(router_index).map(|item|item.neighbour_router.to_string()).collect::<Vec<String>>().join(" ");
+			writeln!(file,"{}",neighbour_string)?;
+		}
+		Ok(())
+	}
 }
 
-#[non_exhaustive]
+//#[non_exhaustive]
+///The use may want to build topologies himself, and it cannot be `Default' unless we move to `Cow'. So I am removing the non_exhaustive attribute.
 pub struct TopologyBuilderArgument<'a>
 {
 	///A ConfigurationValue::Object defining the topology.

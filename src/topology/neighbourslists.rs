@@ -3,6 +3,7 @@ use std::cell::{RefCell};
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{BufRead,BufReader};
+
 use ::rand::{Rng,StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use super::{Topology,Location};
@@ -224,6 +225,173 @@ impl NeighboursLists
 		};
 		topo
 	}
+	///Build random regular adjacencies.
+	pub fn new_rrg_adj(routers:usize, degree:usize, rng: &RefCell<StdRng>) -> Vec<Vec<usize>>
+	{
+		//long U[routers*degree];//available
+		//std::vector<std::vector<vertex_index> > adj(routers);
+		//let mut adj=vec![BTreeSet::new();routers];
+		let mut adj=vec![Vec::with_capacity(degree);routers];
+		let mut go=true;
+		while go
+		{
+			go=false;
+			#[allow(non_snake_case)]
+			let mut Un=routers*degree;
+			//for(i=0;i<routers*degree;i++)U[i]=i;
+			#[allow(non_snake_case)]
+			let mut U=(0..routers*degree).collect::<Vec<usize>>();
+			//for(i=0;i<routers;i++)adj[i].clear();
+			for adjs in adj.iter_mut()
+			{
+				adjs.clear();
+			}
+			//std::set<vertex_index> A;
+			//for(i=0;i<routers;i++)A.insert(i);
+			#[allow(non_snake_case)]
+			let mut A=(0..routers).collect::<BTreeSet<usize>>();
+			while Un>0
+			{
+				if A.len()<degree
+				{
+					let mut good=false;
+					//for(vertex_index i:A)for(vertex_index j:A)
+					for &i in A.iter()
+					{
+						for &j in A.iter()
+						{
+							if j<=i
+							{
+								continue;
+							}
+							let mut inadj=false;
+							//for(k=0;k<adj[j].size();k++)if(adj[j][k]==i)
+							for &neigh in adj[j].iter()
+							{
+								if neigh==i
+								{
+									inadj=true;
+									break;
+								}
+							}
+							if !inadj
+							{
+								good=true;
+							}
+						}
+					}
+					if !good
+					{
+						go=true;
+						break;
+					}
+				}
+				//sample points x,y, keep them last in U to remove them in O(1)
+				//vertex_index r=randomInteger(Un);
+				let r=rng.borrow_mut().gen_range(0,Un);
+				//vertex_index x=U[r];
+				let x=U[r];
+				U[r]=U[Un-1];
+				U[Un-1]=x;
+
+				//r=randomInteger(Un-1);
+				let r=rng.borrow_mut().gen_range(0,Un-1);
+				//vertex_index y=U[r];
+				let y=U[r];
+				U[r]=U[Un-2];
+				U[Un-2]=y;
+
+				//vertex_index u=x/degree, v=y/degree;//vertices
+				let u=x/degree;
+				let v=y/degree;
+				if u==v
+				{
+					continue;//no loops
+				}
+				let mut inadj=false;
+				//for(i=0;i<adj[u].size();i++)if(adj[u][i]==v)
+				for &neigh in adj[u].iter()
+				{
+					if neigh==v
+					{
+						inadj=true;
+						break;
+					}
+				}
+				if inadj
+				{
+					continue;//no multiple edges
+				}
+				//printf("adding edge %ld -- %ld\n",u,v);
+				Un-=2;
+				adj[u].push(v);
+				if adj[u].len()==degree
+				{
+					A.remove(&u);
+				}
+				adj[v].push(u);
+				if adj[v].len()==degree
+				{
+					A.remove(&v);
+				}
+			}
+		}
+		adj
+	}
+	///Get the adjancecies from a given file.
+	pub fn file_adj(file:&File, _format:usize) -> Vec<Vec<usize>>
+	{
+		//let mut adj=vec![Vec::with_capacity(degree);routers];
+		let mut adj : Vec<Vec<usize>> =vec![];
+		let mut nodos=None;
+		let reader = BufReader::new(file);
+		let mut lines=reader.lines();
+		//for rline in reader.lines()
+		while let Some(rline)=lines.next()
+		{
+			let line=rline.expect("Some problem when reading the topology.");
+			//println!("line: {}",line);
+			let mut words=line.split_whitespace();
+			match words.next()
+			{
+				Some("NODOS") =>
+				{
+					nodos=Some(words.next().unwrap().parse::<usize>().unwrap());
+				},
+				Some("GRADO") =>
+				{
+					let grado=Some(words.next().unwrap().parse::<usize>().unwrap());
+					if let Some(routers)=nodos
+					{
+						if let Some(degree)=grado
+						{
+							adj=vec![Vec::with_capacity(degree);routers];
+						}
+					}
+				},
+				Some("N") =>
+				{
+					let current=words.next().unwrap().parse::<usize>().unwrap();
+					for wneighbour in lines.next().unwrap().unwrap().split_whitespace()
+					{
+						let neighbour=wneighbour.parse::<usize>().unwrap();
+						adj[current].push(neighbour);
+					}
+				},
+				_ => panic!("Illegal word"),
+			};
+		}
+		adj
+	}
+	///Build a new NeighboursLists from a ConfigurationValue.
+	/// * severs_per_router
+	/// * legend_name: optionally for generating output.
+	///File topologies use
+	/// * filename: for importing from a file
+	/// * format: format of the improted filename.
+	///RandomRegularGraph topologies use
+	/// * routers: the total number of routers.
+	/// * degree: the degree, ports towards other routers.
 	pub fn new_cfg(cv:&ConfigurationValue, rng: &RefCell<StdRng>) -> NeighboursLists
 	{
 		let mut routers=None;
@@ -291,164 +459,14 @@ impl NeighboursLists
 			{
 				let routers=routers.expect("There were no routers");
 				let degree=degree.expect("There were no degree");
-				
-				//long U[routers*degree];//available
-				//std::vector<std::vector<vertex_index> > adj(routers);
-				//let mut adj=vec![BTreeSet::new();routers];
-				let mut adj=vec![Vec::with_capacity(degree);routers];
-				let mut go=true;
-				while go
-				{
-					go=false;
-					#[allow(non_snake_case)]
-					let mut Un=routers*degree;
-					//for(i=0;i<routers*degree;i++)U[i]=i;
-					#[allow(non_snake_case)]
-					let mut U=(0..routers*degree).collect::<Vec<usize>>();
-					//for(i=0;i<routers;i++)adj[i].clear();
-					for adjs in adj.iter_mut()
-					{
-						adjs.clear();
-					}
-					//std::set<vertex_index> A;
-					//for(i=0;i<routers;i++)A.insert(i);
-					#[allow(non_snake_case)]
-					let mut A=(0..routers).collect::<BTreeSet<usize>>();
-					while Un>0
-					{
-						if A.len()<degree
-						{
-							let mut good=false;
-							//for(vertex_index i:A)for(vertex_index j:A)
-							for &i in A.iter()
-							{
-								for &j in A.iter()
-								{
-									if j<=i
-									{
-										continue;
-									}
-									let mut inadj=false;
-									//for(k=0;k<adj[j].size();k++)if(adj[j][k]==i)
-									for &neigh in adj[j].iter()
-									{
-										if neigh==i
-										{
-											inadj=true;
-											break;
-										}
-									}
-									if !inadj
-									{
-										good=true;
-									}
-								}
-							}
-							if !good
-							{
-								go=true;
-								break;
-							}
-						}
-						//sample points x,y, keep them last in U to remove them in O(1)
-						//vertex_index r=randomInteger(Un);
-						let r=rng.borrow_mut().gen_range(0,Un);
-						//vertex_index x=U[r];
-						let x=U[r];
-						U[r]=U[Un-1];
-						U[Un-1]=x;
-
-						//r=randomInteger(Un-1);
-						let r=rng.borrow_mut().gen_range(0,Un-1);
-						//vertex_index y=U[r];
-						let y=U[r];
-						U[r]=U[Un-2];
-						U[Un-2]=y;
-
-						//vertex_index u=x/degree, v=y/degree;//vertices
-						let u=x/degree;
-						let v=y/degree;
-						if u==v
-						{
-							continue;//no loops
-						}
-						let mut inadj=false;
-						//for(i=0;i<adj[u].size();i++)if(adj[u][i]==v)
-						for &neigh in adj[u].iter()
-						{
-							if neigh==v
-							{
-								inadj=true;
-								break;
-							}
-						}
-						if inadj
-						{
-							continue;//no multiple edges
-						}
-						//printf("adding edge %ld -- %ld\n",u,v);
-						Un-=2;
-						adj[u].push(v);
-						if adj[u].len()==degree
-						{
-							A.remove(&u);
-						}
-						adj[v].push(u);
-						if adj[v].len()==degree
-						{
-							A.remove(&v);
-						}
-					}
-				}
-				adj
+				Self::new_rrg_adj(routers,degree,rng)
 			},
 			Kind::File =>
 			{
 				let filename=filename.expect("There were no filename");
-				let _format=format.expect("There were no format");
-				let mut nodos=None;
-				//let mut grado=None;
-				//let mut adj=vec![Vec::with_capacity(degree);routers];
-				let mut adj : Vec<Vec<usize>> =vec![];
+				let format=format.expect("There were no format");
 				let file=File::open(&filename).expect("could not open topology file.");
-				let reader = BufReader::new(&file);
-				let mut lines=reader.lines();
-				//for rline in reader.lines()
-				while let Some(rline)=lines.next()
-				{
-					let line=rline.expect("Some problem when reading the topology.");
-					//println!("line: {}",line);
-					let mut words=line.split_whitespace();
-					match words.next()
-					{
-						Some("NODOS") =>
-						{
-							nodos=Some(words.next().unwrap().parse::<usize>().unwrap());
-						},
-						Some("GRADO") =>
-						{
-							let grado=Some(words.next().unwrap().parse::<usize>().unwrap());
-							if let Some(routers)=nodos
-							{
-								if let Some(degree)=grado
-								{
-									adj=vec![Vec::with_capacity(degree);routers];
-								}
-							}
-						},
-						Some("N") =>
-						{
-							let current=words.next().unwrap().parse::<usize>().unwrap();
-							for wneighbour in lines.next().unwrap().unwrap().split_whitespace()
-							{
-								let neighbour=wneighbour.parse::<usize>().unwrap();
-								adj[current].push(neighbour);
-							}
-						},
-						_ => panic!("Illegal word"),
-					};
-				}
-				adj
+				Self::file_adj(&file,format)
 			},
 		};
 		//return new NeighboursLists(adj);
@@ -472,5 +490,4 @@ impl NeighboursLists
 		NeighboursLists::new(list,servers)
 	}
 }
-
 

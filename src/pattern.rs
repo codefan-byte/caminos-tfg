@@ -58,6 +58,8 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Product" => Box::new(ProductPattern::new(arg)),
 			"Components" => Box::new(ComponentsPattern::new(arg)),
 			"CartesianTransform" => Box::new(CartesianTransform::new(arg)),
+			"Composition" => Box::new(Composition::new(arg)),
+			"Pow" => Box::new(Pow::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -789,3 +791,137 @@ impl CartesianTransform
 	}
 }
 
+///The pattern resulting of composing a list of patterns.
+///destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) ).
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Composition
+{
+	patterns: Vec<Box<dyn Pattern>>,
+}
+
+impl Pattern for Composition
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		for pattern in self.patterns.iter_mut()
+		{
+			pattern.initialize(source_size,target_size,topology,rng);
+		}
+	}
+	fn get_destination(&self, origin:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	{
+		let mut destination=origin;
+		for pattern in self.patterns.iter()
+		{
+			destination=pattern.get_destination(destination,topology,rng);
+		}
+		destination
+	}
+}
+
+impl Composition
+{
+	fn new(arg:PatternBuilderArgument) -> Composition
+	{
+		let mut patterns=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Composition"
+			{
+				panic!("A Composition must be created from a `Composition` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"patterns" => match value
+					{
+						&ConfigurationValue::Array(ref l) => patterns=Some(l.iter().map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+						_ => panic!("bad value for patterns"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in Composition",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Composition from a non-Object");
+		}
+		let patterns=patterns.expect("There were no patterns");
+		Composition{
+			patterns,
+		}
+	}
+}
+
+
+
+///The pattern resulting of composing a pattern with itself a number of times..
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Pow
+{
+	pattern: Box<dyn Pattern>,
+	exponent: usize,
+}
+
+impl Pattern for Pow
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		self.pattern.initialize(source_size,target_size,topology,rng);
+	}
+	fn get_destination(&self, origin:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	{
+		let mut destination=origin;
+		for _ in 0..self.exponent
+		{
+			destination=self.pattern.get_destination(destination,topology,rng);
+		}
+		destination
+	}
+}
+
+impl Pow
+{
+	fn new(arg:PatternBuilderArgument) -> Pow
+	{
+		let mut pattern=None;
+		let mut exponent=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Pow"
+			{
+				panic!("A Pow must be created from a `Pow` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+					"exponent" => match value
+					{
+						&ConfigurationValue::Number(x) => exponent=Some(x as usize),
+						_ => panic!("bad value for exponent"),
+					},
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in Pow",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Pow from a non-Object");
+		}
+		let pattern=pattern.expect("There were no pattern");
+		let exponent=exponent.expect("There were no exponent");
+		Pow{
+			pattern,
+			exponent,
+		}
+	}
+}

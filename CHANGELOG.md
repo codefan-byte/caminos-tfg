@@ -2,6 +2,16 @@
 
 ## next? [0.2.0]
 
+### 2020-12-04
+Added patterns `Composition` and `Pow`.
+git commit -m "Added neighbour_router_iter to topologies to avoid misusing degree. Added patterns Composition and Pow."
+
+### 2020-12-03
+Ordering code on NeighboursLists.
+Added `Topology::{write_adjacencies_to_file,neighbour_router_iter}`.
+Removed `non_exhaustive` from TopologyBuilderArgument.
+Use `neighbour_router_iter` always instead of `0..degree()`. `degree`  does not give valid ranges when having non-connected ports.
+
 ### 2020-12-01
 Added the config if, add functions.
 Allow to use "legend_name" directly in the simulation config root. This helps to use named experiment indices.
@@ -9,17 +19,17 @@ git commit -m "Added configuration functions"
 
 ### 2020-11-30
 Added to the grammar function calls. To be used as "=functionname{key1:expr1, key2:expr2,}".
-Added the config function `lt'.
-Added member `ExperimentOptions::where_clause' to receive --where parameters.
+Added the config function `lt`.
+Added member `ExperimentOptions::where_clause` to receive --where parameters.
 The output::evaluate funtion made public.
-Added `config_parser::parse_expression' to be used to capture the --where=expr clause.
+Added `config_parser::parse_expression` to be used to capture the --where=expr clause.
 git commit -m "Improved grammar: added named experiments and function calls."
 New file config.rs to encapsulate all the processing of ConfigurationValue and expressions.
 git commit -m "Moved config-processing aspects into new file config.rs."
 Fixed bugs while calculating and showing statistics of the Basic router.
 git commit -m "Fixed bugs while calculating and showing statistics of the Basic router."
-Set pgfplots option `scaled ticks=false'.
-Added Plotkind option `array'. It differs from histogram in that it does not normalize.
+Set pgfplots option `scaled ticks=false`.
+Added Plotkind option `array`. It differs from histogram in that it does not normalize.
 
 ### 2020-11-27
 Added 'named experiments' to the grammar. This is, to use `key: expa![val1,val2,val3]` and in other place `other_key: expa![wok1,wok2,wok3]`. Intended to get the matches `[{key:val1,other_key_wok1},{key:val2,other_key_wok2},{key:val3,other_key_wok3}]` instead of the whole of combinations.
