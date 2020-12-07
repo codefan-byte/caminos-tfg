@@ -112,6 +112,7 @@ quantifiable_simple!(usize);
 //}
 
 quantifiable_simple!(f32);
+quantifiable_simple!(f64);
 //impl Quantifiable for f32
 //{
 //	fn total_memory(&self) -> usize

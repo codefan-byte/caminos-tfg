@@ -2,6 +2,10 @@
 
 ## next? [0.2.0]
 
+### 2020-12-07
+Implemented the CartesianTornado pattern.
+git commit -m "Implemented the CartesianTornado pattern."
+
 ### 2020-12-04
 Added patterns `Composition` and `Pow`.
 git commit -m "Added neighbour_router_iter to topologies to avoid misusing degree. Added patterns Composition and Pow."

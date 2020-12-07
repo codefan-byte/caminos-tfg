@@ -60,6 +60,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianTransform" => Box::new(CartesianTransform::new(arg)),
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
+			"CartesianTornado" => Box::new(CartesianTornado::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -678,7 +679,6 @@ impl ComponentsPattern
 }
 
 
-
 /// Interpretate the origin as with cartesian coordinates and apply transformations.
 /// May permute the dimensions if they have same side.
 /// May complement the dimensions.
@@ -925,3 +925,92 @@ impl Pow
 		}
 	}
 }
+
+
+/// Interpretate the origin as with cartesian coordinates. Then add each coordinate with a given factor.
+/// The classical tornado in a mesh is to have for source coordinates s=[x,y] the destination `d=(s+x/2)%n=(x*1.5+y*side)%n`.
+/// This classical tornado is written here as `CartesianTornado { sides:[side,side], factors:[1.5,side] }`.
+/// It uses default `f64 as usize`, so a small epsilon may be desired.
+/// We do not restrict the destination size to be equal to the source size.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct CartesianTornado
+{
+	///The Cartesian interpretation.
+	cartesian_data: CartesianData,
+	///The coefficient by which it is multiplied each dimension.
+	factors: Vec<f64>,
+	///As given in initialization.
+	target_size: usize,
+}
+
+impl Pattern for CartesianTornado
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+		self.target_size = target_size;
+		if source_size!=self.cartesian_data.size
+		{
+			panic!("Sizes do not agree on CartesianTornado.");
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)->usize
+	{
+		let up_origin=self.cartesian_data.unpack(origin);
+		let destination = up_origin.iter().zip(self.factors.iter()).map(|(&coord,&f)|coord as f64 * f).sum::<f64>() as usize;
+		destination % self.target_size
+	}
+}
+
+impl CartesianTornado
+{
+	fn new(arg:PatternBuilderArgument) -> CartesianTornado
+	{
+		let mut sides=None;
+		let mut factors=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="CartesianTornado"
+			{
+				panic!("A CartesianTornado must be created from a `CartesianTornado` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"sides" => match value
+					{
+						&ConfigurationValue::Array(ref a) => sides=Some(a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in sides"),
+						}).collect()),
+						_ => panic!("bad value for sides"),
+					}
+					"factors" => match value
+					{
+						&ConfigurationValue::Array(ref a) => factors=Some(a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f,
+							_ => panic!("bad value in factors"),
+						}).collect()),
+						_ => panic!("bad value for factors"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in CartesianTornado",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a CartesianTornado from a non-Object");
+		}
+		let sides=sides.expect("There were no sides");
+		let factors=factors.expect("There were no factors");
+		CartesianTornado{
+			cartesian_data: CartesianData::new(&sides),
+			factors,
+			target_size:0,
+		}
+	}
+}
+
