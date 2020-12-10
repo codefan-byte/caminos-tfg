@@ -238,6 +238,8 @@ pub struct ExperimentOptions
 	pub end_index: Option<usize>,
 	///Expression of expriments to be included.
 	pub where_clause: Option<config_parser::Expr>,
+	///A message to be written into the log.
+	pub message: Option<String>,
 }
 
 ///An `Experiment` object encapsulates the operations that are performed over a folder containing an experiment.
@@ -337,7 +339,7 @@ impl<'a> Experiment<'a>
 		}
 	}
 	/// Appends a new entry to the journal
-	fn write_journal_entry(&mut self, entry:&str)
+	fn write_journal_entry(&self, entry:&str)
 	{
 		let mut journal_file=OpenOptions::new().append(true).open(&self.journal).expect("Something went wrong reading or creating the journal file");
 		writeln!(journal_file,"{}: {}",self.journal_index,entry).expect("Could not write to journal");
@@ -407,6 +409,11 @@ impl<'a> Experiment<'a>
 			};
 			Some(experiments)
 		} else {None};
+		
+		if let Some(message)=&self.options.message
+		{
+			self.write_journal_entry(&format!("message: {}",message));
+		}
 
 		let mut must_draw=false;
 		let mut job_pack_size=1;//how many binary runs per job.
@@ -481,12 +488,14 @@ impl<'a> Experiment<'a>
 																}
 																"time" => match slurm_value
 																{
-																	&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
+																	//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
+																	&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
 																	_ => panic!("bad value for time"),
 																}
 																"mem" => match slurm_value
 																{
-																	&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
+																	//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
+																	&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
 																	_ => panic!("bad value for mem"),
 																}
 																_ => (),
@@ -992,27 +1001,27 @@ impl<'a> Experiment<'a>
 								{
 									"name" => match value
 									{
-										&ConfigurationValue::Literal(ref s) => name=Some(s[1..s.len()-1].to_string()),
+										&ConfigurationValue::Literal(ref s) => name=Some(s.to_string()),
 										_ => panic!("bad value for a remote name"),
 									},
 									"host" => match value
 									{
-										&ConfigurationValue::Literal(ref s) => host=Some(s[1..s.len()-1].to_string()),
+										&ConfigurationValue::Literal(ref s) => host=Some(s.to_string()),
 										_ => panic!("bad value for a remote host"),
 									},
 									"username" => match value
 									{
-										&ConfigurationValue::Literal(ref s) => username=Some(s[1..s.len()-1].to_string()),
+										&ConfigurationValue::Literal(ref s) => username=Some(s.to_string()),
 										_ => panic!("bad value for a remote username"),
 									},
 									"root" => match value
 									{
-										&ConfigurationValue::Literal(ref s) => root=Some(s[1..s.len()-1].to_string()),
+										&ConfigurationValue::Literal(ref s) => root=Some(s.to_string()),
 										_ => panic!("bad value for a remote root"),
 									},
 									"binary" => match value
 									{
-										&ConfigurationValue::Literal(ref s) => binary=Some(s[1..s.len()-1].to_string()),
+										&ConfigurationValue::Literal(ref s) => binary=Some(s.to_string()),
 										_ => panic!("bad value for a remote binary"),
 									},
 									_ => panic!("Nothing to do with field {} in Remote",cvname),

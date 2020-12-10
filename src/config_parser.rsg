@@ -125,8 +125,10 @@ terminal LitStr(String)
 		}
 		else
 		{
-			let mut size=1;
-			let mut r=String::from("\"");
+			//let mut size=1;
+			//let mut r=String::from("\"");
+			let mut size=0;
+			let mut r=String::new();
 			loop
 			{
 				match characters.next()
@@ -134,7 +136,8 @@ terminal LitStr(String)
 					None => break,
 					Some('"') =>
 					{
-						ret=(Some((size+1,r+&"\"")));
+						//ret=(Some((size+1,r+&"\"")));
+						ret={Some((size,r))};
 						break;
 					},
 					Some('\\') =>

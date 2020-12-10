@@ -21,6 +21,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Added methods to `Routing` and `Router` traits to gather statistics.
 * Added method `Routing::performed_request` to allow routings to make decisions when the router makes a request to a candidate.
 * Added `ConfigurationValue::NamedExperiments(String,Vec<ConfigurationValue>)`.
+* Removed surrounding quotes from the config `LitStr` and `Literal`.
 
 
 # Public Interface

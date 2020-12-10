@@ -2,6 +2,17 @@
 
 ## next? [0.2.0]
 
+### 2020-12-10
+Added `ExperimentOptions::message`, intended to be used with `--message=text`, to be written into the journal file.
+Removed unnecessary mut requirement of `Experiment::write_journal_entry`.
+Removed quotes from the config `LitStr` and `Literal`.
+git commit -m "Added shifts to CartesianTransform. Added a message option. Removed surrounding quotes of parsed literals."
+
+### 2020-12-09
+Added shift argument to CartesianTransform.
+Renamed CartesianTornado as CartesianFactor. I messed up, this is not a generalization of tornado but something else entirely. The tornado pattern is just a shift by `(side-1)*0.5`, which can be written as `CartesianTransform{sides:[whole],shift:[halfside]}`, with `whole=side*side` and `halfside=(side-1)/2`.
+Added `O1TURN::reserved_virtual_channels_order{01,10}` parameters to control the usage of virtual channels.
+
 ### 2020-12-07
 Implemented the CartesianTornado pattern.
 git commit -m "Implemented the CartesianTornado pattern."

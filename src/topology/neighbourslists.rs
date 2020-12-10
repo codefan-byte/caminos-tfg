@@ -434,7 +434,7 @@ impl NeighboursLists
 					},
 					"filename" => match value
 					{
-						&ConfigurationValue::Literal(ref s) => filename=Some(s[1..s.len()-1].to_string()),
+						&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
 						_ => panic!("bad value for filename"),
 					},
 					"format" => match value

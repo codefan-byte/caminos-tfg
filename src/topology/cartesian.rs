@@ -1291,15 +1291,22 @@ impl ValiantDOR
 }
 
 
-//The O1TTURN routing uses DOR order [0,1] for a virtual channel and order [1,0] for the other.
+///The O1TTURN routing uses DOR order [0,1] for some virtual channels and order [1,0] for others.
+///By default it reserves the channel 0 for [0,1] and the channel 1 for [1,0].
 #[derive(Debug)]
 pub struct O1TURN
 {
+	/// Virtual channels reserved exclusively for the 0 before 1 DOR selection.
+	/// Defaults to [0]
+	reserved_virtual_channels_order01: Vec<usize>,
+	/// Virtual channels reserved exclusively for the 1 before 0 DOR selection.
+	/// Defaults to [1]
+	reserved_virtual_channels_order10: Vec<usize>,
 }
 
 impl Routing for O1TURN
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
 		//let routing_record=&routing_info.routing_record.expect("DOR requires a routing record");
 		let routing_record=if let Some(ref rr)=routing_info.routing_record
@@ -1326,6 +1333,13 @@ impl Routing for O1TURN
 		{
 			i+=1;
 		}
+		let forbidden_virtual_channels=match s
+		{
+			0 => &self.reserved_virtual_channels_order10,
+			1 => &self.reserved_virtual_channels_order01,
+			_ => unreachable!(),
+		};
+		let available_virtual_channels=(0..num_virtual_channels).filter(|vc|!forbidden_virtual_channels.contains(vc));
 		if i==2
 		{
 			//To server
@@ -1336,7 +1350,8 @@ impl Routing for O1TURN
 				{
 					if server==target_server
 					{
-						return vec![CandidateEgress::new(i,s)];
+						//return vec![CandidateEgress::new(i,s)];
+						return available_virtual_channels.map(|vc| CandidateEgress::new(i,vc)).collect();
 					}
 				}
 			}
@@ -1347,14 +1362,16 @@ impl Routing for O1TURN
 			i=order[i];
 			//Go in dimension i
 			//WARNING: This assumes ports in a mesh-like configuration!
-			if routing_record[i]<0
+			let p=if routing_record[i]<0
 			{
-				return vec![CandidateEgress::new(2*i,s)];
+				2*i
 			}
 			else
 			{
-				return vec![CandidateEgress::new(2*i+1,s)];
-			}
+				2*i+1
+			};
+			//return vec![CandidateEgress::new(p,s)];
+			return available_virtual_channels.map(|vc| CandidateEgress::new(p,vc)).collect();
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
@@ -1413,13 +1430,15 @@ impl O1TURN
 	{
 		//let mut order=None;
 		//let mut servers_per_router=None;
+		let mut reserved_virtual_channels_order01: Option<Vec<usize>> = None;
+		let mut reserved_virtual_channels_order10: Option<Vec<usize>> = None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
 			if cv_name!="O1TURN"
 			{
 				panic!("A O1TURN must be created from a `O1TURN` object not `{}`",cv_name);
 			}
-			for &(ref name,ref _value) in cv_pairs
+			for &(ref name,ref value) in cv_pairs
 			{
 				//match name.as_ref()
 				match AsRef::<str>::as_ref(&name)
@@ -1432,6 +1451,22 @@ impl O1TURN
 					//	}).collect()),
 					//	_ => panic!("bad value for order"),
 					//}
+					"reserved_virtual_channels_order01" => match value
+					{
+						&ConfigurationValue::Array(ref a) => reserved_virtual_channels_order01=Some(a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in reserved_virtual_channels_order01"),
+						}).collect()),
+						_ => panic!("bad value for reserved_virtual_channels_order01"),
+					}
+					"reserved_virtual_channels_order10" => match value
+					{
+						&ConfigurationValue::Array(ref a) => reserved_virtual_channels_order10=Some(a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in reserved_virtual_channels_order10"),
+						}).collect()),
+						_ => panic!("bad value for reserved_virtual_channels_order10"),
+					}
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in O1TURN",name),
 				}
@@ -1442,7 +1477,11 @@ impl O1TURN
 			panic!("Trying to create a O1TURN from a non-Object");
 		}
 		//let order=order.expect("There were no order");
+		let reserved_virtual_channels_order01=reserved_virtual_channels_order01.unwrap_or_else(||vec![0]);
+		let reserved_virtual_channels_order10=reserved_virtual_channels_order10.unwrap_or_else(||vec![1]);
 		O1TURN{
+			reserved_virtual_channels_order01,
+			reserved_virtual_channels_order10,
 		}
 	}
 }

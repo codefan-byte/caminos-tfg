@@ -62,7 +62,7 @@ fn create_csv(description: &ConfigurationValue, results: &Vec<(ConfigurationValu
 				}
 				"filename" => match value
 				{
-					&ConfigurationValue::Literal(ref s) => filename=Some(s[1..s.len()-1].to_string()),
+					&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
 					_ => panic!("bad value for filename ({:?})",value),
 				}
 				_ => panic!("Nothing to do with field {} in CSV",name),
@@ -170,12 +170,12 @@ impl<'a> Plotkind<'a>
 					"array" => array=Some(value),
 					"label_abscissas" => match value
 					{
-						&ConfigurationValue::Literal(ref s) => label_abscissas=Some(s[1..s.len()-1].to_string()),
+						&ConfigurationValue::Literal(ref s) => label_abscissas=Some(s.to_string()),
 						_ => panic!("bad value for label_abscissas ({:?})",value),
 					},
 					"label_ordinates" => match value
 					{
-						&ConfigurationValue::Literal(ref s) => label_ordinates=Some(s[1..s.len()-1].to_string()),
+						&ConfigurationValue::Literal(ref s) => label_ordinates=Some(s.to_string()),
 						_ => panic!("bad value for label_ordinates ({:?})",value),
 					},
 					"min_ordinate" => match value
@@ -442,12 +442,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			{
 				"tex_filename" => match value
 				{
-					&ConfigurationValue::Literal(ref s) => tex_filename=Some(s[1..s.len()-1].to_string()),
+					&ConfigurationValue::Literal(ref s) => tex_filename=Some(s.to_string()),
 					_ => panic!("bad value for tex_filename ({:?})",value),
 				},
 				"pdf_filename" => match value
 				{
-					&ConfigurationValue::Literal(ref s) => pdf_filename=Some(s[1..s.len()-1].to_string()),
+					&ConfigurationValue::Literal(ref s) => pdf_filename=Some(s.to_string()),
 					_ => panic!("bad value for pdf_filename ({:?})",value),
 				},
 				_ => panic!("Nothing to do with field {} in Tikz",name),
