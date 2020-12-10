@@ -8,6 +8,7 @@ Removed unnecessary mut requirement of `Experiment::write_journal_entry`.
 Removed quotes from the config `LitStr` and `Literal`.
 git commit -m "Added shifts to CartesianTransform. Added a message option. Removed surrounding quotes of parsed literals."
 git commit -m "Actually removed quoted from compiled grammar."
+git commit -m "Added quotes when printing literals."
 
 ### 2020-12-09
 Added shift argument to CartesianTransform.

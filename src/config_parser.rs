@@ -25,7 +25,7 @@ impl ConfigurationValue
 		write!(f,"{}",is)?;
 		match self
 		{
-			&ConfigurationValue::Literal(ref s) => write!(f,"{}",s)?,
+			&ConfigurationValue::Literal(ref s) => write!(f,"\"{}\"",s)?,
 			&ConfigurationValue::Number(v) => write!(f,"{}",v)?,
 			&ConfigurationValue::Object(ref name, ref list) =>
 			{
@@ -83,7 +83,7 @@ impl Display for Expr
 	{
 		match self
 		{
-			&Expr::Literal(ref s) => write!(f,"{}",s),
+			&Expr::Literal(ref s) => write!(f,"\"{}\"",s),
 			&Expr::Number(ref v) => write!(f,"{}",v),
 			&Expr::Ident(ref s) => write!(f,"{}",s),
 			&Expr::Member(ref expr,ref s) => write!(f,"{}.{}",expr,s),
