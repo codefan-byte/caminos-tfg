@@ -122,8 +122,8 @@ match { match parser.re("-?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?",source) { None =>
 let mut ret=None;
 let mut characters=source.chars();
 if (characters.next()) != (Some('"')) {} else {let mut size=1;
-let mut r=String::from("\"");
-loop {match characters.next() { None => break, Some('"') => {ret = (Some((size + 1,r + &"\"")));
+let mut r=String::new();
+loop {match characters.next() { None => break, Some('"') => {ret = { Some((size + 1,r))};
 break;}, Some('\\') => {match characters.next() { None => break, Some(c) => {r.push('\\');
 r.push(c);}, }
 ;
