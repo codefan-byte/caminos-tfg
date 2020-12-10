@@ -1332,7 +1332,8 @@ impl<'a> Simulation<'a>
 			(String::from("total_packet_per_hop_count"),ConfigurationValue::Array(total_packet_per_hop_count)),
 			(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
 			(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
-			(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
+			//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
+			(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
 		];
 		if let Some(content)=self.routing.statistics(self.cycle)
 		{
