@@ -2,6 +2,13 @@
 
 ## next? [0.2.0]
 
+### 2020-12-14
+git commit -m "Enabled tikz externalization. Let main.cfg handle close."
+
+### 2020-12-11
+Enabled tikz externalization.
+Added a prefix member to Plots.
+
 ### 2020-12-10
 Added `ExperimentOptions::message`, intended to be used with `--message=text`, to be written into the journal file.
 Removed unnecessary mut requirement of `Experiment::write_journal_entry`.
@@ -10,6 +17,7 @@ git commit -m "Added shifts to CartesianTransform. Added a message option. Remov
 git commit -m "Actually removed quoted from compiled grammar."
 git commit -m "Added quotes when printing literals."
 git commit -m "Removed quotes around git_id when building a literal."
+Added enum BackendError and improved error managing on output generation.
 
 ### 2020-12-09
 Added shift argument to CartesianTransform.

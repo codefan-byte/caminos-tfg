@@ -351,9 +351,15 @@ impl<'a> Experiment<'a>
 		self.write_journal_entry(&format!("Executing action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string()));
 		let cfg=self.root.join("main.cfg");
 		//TODO cfg checkum
-		let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
-		let mut cfg_contents = String::new();
-		cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
+		//let mut cfg_contents = String::new();
+		//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+		//cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
+		let cfg_contents={
+			let mut cfg_contents = String::new();
+			let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+			cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
+			cfg_contents
+		};
 		let mut results;
 		let parsed_cfg=match config_parser::parse(&cfg_contents)
 		{
@@ -953,7 +959,11 @@ impl<'a> Experiment<'a>
 				Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
 				{
 					//println!("description={}",description);
-					create_output(&description,&results,experiments.len(),&self.root);
+					match create_output(&description,&results,experiments.len(),&self.root)
+					{
+						Ok(_) => (),
+						Err(err) => println!("ERROR: could not create output {:?}",err),
+					}
 				},
 				_ => panic!("The output description file does not contain a list.")
 			};

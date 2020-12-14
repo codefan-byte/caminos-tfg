@@ -1,7 +1,7 @@
 
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use std::fs::{self,File};
-use std::io::{Write,Read};
+use std::io::{self,Write,Read};
 use std::cmp::Ordering;
 use std::process::Command;
 use std::collections::HashSet;
@@ -11,8 +11,18 @@ use crate::config_parser::{ConfigurationValue,Expr};
 use crate::config::{combine,evaluate,reevaluate,values_to_f32};
 use crate::get_git_id;
 
+#[derive(Debug)]
+pub enum BackendError
+{
+	CouldNotGenerateFile{
+		filepath: PathBuf,
+		io_error: Option<io::Error>,
+	}
+}
+
 ///Creates some output using an output description object as guide.
 pub fn create_output(description: &ConfigurationValue, results: &Vec<(ConfigurationValue,ConfigurationValue)>, total_experiments:usize, path:&Path)
+	-> Result<(),BackendError>
 {
 	if let &ConfigurationValue::Object(ref name, ref _attributes) = description
 	{
@@ -21,12 +31,12 @@ pub fn create_output(description: &ConfigurationValue, results: &Vec<(Configurat
 			"CSV" =>
 			{
 				println!("Creating a CSV...");
-				create_csv(description,results,path);
+				return create_csv(description,results,path);
 			},
 			"Plots" =>
 			{
 				println!("Creating a plot...");
-				create_plots(description,results,total_experiments,path);
+				return create_plots(description,results,total_experiments,path);
 			},
 			_ => panic!("unrecognized output description object {}",name),
 		};
@@ -39,6 +49,7 @@ pub fn create_output(description: &ConfigurationValue, results: &Vec<(Configurat
 
 ///Creates a csv file using filename and field given in `description`.
 fn create_csv(description: &ConfigurationValue, results: &Vec<(ConfigurationValue,ConfigurationValue)>, path:&Path)
+	-> Result<(),BackendError>
 {
 	let mut fields=None;
 	let mut filename=None;
@@ -86,6 +97,7 @@ fn create_csv(description: &ConfigurationValue, results: &Vec<(ConfigurationValu
 		let row=fields.iter().map(|e| format!("{}",evaluate(e,&context)) ).collect::<Vec<String>>().join(", ");
 		writeln!(output_file,"{}",row).unwrap();
 	}
+	Ok(())
 }
 
 ///The raw `ConfigurationValue`s to be used in a plot. Before being averaged.
@@ -213,10 +225,12 @@ impl<'a> Plotkind<'a>
 
 ///Create plots according to a `Plots` object.
 fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationValue,ConfigurationValue)>, total_experiments:usize, path:&Path)
+	-> Result<(),BackendError>
 {
 	let mut selector=None;
 	let mut legend=None;
 	let mut backend=None;
+	let mut prefix=None;
 	let mut kind:Option<Vec<Plotkind>>=None;
 	if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
 	{
@@ -236,6 +250,11 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationVa
 					&ConfigurationValue::Array(ref pks) => kind=Some(pks.iter().map(Plotkind::new).collect()),
 					_ => panic!("bad value for kind"),
 				},
+				"prefix" => match value
+				{
+					&ConfigurationValue::Literal(ref s) => prefix=Some(s.to_string()),
+					_ => panic!("bad value for prefix"),
+				},
 				_ => panic!("Nothing to do with field {} in Plots",name),
 			}
 		}
@@ -248,6 +267,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationVa
 	let legend=legend.expect("There were no legend");
 	let kind=kind.expect("There were no kind");
 	let backend=backend.expect("There were no backend");
+	let prefix=prefix.unwrap_or_else(||"noprefix".to_string());
 	println!("Creating plots");
 	let mut avgs:Vec<Vec<AveragedRecord>>=Vec::with_capacity(kind.len());
 	//let git_id_expr = Expr::Ident("git_id".to_string());
@@ -379,7 +399,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationVa
 		match name.as_ref()
 		{
 			//"Tikz" => tikz_backend(backend,averaged,&label_abscissas,&label_ordinates,min_ordinate,max_ordinate,path),
-			"Tikz" => tikz_backend(backend,avgs,kind,(results.len(),total_experiments),path),
+			"Tikz" => return tikz_backend(backend,avgs,kind,(results.len(),total_experiments),prefix,path),
 			_ => panic!("unrecognized backend object {}",name),
 		};
 	}
@@ -426,7 +446,8 @@ fn latex_make_command_name(text:&str) -> String
 ///`kind`: the congiguration of the plots
 ///`amount_experiments`: (experiments_with_results, total) of the experiments
 ///`path`: the path of the whole experiment
-fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>, kind:Vec<Plotkind>, amount_experiments:(usize,usize), path:&Path)
+fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>, kind:Vec<Plotkind>, amount_experiments:(usize,usize), prefix:String, path:&Path)
+	-> Result<(),BackendError>
 {
 	let mut tex_filename=None;
 	let mut pdf_filename=None;
@@ -516,10 +537,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			};
 			if wrote==0
 			{
-				figure_tikz.push_str(r#"
-\begin{experimentfigure}
-	\begin{center}
-"#);
+				let selectorname=latex_make_command_name(&tracked_selector_value.unwrap().to_string());
+				figure_tikz.push_str(&format!(r#"
+\begin{{experimentfigure}}
+	\begin{{center}}
+	\tikzsetnextfilename{{legend-{prefix}-{selectorname}}}
+	\ref{{legend-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix));
 			}
 			wrote+=1;
 			let mut raw_plots=String::new();
@@ -624,11 +647,14 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			if good_plots==0 { figure_tikz.push_str(&format!("skipped bad plot.\\\\")); continue; }
 			//\begin{{tikzpicture}}[baseline,trim left=(left trim point),trim axis right,remember picture]
 			//\path (yticklabel cs:0) ++(-1pt,0pt) coordinate (left trim point);
+			let selectorname=latex_make_command_name(&selector_value_to_use.to_string());
+			let tikzname=format!("{}-selector{}-kind{}",prefix,selectorname,kind_index);
 			figure_tikz.push_str(&format!(r#"
+	\tikzsetnextfilename{{external-{tikzname}}}
 	\begin{{tikzpicture}}[baseline,remember picture]
 	\begin{{axis}}[
 		automatically generated axis,
-		{kind_index_style}%,
+		{kind_index_style},{legend_to_name},
 		%%ybar interval=0.6,
 		% ymin=%(ymin)s,
 		% ymax=%(ymax)s,
@@ -651,8 +677,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		%%every x tick label/.append style={{anchor=base,yshift=-7}},
 	]
 {plots_string}	\end{{axis}}
-	\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}"#,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots));
+	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
+	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}",prefix,selectorname)}else{"".to_string()}));
 		}
 		if wrote==0
 		{
@@ -661,9 +687,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		let selector_tex_caption=Some(latex_protect_text(&tracked_selector_value.unwrap().to_string()));
 		figure_tikz.push_str(&format!(r#"
 	\end{{center}}
-	\caption{{\captionprologue {}}}
+	\caption{{\captionprologue {caption}}}
 \end{{experimentfigure}}
-"#,selector_tex_caption.unwrap()));
+"#,caption=selector_tex_caption.unwrap()));
 		tikz.push_str(&figure_tikz);
 		//figure_index+=1;
 	}
@@ -677,8 +703,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let title=format!("{}/{} ({})",folder,pdf_filename,amount_string);
 	let header=format!("\\tiny {}:{} ({})\\\\pdflatex on \\today\\\\git\\_id={}",latex_protect_text(folder),latex_protect_text(&pdf_filename),amount_string,latex_protect_text(git_id));
 	let shared_prelude=format!(r#"
-%% -- common tpgfplots prelude --
-\newenvironment{{experimentfigure}}{{\begin{{figure}}[H]}}{{\end{{figure}}}}
+%% -- common pgfplots prelude --
+\newenvironment{{experimentfigure}}{{\begin{{figure}}[H]\tikzexternalenable}}{{\tikzexternaldisable\end{{figure}}}}
 %\newenvironment{{experimentfigure}}{{\begin{{figure*}}}}{{\end{{figure*}}}}
 \pgfplotsset{{compat=newest}}
 \pgfplotsset{{minor grid style={{dashed,very thin, color=blue!15}}}}
@@ -698,7 +724,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		%The first axis on each line of plots
 		%legend style={{overlay,at={{(0.50,1.05)}},anchor=south,font=\scriptsize,fill=none}},
 		%legend style={{at={{(0.00,1.01)}},anchor=south west,font=\scriptsize,fill=none}},
-		legend style={{at={{($(axis description cs:0.00,1.01)!(current page.center)!(axis description cs:1.00,1.01)$)}},anchor=south,font=\scriptsize,fill=none}},
+		%legend style={{at={{($(axis description cs:0.00,1.01)!(current page.center)!(axis description cs:1.00,1.01)$)}},anchor=south,font=\scriptsize,fill=none}},
+		legend style={{font=\scriptsize,fill=none}},
 		legend columns=2,legend cell align=left,
 	}},
 	posterior kind/.style={{
@@ -715,7 +742,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		/pgfplots/error bars/x explicit,
 		/pgfplots/error bars/y explicit,
 		/pgfplots/error bars/error bar style={{ultra thin,solid}},
+		/tikz/mark options={{solid}},
 	}},
+	%/pgf/images/aux in dpth=true,
 }}"#);
 	let mut local_prelude=format!(r#"
 %% -- experiment-local prelude
@@ -773,6 +802,11 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	{
 		fs::create_dir(&tmp_path).expect("Something went wrong when creating the tikz tmp directory.");
 	}
+	let tmp_path_externalized=tmp_path.join("externalized");
+	if !tmp_path_externalized.is_dir()
+	{
+		fs::create_dir(&tmp_path_externalized).expect("Something went wrong when creating the tikz externalized directory.");
+	}
 	let main_cfg_contents=
 	{
 		let cfg=path.join("main.cfg");
@@ -802,7 +836,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 \usepackage{{float}}
 \usepackage{{tikz}}
 \usepackage{{pgfplots}}
-\usetikzlibrary{{calc}}
+\usetikzlibrary{{calc,external}}
+\tikzexternaldisable
+\tikzexternalize[prefix=externalized/]
 
 \usepackage[bookmarks=true]{{hyperref}}
 
@@ -826,7 +862,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	linkcolor=red,
 	citecolor=green,
 	filecolor=magenta,
-	urlcolor=cyan
+	urlcolor=cyan,
+	pdfborder={{0 0 0}},
 }}
 \begin{{document}}
 \pagestyle{{myheadings}}
@@ -839,21 +876,30 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 \end{{verbatim}}
 \end{{document}}
 "#,shared_prelude=shared_prelude,local_prelude=local_prelude,data_string=tikz,git_ids=all_git_formatted,cfg_string=main_cfg_contents);
-	let whole_tex_path=tmp_path.join("tmp.tex");
+	let tmpname=format!("{}-tmp",prefix);
+	let tmpname_tex=format!("{}.tex",&tmpname);
+	let tmpname_pdf=format!("{}.pdf",&tmpname);
+	let whole_tex_path=tmp_path.join(&tmpname_tex);
 	let mut whole_tex_file=File::create(&whole_tex_path).expect("Could not create whole tex temporal file.");
 	writeln!(whole_tex_file,"{}",whole_tex).unwrap();
 	let _pdflatex=Command::new("pdflatex")
 		.current_dir(&tmp_path)
-		.arg("tmp.tex")
+		.arg("--shell-escape")
+		.arg(&tmpname_tex)
 		.output()
 		.expect("pdflatex failed to start");
 	//Perform a second pass, as required at least by `remember picture`.
 	let _pdflatex=Command::new("pdflatex")
 		.current_dir(&tmp_path)
-		.arg("tmp.tex")
+		.arg("--shell-escape")
+		.arg(&tmpname_tex)
 		.output()
 		.expect("pdflatex failed to start");
-	fs::copy(&tmp_path.join("tmp.pdf"),&pdf_path).expect("copying temporal pdf failed.");
+	let filepath=tmp_path.join(tmpname_pdf);
+	//fs::copy(&tmp_path.join("tmp.pdf"),&pdf_path).expect("copying temporal pdf failed.");
+	fs::copy(&filepath,&pdf_path).or_else(|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))?;
+	//fs::copy(&filepath,&pdf_path).map_or_else(|amount_copied|Ok(),|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))
+	Ok(())
 }
 
 /// Calculates the average and deviation of the values in a Vec.
