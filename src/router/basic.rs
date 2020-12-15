@@ -70,6 +70,8 @@ pub struct Basic<TM:TransmissionMechanism>
 	time_at_input_head: Vec<Vec<usize>>,
 	///And arbiter of the physical output port.
 	output_arbiter: OutputArbiter,
+	///The maximum packet size that is allowed. Only for bubble consideration, that reserves space for a given packet plus maximum packet size.
+	maximum_packet_size: usize,
 
 	//statistics:
 	///The first cycle included in the statistics.
@@ -258,7 +260,7 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 
 impl Basic<SimpleVirtualChannels>
 {
-	pub fn new(router_index: usize, cv:&ConfigurationValue, plugs:&Plugs, topology:&dyn Topology, _maximum_packet_size:usize) -> Rc<RefCell<Basic<SimpleVirtualChannels>>>
+	pub fn new(router_index: usize, cv:&ConfigurationValue, plugs:&Plugs, topology:&dyn Topology, maximum_packet_size:usize) -> Rc<RefCell<Basic<SimpleVirtualChannels>>>
 	{
 		//let mut servers=None;
 		//let mut load=None;
@@ -419,6 +421,7 @@ impl Basic<SimpleVirtualChannels>
 			selected_output,
 			time_at_input_head,
 			output_arbiter: OutputArbiter::Token{port_token: vec![0;input_ports]},
+			maximum_packet_size,
 			statistics_begin_cycle: 0,
 			statistics_output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
 			statistics_reception_space_occupation_per_vc: vec![0f64;virtual_channels],
@@ -432,14 +435,24 @@ impl Basic<SimpleVirtualChannels>
 impl<TM:TransmissionMechanism> Basic<TM>
 {
 	///Whether a phit in an input buffer can advance.
+	///bubble_in_use should be true only for leading phits that require the additional space.
 	fn can_phit_advance(&self, phit:&Rc<Phit>, exit_port:usize, exit_vc:usize, bubble_in_use:bool)->bool
 	{
 		//if not internal output space
 		if self.output_buffer_size==0
 		{
+			let status=&self.transmission_port_status[exit_port];
 			if bubble_in_use
 			{
-				self.transmission_port_status[exit_port].can_transmit_whole_packet(&phit,exit_vc)
+				//status.can_transmit_whole_packet(&phit,exit_vc)
+				if let Some(space)=status.known_available_space_for_virtual_channel(exit_vc)
+				{
+					status.can_transmit(&phit,exit_vc) && space>= phit.packet.size + self.maximum_packet_size
+				}
+				else
+				{
+					panic!("Basic router requires knowledge of available space to apply bubble.");
+				}
 			}
 			else
 			{
@@ -456,7 +469,7 @@ impl<TM:TransmissionMechanism> Basic<TM>
 				//necessary_credits=match transmit_auxiliar_info
 				necessary_credits=if bubble_in_use
 				{
-					phit.packet.size
+					phit.packet.size + self.maximum_packet_size
 				}
 				else
 				{
@@ -926,13 +939,22 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 					if let Some( (phit,(entry_port,_entry_vc))) = self.output_buffers[exit_port][exit_vc].front()
 					{
 						let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,exit_port);
+						let status=&self.transmission_port_status[exit_port];
 						let can_transmit = if bubble_in_use
 						{
-							self.transmission_port_status[exit_port].can_transmit_whole_packet(&phit,exit_vc)
+							//self.transmission_port_status[exit_port].can_transmit_whole_packet(&phit,exit_vc)
+							if let Some(space)=status.known_available_space_for_virtual_channel(exit_vc)
+							{
+								status.can_transmit(&phit,exit_vc) && space>= phit.packet.size + self.maximum_packet_size
+							}
+							else
+							{
+								panic!("Basic router requires knowledge of available space to apply bubble.");
+							}
 						}
 						else
 						{
-							self.transmission_port_status[exit_port].can_transmit(&phit,exit_vc)
+							status.can_transmit(&phit,exit_vc)
 						};
 						if can_transmit
 						{

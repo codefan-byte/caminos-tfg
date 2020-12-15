@@ -217,7 +217,7 @@ pub trait StatusAtEmissor
 	fn can_transmit(&self, phit:&Rc<Phit>, virtual_channel:usize)->bool;
 	///Check if we can surely transmit and store the whole remaining of the packet.
 	fn can_transmit_whole_packet(&self, phit:&Rc<Phit>, virtual_channel:usize)->bool;
-	///Consult available space.
+	///Consult available space. This includes dedicated and shared space.
 	fn known_available_space_for_virtual_channel(&self,virtual_channel:usize)->Option<usize>;
 	///Get timestamp of last transmission.
 	fn get_last_transmission(&self)->usize;

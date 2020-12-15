@@ -541,8 +541,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				figure_tikz.push_str(&format!(r#"
 \begin{{experimentfigure}}
 	\begin{{center}}
+	\bgroup\tikzexternalize[prefix=externalized-legends/]
 	\tikzsetnextfilename{{legend-{prefix}-{selectorname}}}
-	\ref{{legend-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix));
+	\ref{{legend-{prefix}-{selectorname}}}\egroup\\"#,selectorname=selectorname,prefix=prefix));
 			}
 			wrote+=1;
 			let mut raw_plots=String::new();
@@ -807,6 +808,11 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	{
 		fs::create_dir(&tmp_path_externalized).expect("Something went wrong when creating the tikz externalized directory.");
 	}
+	let tmp_path_externalized_legends=tmp_path.join("externalized-legends");
+	if !tmp_path_externalized_legends.is_dir()
+	{
+		fs::create_dir(&tmp_path_externalized_legends).expect("Something went wrong when creating the tikz externalized-legends directory.");
+	}
 	let main_cfg_contents=
 	{
 		let cfg=path.join("main.cfg");
@@ -882,19 +888,17 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let whole_tex_path=tmp_path.join(&tmpname_tex);
 	let mut whole_tex_file=File::create(&whole_tex_path).expect("Could not create whole tex temporal file.");
 	writeln!(whole_tex_file,"{}",whole_tex).unwrap();
-	let _pdflatex=Command::new("pdflatex")
-		.current_dir(&tmp_path)
-		.arg("--shell-escape")
-		.arg(&tmpname_tex)
-		.output()
-		.expect("pdflatex failed to start");
-	//Perform a second pass, as required at least by `remember picture`.
-	let _pdflatex=Command::new("pdflatex")
-		.current_dir(&tmp_path)
-		.arg("--shell-escape")
-		.arg(&tmpname_tex)
-		.output()
-		.expect("pdflatex failed to start");
+	for _ in 0..3
+	{
+		//With `remember picture` we need at least two passes.
+		//And externalize with legend to names seems to require three passes.
+		let _pdflatex=Command::new("pdflatex")
+			.current_dir(&tmp_path)
+			.arg("--shell-escape")
+			.arg(&tmpname_tex)
+			.output()
+			.expect("pdflatex failed to start");
+	}
 	let filepath=tmp_path.join(tmpname_pdf);
 	//fs::copy(&tmp_path.join("tmp.pdf"),&pdf_path).expect("copying temporal pdf failed.");
 	fs::copy(&filepath,&pdf_path).or_else(|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))?;

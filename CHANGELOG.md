@@ -2,6 +2,11 @@
 
 ## next? [0.2.0]
 
+### 2020-12-15
+Externalization of legends moved to a different folder.
+Fixed bubble to actually reserve space for the current packet plus a maximum packet size.
+git commit -m "Fixed bubble to actually reserve space for the current packet plus a maximum packet size."
+
 ### 2020-12-14
 git commit -m "Enabled tikz externalization. Let main.cfg handle close."
 
