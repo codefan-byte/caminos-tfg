@@ -541,9 +541,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				figure_tikz.push_str(&format!(r#"
 \begin{{experimentfigure}}
 	\begin{{center}}
-	\bgroup\tikzexternalize[prefix=externalized-legends/]
-	\tikzsetnextfilename{{legend-{prefix}-{selectorname}}}
-	\ref{{legend-{prefix}-{selectorname}}}\egroup\\"#,selectorname=selectorname,prefix=prefix));
+	\tikzpicturedependsonfile{{externalized/external-{prefix}-selector{selectorname}-kind0.md5}}
+	\tikzsetnextfilename{{externalized-legends/legend-{prefix}-{selectorname}}}
+	\ref{{legend-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix));
 			}
 			wrote+=1;
 			let mut raw_plots=String::new();
@@ -651,7 +651,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			let selectorname=latex_make_command_name(&selector_value_to_use.to_string());
 			let tikzname=format!("{}-selector{}-kind{}",prefix,selectorname,kind_index);
 			figure_tikz.push_str(&format!(r#"
-	\tikzsetnextfilename{{external-{tikzname}}}
+	\tikzsetnextfilename{{externalized/external-{tikzname}}}
 	\begin{{tikzpicture}}[baseline,remember picture]
 	\begin{{axis}}[
 		automatically generated axis,
@@ -844,7 +844,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 \usepackage{{pgfplots}}
 \usetikzlibrary{{calc,external}}
 \tikzexternaldisable
-\tikzexternalize[prefix=externalized/]
+\tikzexternalize
+%\tikzexternalize[prefix=externalized/]
 
 \usepackage[bookmarks=true]{{hyperref}}
 

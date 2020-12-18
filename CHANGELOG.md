@@ -2,6 +2,13 @@
 
 ## next? [0.2.0]
 
+### 2020-12-18
+Added check to detect overflowing output buffers.
+git commit -m "Added check to detect overflowing output buffers."
+
+### 2020-12-16
+Externalization fixes.
+
 ### 2020-12-15
 Externalization of legends moved to a different folder.
 Fixed bubble to actually reserve space for the current packet plus a maximum packet size.

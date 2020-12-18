@@ -858,6 +858,10 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						//Note that it is possible when flit_size<packet_size for the packet to not be in that buffer. The output arbiter can decide to advance other virtual channel.
 						if let Ok((phit,ack_message)) = self.reception_port_space[entry_port].extract(entry_vc)
 						{
+							if self.output_buffers[exit_port][exit_vc].len()>=self.output_buffer_size
+							{
+								panic!("Trying to move into a full output buffer.");
+							}
 							moved_phits+=1;
 							self.time_at_input_head[entry_port][entry_vc]=0;
 							*phit.virtual_channel.borrow_mut()=Some(exit_vc);
