@@ -2,6 +2,10 @@
 
 ## next? [0.2.0]
 
+### 2020-12-21
+Fixed a bug in ValiantDOR where the DOR part were sometimes non-minimal.
+git commit -m "Fixed a bug in ValiantDOR where the DOR part were sometimes non-minimal."
+
 ### 2020-12-18
 Added check to detect overflowing output buffers.
 git commit -m "Added check to detect overflowing output buffers."

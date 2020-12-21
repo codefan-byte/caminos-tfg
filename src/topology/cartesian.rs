@@ -1162,6 +1162,16 @@ impl Routing for ValiantDOR
 						-((up_current[dimension] as i32 - up_previous[dimension] as i32 + side)%side)
 					};
 					r+=delta;
+					let target_router = if r!=0 { None } else
+					{
+						let (target_location,_link_class)=topology.server_neighbour(target_server);
+						let target_router=match target_location
+						{
+							Location::RouterPort{router_index,router_port:_} =>router_index,
+							_ => panic!("The server is not attached to a router"),
+						};
+						Some(target_router)
+					};
 					while r==0 && offset<self.randomized.len()-1
 					{
 						offset+=1;
@@ -1169,13 +1179,7 @@ impl Routing for ValiantDOR
 						//XXX Should we skip if current[dim]==target[dim]?
 						let side=cartesian_data.sides[dim];
 						let t=rng.borrow_mut().gen_range(0,side);
-						let (target_location,_link_class)=topology.server_neighbour(target_server);
-						let target_router=match target_location
-						{
-							Location::RouterPort{router_index,router_port:_} =>router_index,
-							_ => panic!("The server is not attached to a router"),
-						};
-						let mut up_target=cartesian_data.unpack(target_router);
+						let mut up_target=cartesian_data.unpack(target_router.unwrap());
 						up_target[dim]=t;
 						let aux_rr=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 						r=aux_rr[dim];
@@ -1183,6 +1187,10 @@ impl Routing for ValiantDOR
 					if r==0
 					{
 						b_routing_info.selections=None;
+						//remake routing record to ensure it is minimum
+						let up_target=cartesian_data.unpack(target_router.unwrap());
+						let routing_record=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
+						b_routing_info.routing_record=Some(routing_record);
 					}
 					else
 					{
