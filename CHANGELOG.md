@@ -2,6 +2,17 @@
 
 ## next? [0.2.0]
 
+### 2020-01-25
+Added dependence on crate procfs.
+Report status.vmhwm, stat.utime, and stat.stime in the result.
+git commit -m "Report process status at the end. Improved style of the tikz backend."
+
+### 2020-01-12
+A few color changes in the tikz backend.
+
+### 2020-12-22
+Added more colors, pens, and marks to tikz backend.
+
 ### 2020-12-21
 Fixed a bug in ValiantDOR where the DOR part were sometimes non-minimal.
 git commit -m "Fixed a bug in ValiantDOR where the DOR part were sometimes non-minimal."

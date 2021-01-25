@@ -1343,6 +1343,19 @@ impl<'a> Simulation<'a>
 		{
 			result_content.push((String::from("router_aggregated_statistics"),content));
 		}
+		if let Ok(linux_process) = procfs::process::Process::myself()
+		{
+			let status = linux_process.status().expect("failed to get status of the self process");
+			if let Some(peak_memory)=status.vmhwm
+			{
+				//Peak resident set size by kibibytes ("high water mark").
+				result_content.push((String::from("linux_high_water_mark"),ConfigurationValue::Number(peak_memory as f64)));
+			}
+			let stat = linux_process.stat().expect("failed to get stat of the self process");
+			let tps = procfs::ticks_per_second().expect("could not get the number of ticks per second.") as f64;
+			result_content.push((String::from("user_time"),ConfigurationValue::Number(stat.utime as f64/tps)));
+			result_content.push((String::from("system_time"),ConfigurationValue::Number(stat.stime as f64/tps)));
+		}
 		let result=ConfigurationValue::Object(String::from("Result"),result_content);
 		writeln!(output,"{}",result).unwrap();
 	}

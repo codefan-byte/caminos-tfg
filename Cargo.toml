@@ -20,6 +20,7 @@ chrono = "0.4"
 ssh2 = "0.8.2"
 rpassword = "5.0"
 indicatif = "0.15.0"
+procfs = "0.9"
 lazy_static = "1.4.0" #somehow not automatically added by indicatif
 quantifiable-derive = "0.1.0"
 #quantifiable-derive = { path = "../quantifiable-derive" }

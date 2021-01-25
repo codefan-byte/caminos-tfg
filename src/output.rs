@@ -753,9 +753,13 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 \newcommand\experimenttitle{{{title_string}}}
 \newcommand\experimentheader{{{header_string}}}
 "#,title_string=title,header_string=header);
-	let tikz_colors=["red","green","blue"];
-	let tikz_pens=["solid","dashed","dotted"];
-	let tikz_marks=["o","square","triangle"];
+	//Look up the documentation of xcolor.
+	//yellow!50!black is too similar to olive.
+	//Try to select list containing a prime amount of elements.
+	let tikz_colors=["red","green","blue","black","violet","orange","lightgray","pink","olive","teal","purple"];
+	let tikz_pens=["solid","dashed","dotted","dash dot"];
+	//let tikz_marks=["o","square","triangle"];
+	let tikz_marks=["o","square","triangle","star","diamond","Mercedes star flipped"];
 	let mut color_index=0;
 	let mut pen_index=0;
 	let mut mark_index=0;
@@ -770,13 +774,13 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		while color_index>=tikz_colors.len()
 		{
 			color_index-=tikz_colors.len();
-			pen_index+=1;
-			mark_index+=1;
+			//pen_index+=1;
+			//mark_index+=1;
 		}
 		while pen_index>=tikz_pens.len()
 		{
 			pen_index-=tikz_pens.len();
-			mark_index+=1;
+			//mark_index+=1;
 		}
 		while mark_index>=tikz_marks.len()
 		{
