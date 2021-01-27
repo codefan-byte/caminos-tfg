@@ -2,6 +2,10 @@
 
 ## next? [0.2.0]
 
+### 2020-01-27
+Added a `cycle` value to the result files. For the sake of burst simulations.
+git commit -m "Added cycle to the result files."
+
 ### 2020-01-25
 Added dependence on crate procfs.
 Report status.vmhwm, stat.utime, and stat.stime in the result.

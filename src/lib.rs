@@ -1323,6 +1323,7 @@ impl<'a> Simulation<'a>
 		let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
 		let git_id=get_git_id();
 		let mut result_content = vec![
+			(String::from("cycle"),ConfigurationValue::Number(self.cycle as f64)),
 			(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
 			(String::from("accepted_load"),ConfigurationValue::Number(accepted_load)),
 			(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay)),
