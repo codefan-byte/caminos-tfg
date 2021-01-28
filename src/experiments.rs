@@ -319,6 +319,10 @@ impl<'a> Experiment<'a>
 						}
 					}
 				}
+				if entry==" message"
+				{
+					println!("journal message {}",line);
+				}
 			}
 		}
 		Experiment{

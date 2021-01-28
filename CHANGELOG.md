@@ -2,9 +2,15 @@
 
 ## next? [0.2.0]
 
+
+### 2020-01-28
+Completed `Stubborn::update_routing_info`, which had the recursion over its sub-routing missing.
+git commit -m "Fixed Stubborn routing. Show journal messages."
+
 ### 2020-01-27
 Added a `cycle` value to the result files. For the sake of burst simulations.
 git commit -m "Added cycle to the result files."
+Show journal messages with every action.
 
 ### 2020-01-25
 Added dependence on crate procfs.

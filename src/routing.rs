@@ -1091,9 +1091,11 @@ impl Routing for Stubborn
 		self.routing.initialize_routing_info(&meta_routing_info, topology, current_router, target_server, rng);
 		routing_info.borrow_mut().meta = Some(vec![meta_routing_info]);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
-		routing_info.borrow_mut().selections=None;
+		let mut bri=routing_info.borrow_mut();
+		bri.selections=None;
+		self.routing.update_routing_info(&bri.meta.as_mut().unwrap()[0],topology,current_router,current_port,target_server,rng);
 	}
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
