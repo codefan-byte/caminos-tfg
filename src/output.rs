@@ -496,6 +496,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let mut all_legend_tex_id_vec:Vec<String> = Vec::new();
 	let mut all_legend_tex_id_set:HashSet<String> = HashSet::new();
 	let mut all_legend_tex_entry:HashSet<String> = HashSet::new();
+	let folder=path.file_name().unwrap().to_str().unwrap();
+	let folder_id = latex_make_command_name(folder);
 	//while index<averaged.len()
 	//let mut figure_index=0;
 	let mut all_git_ids: HashSet<String> = HashSet::new();
@@ -541,9 +543,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				figure_tikz.push_str(&format!(r#"
 \begin{{experimentfigure}}
 	\begin{{center}}
-	\tikzpicturedependsonfile{{externalized/external-{prefix}-selector{selectorname}-kind0.md5}}
-	\tikzsetnextfilename{{externalized-legends/legend-{prefix}-{selectorname}}}
-	\ref{{legend-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix));
+	\tikzpicturedependsonfile{{externalized-plots/external-{folder_id}-{prefix}-selector{selectorname}-kind0.md5}}
+	\tikzsetnextfilename{{externalized-legends/legend-{folder_id}-{prefix}-{selectorname}}}
+	\ref{{legend-{folder_id}-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix,folder_id=folder_id));
 			}
 			wrote+=1;
 			let mut raw_plots=String::new();
@@ -649,9 +651,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			//\begin{{tikzpicture}}[baseline,trim left=(left trim point),trim axis right,remember picture]
 			//\path (yticklabel cs:0) ++(-1pt,0pt) coordinate (left trim point);
 			let selectorname=latex_make_command_name(&selector_value_to_use.to_string());
-			let tikzname=format!("{}-selector{}-kind{}",prefix,selectorname,kind_index);
+			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorname,kind_index);
 			figure_tikz.push_str(&format!(r#"
-	\tikzsetnextfilename{{externalized/external-{tikzname}}}
+	\tikzsetnextfilename{{externalized-plots/external-{tikzname}}}
 	\begin{{tikzpicture}}[baseline,remember picture]
 	\begin{{axis}}[
 		automatically generated axis,
@@ -679,7 +681,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	]
 {plots_string}	\end{{axis}}
 	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}",prefix,selectorname)}else{"".to_string()}));
+	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
 		}
 		if wrote==0
 		{
@@ -699,7 +701,6 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		let (done,total) = amount_experiments;
 		if done==total {format!("all {} done",done)} else {format!("{} of {}",done,total)}
 	};
-	let folder=path.file_name().unwrap().to_str().unwrap();
 	let git_id=get_git_id();
 	let title=format!("{}/{} ({})",folder,pdf_filename,amount_string);
 	let header=format!("\\tiny {}:{} ({})\\\\pdflatex on \\today\\\\git\\_id={}",latex_protect_text(folder),latex_protect_text(&pdf_filename),amount_string,latex_protect_text(git_id));
@@ -807,10 +808,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	{
 		fs::create_dir(&tmp_path).expect("Something went wrong when creating the tikz tmp directory.");
 	}
-	let tmp_path_externalized=tmp_path.join("externalized");
+	let tmp_path_externalized=tmp_path.join("externalized-plots");
 	if !tmp_path_externalized.is_dir()
 	{
-		fs::create_dir(&tmp_path_externalized).expect("Something went wrong when creating the tikz externalized directory.");
+		fs::create_dir(&tmp_path_externalized).expect("Something went wrong when creating the tikz externalized-plots directory.");
 	}
 	let tmp_path_externalized_legends=tmp_path.join("externalized-legends");
 	if !tmp_path_externalized_legends.is_dir()

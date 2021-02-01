@@ -691,9 +691,14 @@ impl Traffic for Burst
 			//panic!("origin {} does not belong to the traffic",origin);
 			return Err(TrafficError::OriginOutsideTraffic);
 		}
+		let destination=self.pattern.get_destination(origin,topology,rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
 		let message=Rc::new(Message{
 			origin: origin,
-			destination: self.pattern.get_destination(origin,topology,rng),
+			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
 		});

@@ -2,22 +2,28 @@
 
 ## next? [0.2.0]
 
+### 2021-02-01
+Fixed 2021 dates in this changelog...
+Correctly manage self-messages in burst traffic.
+git commit -m "Correctly manage self-messages in burst traffic. Improvements on tikz backend."
 
-### 2020-01-28
+### 2021-01-28
 Completed `Stubborn::update_routing_info`, which had the recursion over its sub-routing missing.
 git commit -m "Fixed Stubborn routing. Show journal messages."
+Moved tikz back externalization plots from `externalization` to `externalization-plots`.
+Protected the tikz backend externalization against some collisions.
 
-### 2020-01-27
+### 2021-01-27
 Added a `cycle` value to the result files. For the sake of burst simulations.
 git commit -m "Added cycle to the result files."
 Show journal messages with every action.
 
-### 2020-01-25
+### 2021-01-25
 Added dependence on crate procfs.
 Report status.vmhwm, stat.utime, and stat.stime in the result.
 git commit -m "Report process status at the end. Improved style of the tikz backend."
 
-### 2020-01-12
+### 2021-01-12
 A few color changes in the tikz backend.
 
 ### 2020-12-22
