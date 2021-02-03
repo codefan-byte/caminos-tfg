@@ -2,6 +2,9 @@
 
 ## next? [0.2.0]
 
+### 2021-02-03
+git commit -m "Self-messages in Burst traffics now substract a pending message, allowing completion when there are fixed points in the pattern."
+
 ### 2021-02-01
 Fixed 2021 dates in this changelog...
 Correctly manage self-messages in burst traffic.

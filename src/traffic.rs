@@ -691,6 +691,7 @@ impl Traffic for Burst
 			//panic!("origin {} does not belong to the traffic",origin);
 			return Err(TrafficError::OriginOutsideTraffic);
 		}
+		self.pending_messages[origin]-=1;
 		let destination=self.pattern.get_destination(origin,topology,rng);
 		if origin==destination
 		{
@@ -703,7 +704,6 @@ impl Traffic for Burst
 			creation_cycle: cycle,
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
-		self.pending_messages[origin]-=1;
 		Ok(message)
 	}
 	fn probability_per_cycle(&self, server:usize) -> f32
