@@ -61,6 +61,8 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
+			"Hotspots" => Box::new(Hotspots::new(arg)),
+			"RandomMix" => Box::new(RandomMix::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1025,6 +1027,180 @@ impl CartesianFactor
 			cartesian_data: CartesianData::new(&sides),
 			factors,
 			target_size:0,
+		}
+	}
+}
+
+/// The destinations are selected from a given pool of servers.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Hotspots
+{
+	///The allowed destinations
+	destinations: Vec<usize>,
+	///An amount of destinations o be added to the vector on pattern initialization.
+	extra_random_destinations: usize
+}
+
+impl Pattern for Hotspots
+{
+	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		//XXX Do we want to check the user given destinations against target_size?
+		for _ in 0..self.extra_random_destinations
+		{
+			let r=rng.borrow_mut().gen_range(0,target_size);
+			self.destinations.push(r);
+		}
+		if self.destinations.is_empty()
+		{
+			panic!("The Hotspots pattern requires to have at least one destination.");
+		}
+	}
+	fn get_destination(&self, _origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	{
+		let r = rng.borrow_mut().gen_range(0,self.destinations.len());
+		self.destinations[r]
+	}
+}
+
+impl Hotspots
+{
+	fn new(arg:PatternBuilderArgument) -> Hotspots
+	{
+		let mut destinations=None;
+		let mut extra_random_destinations=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Hotspots"
+			{
+				panic!("A Hotspots must be created from a `Hotspots` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"destinations" => match value
+					{
+						&ConfigurationValue::Array(ref a) => destinations=Some(a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in destinations"),
+						}).collect()),
+						_ => panic!("bad value for destinations"),
+					}
+					"extra_random_destinations" => match value
+					{
+						&ConfigurationValue::Number(f) => extra_random_destinations=Some(f as usize),
+						_ => panic!("bad value for extra_random_destinations ({:?})",value),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in Hotspots",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Hotspots from a non-Object");
+		}
+		let destinations=destinations.unwrap_or_else(Vec::new);
+		let extra_random_destinations=extra_random_destinations.unwrap_or(0);
+		Hotspots{
+			destinations,
+			extra_random_destinations,
+		}
+	}
+}
+
+/// Use either of several patterns, with probability proportional to a weight.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct RandomMix
+{
+	///The patterns in the pool to be selected.
+	patterns: Vec<Box<dyn Pattern>>,
+	///The given weights, one per pattern.
+	weights: Vec<usize>,
+	///A total weight computed at initialization.
+	total_weight: usize,
+}
+
+impl Pattern for RandomMix
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		if self.patterns.len()!=self.weights.len()
+		{
+			panic!("Number of patterns must match number of weights for the RandomMix meta-pattern.");
+		}
+		if self.patterns.len()==0
+		{
+			panic!("RandomMix requires at least one pattern (and 2 to be sensible).");
+		}
+		for pat in self.patterns.iter_mut()
+		{
+			pat.initialize(source_size,target_size,topology,rng);
+		}
+		self.total_weight=self.weights.iter().sum();
+	}
+	fn get_destination(&self, origin:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	{
+		let mut w = rng.borrow_mut().gen_range(0,self.total_weight);
+		let mut index = 0;
+		while self.weights[index]>w
+		{
+			w-=self.weights[index];
+			index+=1;
+		}
+		self.patterns[index].get_destination(origin,topology,rng)
+	}
+}
+
+impl RandomMix
+{
+	fn new(arg:PatternBuilderArgument) -> RandomMix
+	{
+		let mut patterns=None;
+		let mut weights=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="RandomMix"
+			{
+				panic!("A RandomMix must be created from a `RandomMix` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"patterns" => match value
+					{
+						&ConfigurationValue::Array(ref a) => patterns=Some(a.iter().map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+						_ => panic!("bad value for patterns"),
+					}
+					"weights" => match value
+					{
+						&ConfigurationValue::Array(ref a) => weights=Some(a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in weights"),
+						}).collect()),
+						_ => panic!("bad value for weights"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in RandomMix",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a RandomMix from a non-Object");
+		}
+		let patterns=patterns.expect("There were no patterns");
+		let weights=weights.expect("There were no weights");
+		RandomMix{
+			patterns,
+			weights,
+			total_weight:0,//to be computed later
 		}
 	}
 }

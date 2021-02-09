@@ -2,6 +2,9 @@
 
 ## next? [0.2.0]
 
+### 2021-02-09
+git commit -m "implemented Hotspots and RandomMix patterns."
+
 ### 2021-02-03
 git commit -m "Self-messages in Burst traffics now substract a pending message, allowing completion when there are fixed points in the pattern."
 
