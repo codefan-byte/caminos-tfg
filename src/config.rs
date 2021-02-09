@@ -365,6 +365,39 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 					};
 					ConfigurationValue::Number(first+second)
 				}
+				"at" =>
+				{
+					let mut container=None;
+					let mut position=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"container" =>
+							{
+								container=Some(evaluate(val,context));
+							},
+							"position" =>
+							{
+								position=Some(evaluate(val,context));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let container=container.expect("container argument of at not given.");
+					let position=position.expect("position argument of at not given.");
+					let container=match container
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+					};
+					let position=match position
+					{
+						ConfigurationValue::Number(x) => x as usize,
+						_ => panic!("position argument of lt evaluated to a non-number ({}:?)",position),
+					};
+					container[position].clone()
+				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
 		}

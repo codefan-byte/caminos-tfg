@@ -1147,7 +1147,7 @@ impl Pattern for RandomMix
 	{
 		let mut w = rng.borrow_mut().gen_range(0,self.total_weight);
 		let mut index = 0;
-		while self.weights[index]>w
+		while w>self.weights[index]
 		{
 			w-=self.weights[index];
 			index+=1;

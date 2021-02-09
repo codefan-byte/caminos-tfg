@@ -4,6 +4,8 @@
 
 ### 2021-02-09
 git commit -m "implemented Hotspots and RandomMix patterns."
+Added the `at` config-function to access arrays in output description files.
+git commit -m "Fix on RandomMix probability. Added the at config-function."
 
 ### 2021-02-03
 git commit -m "Self-messages in Burst traffics now substract a pending message, allowing completion when there are fixed points in the pattern."
