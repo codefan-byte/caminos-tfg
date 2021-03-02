@@ -1,4 +1,12 @@
 
+/*!
+
+A Routing defines the ways to select a next router to eventually reach the destination.
+
+see [`new_routing`](fn.new_routing.html) for documentation on the configuration syntax of predefined routings.
+
+*/
+
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute};
 use crate::topology::{Topology,Location};
@@ -120,7 +128,110 @@ pub struct RoutingBuilderArgument<'a>
 	pub plugs: &'a Plugs,
 }
 
-///Build a new routing.
+/**Build a new routing.
+
+## Generic routings
+
+```
+Shortest{
+	legend_name: "minimal routing",
+}
+```
+
+```
+Valiant{
+	first: Shortest,
+	second: Shortest,
+	legend_name: "Using Valiant scheme, shortest to intermediate and shortest to destination",
+}
+```
+
+For topologies that define global links:
+```
+WeighedShortest{
+	class_weight: [1,100],
+	legend_name: "Shortest avoiding using several global links",
+}
+```
+
+
+## Operations
+
+### Sum
+To use some of two routings depending on whatever. virtual channels not on either list can be used freely. The extra label field can be used to set the priorities. Check the router policies for that.
+```
+Sum{
+	policy: TryBoth,//or Random
+	first_routing: Shortest,
+	second_routing: Valiant{first:Shortest,second:Shortest},
+	first_allowed_virtual_channels: [0,1],
+	second_allowed_virtual_channels: [2,3,4,5],
+	first_extra_label:0,//optional
+	second_extra_label:10,//optiona
+	legend_name: "minimal with high priority and Valiant with low priority",
+}
+```
+
+### Stubborn makes a routing to calculate candidates just once. If that candidate is not accepted is trying again every cycle.
+```
+Stubborn{
+	routing: Shortest,
+	legend_name: "stubborn minimal",
+}
+```
+
+## Cartesian-specific routings
+
+### DOR
+
+The dimensional ordered routing. Packets will go minimal along the first dimension as much possible and then on the next.
+
+```
+DOR{
+	order: [0,1],
+	legend_name: "dimension ordered routing, 0 before 1",
+}
+```
+
+
+### O1TURN
+O1TURN is a pair of DOR to balance the usage of the links.
+
+```
+O1TURN{
+	reserved_virtual_channels_order01: [0],
+	reserved_virtual_channels_order10: [1],
+	legend_name: "O1TURN",
+}
+```
+
+### OmniDimensional
+
+McDonal OmniDimensional routing for HyperX. it is a shortest with some allowed deroutes. It does not allow deroutes on unaligned dimensions.
+
+```
+OmniDimensionalDeroute{
+	allowed_deroutes: 3,
+	include_labels: true,//deroutes are given higher labels, implying lower priority. Check router policies.
+	legend_name: "McDonald OmniDimensional routing allowing 3 deroutes",
+}
+```
+
+### ValiantDOR
+
+A proposal by Valiant for Cartesian topologies. It randomizes all-but-one coordinates, followed by a DOR starting by the non-randomized coordinate.
+
+```
+ValiantDOR{
+	randomized: [2,1],
+	shortest: [0,1,2],
+	randomized_reserved_virtual_channels: [1],
+	shortest_reserved_virtual_channels: [0],
+	legend_name: "The less-known proposal of Valiant for Cartesian topologies",
+}
+```
+
+*/
 pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv

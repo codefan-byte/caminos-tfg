@@ -10,10 +10,20 @@ This crate is `caminos-lib`. To use it add `caminos-lib` to your dependencies in
 
 ```toml
 [dependencies]
-caminos-lib = "0.1"
+caminos-lib = "0.2"
 ```
 
 Alternatively, consider whether the binary crate `caminos` fits your intended use.
+
+# Breaking changes
+
+## [0.1.0] to [0.2.0]
+
+* Added methods to `Routing` and `Router` traits to gather statistics.
+* Added method `Routing::performed_request` to allow routings to make decisions when the router makes a request to a candidate.
+* Added `ConfigurationValue::NamedExperiments(String,Vec<ConfigurationValue>)`.
+* Removed surrounding quotes from the config `LitStr` and `Literal`.
+* Now `neighbour_router_iter` must always be used instead of `0..degree()` to check ports to other routers. Note that `degree`  does not give valid ranges when having non-connected ports, as in the case of some irregular topologies as the mesh.
 
 # Public Interface
 
@@ -53,6 +63,7 @@ pub enum ConfigurationValue
 	Object(String,Vec<(String,ConfigurationValue)>),
 	Array(Vec<ConfigurationValue>),
 	Experiments(Vec<ConfigurationValue>),
+	NamedExperiments(String,Vec<ConfigurationValue>),
 	True,
 	False,
 	Where(Rc<ConfigurationValue>,Expr),
@@ -63,6 +74,7 @@ pub enum ConfigurationValue
 * An `Object` os typed `Name { key1 : value1, key2 : value2, [...] }`.
 * An `Array` is typed `[value1, value2, value3, [...]]`.
 * An `Experiments` is typed `![value1, value2, value3, [...]]`. These are used to indicate several simulations in a experiment. This is, the set of simulations to be performed is the product of all lists of this kind.
+* A `NamedExperiments`is typed `username![value1, value2, value3, [...]]`. Its size must match other `NamedExperiment`s with the same name. Thus if there is `{firstkey: alpha![value1, value2, value3],secondkey: alpha![other1,other2,other3]}`, then the simulations will include `{firstkey:value1, secondkey:other1}` and `{firstkey:value3,secondkey:other3}` but it will NOT include `{firstkey:value1,secondkey:other3}`.
 * A `Number` can be written like 2 or 3.1. Stored as a `f64`.
 * A `Literal` is a double-quoted string.
 * `True` is written `true`a and `False` is written `false`.
@@ -125,10 +137,10 @@ Configuration
 	link_classes: [
 		//We can set the delays of different class of links. The number of classes depends on the topology.
 		LinkClass {
-			//The first class always correspond to the links between server and router
+			//In random regular graphs all router--router links have the same class.
 			delay:1,
 		},
-		//In random regular graphs all router--router links have the same class.
+		//The last class always correspond to the links between server and router
 		LinkClass { delay: 1},
 		//In a dragonfly topology we would have 0=server, 1=routers from same group, 2=routers from different groups.
 	],

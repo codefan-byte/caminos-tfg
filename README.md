@@ -22,7 +22,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Added method `Routing::performed_request` to allow routings to make decisions when the router makes a request to a candidate.
 * Added `ConfigurationValue::NamedExperiments(String,Vec<ConfigurationValue>)`.
 * Removed surrounding quotes from the config `LitStr` and `Literal`.
-
+* Now `neighbour_router_iter` must always be used instead of `0..degree()` to check ports to other routers. Note that `degree`  does not give valid ranges when having non-connected ports, as in the case of some irregular topologies as the mesh.
 
 # Public Interface
 
@@ -62,6 +62,7 @@ pub enum ConfigurationValue
 	Object(String,Vec<(String,ConfigurationValue)>),
 	Array(Vec<ConfigurationValue>),
 	Experiments(Vec<ConfigurationValue>),
+	NamedExperiments(String,Vec<ConfigurationValue>),
 	True,
 	False,
 	Where(Rc<ConfigurationValue>,Expr),
@@ -72,6 +73,7 @@ pub enum ConfigurationValue
 * An `Object` os typed `Name { key1 : value1, key2 : value2, [...] }`.
 * An `Array` is typed `[value1, value2, value3, [...]]`.
 * An `Experiments` is typed `![value1, value2, value3, [...]]`. These are used to indicate several simulations in a experiment. This is, the set of simulations to be performed is the product of all lists of this kind.
+* A `NamedExperiments`is typed `username![value1, value2, value3, [...]]`. Its size must match other `NamedExperiment`s with the same name. Thus if there is `{firstkey: alpha![value1, value2, value3],secondkey: alpha![other1,other2,other3]}`, then the simulations will include `{firstkey:value1, secondkey:other1}` and `{firstkey:value3,secondkey:other3}` but it will NOT include `{firstkey:value1,secondkey:other3}`.
 * A `Number` can be written like 2 or 3.1. Stored as a `f64`.
 * A `Literal` is a double-quoted string.
 * `True` is written `true`a and `False` is written `false`.

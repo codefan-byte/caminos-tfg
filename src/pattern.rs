@@ -1,3 +1,10 @@
+/*!
+
+A Pattern defines the way elements select their destinations.
+
+see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration syntax of predefined patterns.
+
+*/
 
 use std::cell::{RefCell};
 use ::rand::{Rng,StdRng};
@@ -39,7 +46,124 @@ pub struct PatternBuilderArgument<'a>
 }
 
 
-///Build a new pattern.
+/**Build a new pattern. Patterns are maps between two sets which may depend on the RNG. Generally over the whole set of servers, but sometimes among routers or groups. Check the domentation of the parent Traffic/Permutation for its interpretation.
+
+### Uniform
+
+In the uniform pattern all elements have same probability to send to any other.
+```
+Uniform{
+	legend_name: "uniform",
+}
+```
+
+
+## Permutations.
+Each element has a unique destination and a unique element from which it is a destination.
+
+### RandomPermutation
+Have same chance to generate any permutation
+```
+RandomPermutation{
+	legend_name: "random server permutation",
+}
+```
+
+### RandomInvolution
+Can only generate involutions. This is, if `p` is the permutation then for any element `x`, `p(p(x))=x`.
+```
+RandomInvolution{
+	legend_name: "random server involution",
+}
+```
+
+### FileMap
+A map read from file. Each elment has a unique destination.
+```
+FileMap{
+	filename: "/path/to/pattern",
+	legend_name: "A pattern in my device",
+}
+```
+
+### CartesianTransform
+Sees the elments as a n-dimensional orthohedra. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
+```
+CartesianTransform{
+	sides: [4,8,8],
+	shift: [0,4,0],//optional
+	permute: [0,2,1],//optional
+	complement: [false,true,false],//optional
+	legend_name: "Some lineal transformation over a 8x8 mesh with 4 servers per router",
+}
+```
+
+### Hotspots.
+A pool of hotspots is build from a given list of `destinations` plus some amount `extra_random_destinations` computed randomly on initialization.
+Destinations are randomly selected from such pool
+```
+Hotspots{
+	//destinations: [],//default empty
+	extra_random_destinations: 5,//default 0
+	legend_name: "every server send to one of 5 randomly selected hotspots",
+}
+```
+
+## meta patterns
+
+### Product
+The elements are divided in blocks. Blocks are mapped to blocks by the `global_pattern`. The `block_pattern` must has input and output size equal to `block_size` and maps the specific elements.
+```
+Product{
+	block_pattern: RandomPermutation,
+	global_pattern: RandomPermutation,
+	block_size: 10,
+	legend_name:"permutation of blocks",
+}
+```
+
+### Component
+Divides the topology along link classes. The 'local' pattern is Uniform.
+```
+Components{
+	global_pattern: RandomPermutation,
+	component_classes: [0],
+	legend_name: "permutation of the induced group by the 0 link class",
+}
+```
+
+### Composition
+Allows to concatenate transformations.
+```
+Composition{
+	patterns: [  FileMap{filename: "/patterns/second"}, FileMap{filename: "/patterns/first"}  ]
+	legend_name: "Apply first to origin, and then second to get the destination",
+}
+```
+
+
+### Pow.
+A Pow is composition of a `pattern` with itself `exponent` times.
+```
+Pow{
+	pattern: FileMap{filename: "/patterns/mypattern"},
+	exponent: "3",
+	legend_name: "Apply 3 times my pattern",
+}
+```
+
+
+### RandomMix
+Probabilistically mix a list of patterns.
+```
+RandomMix{
+	patterns: [Hotspots{extra_random_destination:10}, Uniform],
+	weight: [5,95],
+	legend_name: "0.05 chance of sending to the hotspots",
+}
+```
+
+*/
 pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv

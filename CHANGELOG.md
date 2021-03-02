@@ -2,6 +2,14 @@
 
 ## next? [0.2.0]
 
+### 2021-03-02
+git tag 0.2.0 -m "v0.2.0"
+git commit -m "tag to v0.2"
+
+### 2021-02-12
+Updating documentation.
+Set version 0.2.0 in Cargo.toml.
+
 ### 2021-02-09
 git commit -m "implemented Hotspots and RandomMix patterns."
 Added the `at` config-function to access arrays in output description files.
