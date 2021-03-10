@@ -12,6 +12,7 @@ pub mod neighbourslists;
 pub mod dragonfly;
 pub mod projective;
 pub mod slimfly;
+pub mod multistage;
 
 use std::cell::{RefCell};
 use std::fs::File;
@@ -24,6 +25,7 @@ use self::neighbourslists::NeighboursLists;
 use self::dragonfly::CanonicDragonfly;
 use self::projective::{Projective,LeviProjective};
 use self::slimfly::SlimFly;
+use self::multistage::MultiStage;
 use crate::config_parser::ConfigurationValue;
 use crate::matrix::Matrix;
 use crate::quantify::Quantifiable;
@@ -62,17 +64,20 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 {
 	fn num_routers(&self) -> usize;
 	fn num_servers(&self) -> usize;
-	fn num_arcs(&self) -> usize;
+	// num_arcs is never used: deleted
+	// fn num_arcs(&self) -> usize;
 	///Neighbours of a router: Location+link class index
 	///Routers should be before servers
 	fn neighbour(&self, router_index:usize, port:usize) -> (Location,usize);
 	///The neighbour of a server: Location+link class index
 	//FIXME: What to do with BCube and similar?
 	fn server_neighbour(&self, server_index:usize) -> (Location,usize);
+	//diameter is only used in private projects...
 	///the greatest distance from server to server
 	fn diameter(&self) -> usize;
-	///from servers to different servers
-	fn average_distance(&self) -> f32;
+	//average distance is never used: deleted
+	// ///from servers to different servers
+	// fn average_distance(&self) -> f32;
 	///Distance from a router to another.
 	fn distance(&self,origin:usize,destination:usize) -> usize;
 	///Number of shortest paths from a router to another.
@@ -82,7 +87,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	//fn arc_uniformity(&self) -> f32;
 	//fn throughput(&self) -> f32;
 	//fn get_arc_betweenness_matrix(&self) -> ??
-	fn distance_distribution(&self,origin:usize) -> Vec<usize>;
+	//fn distance_distribution(&self,origin:usize) -> Vec<usize>;
 	//fn eigenvalue_powerdouble(&self) -> f32
 	fn maximum_degree(&self) -> usize;
 	fn minimum_degree(&self) -> usize;
@@ -739,6 +744,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"Projective" => Box::new(Projective::new(arg)),
 			"LeviProjective" => Box::new(LeviProjective::new(arg)),
 			"SlimFly" => Box::new(SlimFly::new(arg)),
+			"MultiStage" | "XGFT" | "OFT" | "RFC" => Box::new(MultiStage::new(arg)),
 			_ => panic!("Unknown topology {}",cv_name),
 		}
 	}

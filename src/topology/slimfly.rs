@@ -172,10 +172,6 @@ impl Topology for SlimFly
 	{
 		self.servers_per_router * self.num_routers()
 	}
-	fn num_arcs(&self) -> usize
-	{
-		todo!();
-	}
 	///Neighbours of a router: Location+link class index
 	///Routers should be before servers
 	fn neighbour(&self, router_index:usize, port:usize) -> (Location,usize)
@@ -255,11 +251,6 @@ impl Topology for SlimFly
 	{
 		2
 	}
-	///from servers to different servers
-	fn average_distance(&self) -> f32
-	{
-		todo!()
-	}
 	///Distance from a router to another.
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
@@ -302,10 +293,6 @@ impl Topology for SlimFly
 	}
 	///Average number of shortest paths from a router to another.
 	fn average_amount_shortest_paths(&self) -> f32
-	{
-		todo!();
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
 	{
 		todo!();
 	}

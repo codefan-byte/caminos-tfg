@@ -2,6 +2,26 @@
 
 ## next? [0.2.0]
 
+### 2021-03-10
+Added plugs for stages.
+Attributes of `LevelRequirements` made public.
+Removed from the `Topology` interfaz the never used methods `num_arcs`, `average_distance`, `distance_distribution`.
+git commit -m "Added multistage topologies. Cleanup on Topology interfaz."
+
+### 2021-03-09
+Changed `WidenedStage` to use a boxed `base` as to be able to build it.
+Added a `new` method to each stage.
+
+### 2021-03-05
+MultiStage sizes computed via LevelRequirements.
+New stages ExplicitStage, WidenedStage.
+
+### 2021-03-03
+New file multistage.rs definining MultiStage topologies in terms of Stages connecting pairs of levels of routers.
+Projective types Geometry, SelfDualGeometry, FlatGeometry, and FlatGeometryCache made public. And used in multistage for the OFT.
+Added requirement FlatGeometry:Clone.
+Implemented stages FatStage and ProjectiveStage, upon which the topologies XGFT and OFT are built.
+
 ### 2021-03-02
 git tag 0.2.0 -m "v0.2.0"
 git commit -m "tag to v0.2"

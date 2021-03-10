@@ -19,7 +19,7 @@ use crate::{
 //	//points: Vec<ProjectivePlanePoint<F>>
 //}
 
-trait Geometry
+pub trait Geometry
 {
 	type Point;
 	type Line;
@@ -36,7 +36,7 @@ trait Geometry
 	fn is_incident(&self, line:&Self::Line, point:&Self::Point) -> bool;
 }
 
-trait SelfDualGeometry
+pub trait SelfDualGeometry
 {
 	type Point;
 	//type Incident : Iterator<Item=Self::Point>;
@@ -81,7 +81,7 @@ impl<G:SelfDualGeometry> Geometry for G
 	}
 }
 
-trait FlatGeometry : Debug + Quantifiable
+pub trait FlatGeometry : Debug + Quantifiable
 {
 	fn amount_points(&self) -> usize;
 	fn amount_lines(&self) -> usize;
@@ -225,18 +225,18 @@ impl<G:Geometry + Debug + Quantifiable> FlatGeometry for G
 
 
 #[derive(Debug,Quantifiable)]
-struct FlatGeometryCache
+pub struct FlatGeometryCache
 {
-	geometry: Box<dyn FlatGeometry>,
+	pub geometry: Box<dyn FlatGeometry>,
 	///lines_by_point[point][point_index]=(line,line_index) satisfying points_by_line[line][line_index]=(point,point_index).
-	lines_by_point: Vec<Vec<(usize,usize)>>,
+	pub lines_by_point: Vec<Vec<(usize,usize)>>,
 	///points_by_line[line][line_index]=(point,point_index) satisfying lines_by_point[point][point_index]=(line,line_index).
-	points_by_line: Vec<Vec<(usize,usize)>>,
+	pub points_by_line: Vec<Vec<(usize,usize)>>,
 }
 
 impl FlatGeometryCache
 {
-	fn new_prime(prime:usize) -> Result<FlatGeometryCache,()>
+	pub fn new_prime(prime:usize) -> Result<FlatGeometryCache,()>
 	{
 		for divisor in 2..prime
 		{
@@ -299,7 +299,7 @@ impl FlatGeometryCache
 ///The projective topology.
 ///Erdos, Renyi graph
 ///Or Brown graph
-///Used by Brahme a a network topology, with other definition.
+///Used by Brahme as a network topology, with other definition.
 #[derive(Debug,Quantifiable)]
 pub struct Projective
 {
@@ -318,10 +318,6 @@ impl Topology for Projective
 	fn num_servers(&self) -> usize
 	{
 		self.servers_per_router * self.num_routers()
-	}
-	fn num_arcs(&self) -> usize
-	{
-		todo!();
 	}
 	///Neighbours of a router: Location+link class index
 	///Routers should be before servers
@@ -365,11 +361,11 @@ impl Topology for Projective
 	{
 		2
 	}
-	///from servers to different servers
-	fn average_distance(&self) -> f32
-	{
-		2f32
-	}
+	//from servers to different servers
+	//fn average_distance(&self) -> f32
+	//{
+	//	2f32
+	//}
 	///Distance from a router to another.
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
@@ -391,10 +387,6 @@ impl Topology for Projective
 	}
 	///Average number of shortest paths from a router to another.
 	fn average_amount_shortest_paths(&self) -> f32
-	{
-		todo!();
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
 	{
 		todo!();
 	}
@@ -501,10 +493,6 @@ impl Topology for LeviProjective
 	{
 		self.servers_per_router * self.num_routers()
 	}
-	fn num_arcs(&self) -> usize
-	{
-		todo!();
-	}
 	///Neighbours of a router: Location+link class index
 	///Routers should be before servers
 	fn neighbour(&self, router_index:usize, port:usize) -> (Location,usize)
@@ -561,12 +549,12 @@ impl Topology for LeviProjective
 	{
 		3
 	}
-	///from servers to different servers
-	fn average_distance(&self) -> f32
-	{
-		//2f32
-		todo!()
-	}
+	// ///from servers to different servers
+	// fn average_distance(&self) -> f32
+	// {
+	// 	//2f32
+	// 	todo!()
+	// }
 	///Distance from a router to another.
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
@@ -601,10 +589,6 @@ impl Topology for LeviProjective
 	}
 	///Average number of shortest paths from a router to another.
 	fn average_amount_shortest_paths(&self) -> f32
-	{
-		todo!();
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
 	{
 		todo!();
 	}

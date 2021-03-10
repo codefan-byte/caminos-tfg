@@ -264,7 +264,8 @@ use std::fmt::Debug;
 use rand::{StdRng,SeedableRng};
 
 use config_parser::{ConfigurationValue};
-use topology::{Topology,new_topology,TopologyBuilderArgument,Location};
+use topology::{Topology,new_topology,TopologyBuilderArgument,Location,
+	multistage::{Stage,StageBuilderArgument}};
 use traffic::{Traffic,new_traffic,TrafficBuilderArgument,TrafficError};
 use router::{Router,new_router,RouterBuilderArgument,TransmissionFromServer,TransmissionMechanism,StatusAtEmissor};
 use routing::{RoutingInfo,Routing,new_routing,RoutingBuilderArgument};
@@ -1413,6 +1414,7 @@ pub struct Plugs
 	routers: BTreeMap<String, fn(RouterBuilderArgument) -> Rc<RefCell<dyn Router>>  >,
 	//topologies: BTreeMap<String, fn(&ConfigurationValue, &Plugs, &RefCell<StdRng>) -> Box<dyn Topology> >,
 	topologies: BTreeMap<String, fn(TopologyBuilderArgument) -> Box<dyn Topology> >,
+	stages: BTreeMap<String, fn(StageBuilderArgument) -> Box<dyn Stage> >,
 	//routings: BTreeMap<String,fn(&ConfigurationValue, &Plugs) -> Box<dyn Routing>>,
 	routings: BTreeMap<String,fn(RoutingBuilderArgument) -> Box<dyn Routing>>,
 	//traffics: BTreeMap<String,fn(&ConfigurationValue, &Plugs, &Box<dyn Topology>, &RefCell<StdRng>) -> Box<dyn Traffic> >,
@@ -1431,6 +1433,10 @@ impl Plugs
 	pub fn add_topology(&mut self, key:String, builder:fn(TopologyBuilderArgument) -> Box<dyn Topology>)
 	{
 		self.topologies.insert(key,builder);
+	}
+	pub fn add_stage(&mut self, key:String, builder:fn(StageBuilderArgument) -> Box<dyn Stage>)
+	{
+		self.stages.insert(key,builder);
 	}
 	pub fn add_traffic(&mut self, key:String, builder:fn(TrafficBuilderArgument) -> Box<dyn Traffic>)
 	{
@@ -1456,6 +1462,7 @@ impl Debug for Plugs
 	{
 		write!(f,"{};",self.routers.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;
 		write!(f,"{};",self.topologies.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;
+		write!(f,"{};",self.stages.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;
 		write!(f,"{};",self.routings.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;
 		write!(f,"{};",self.traffics.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;
 		write!(f,"{};",self.patterns.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;

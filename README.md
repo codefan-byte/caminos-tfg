@@ -23,6 +23,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Added `ConfigurationValue::NamedExperiments(String,Vec<ConfigurationValue>)`.
 * Removed surrounding quotes from the config `LitStr` and `Literal`.
 * Now `neighbour_router_iter` must always be used instead of `0..degree()` to check ports to other routers. Note that `degree`  does not give valid ranges when having non-connected ports, as in the case of some irregular topologies as the mesh.
+* `Plugs` now include a `stages` attribute.
 
 # Public Interface
 

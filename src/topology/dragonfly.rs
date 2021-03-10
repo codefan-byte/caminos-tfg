@@ -44,11 +44,6 @@ impl Topology for CanonicDragonfly
 	{
 		self.group_size * self.number_of_groups * self.servers_per_router
 	}
-	fn num_arcs(&self) -> usize
-	{
-		//self.num_routers()*self.cartesian_data.sides.len()*2
-		unimplemented!()
-	}
 	fn neighbour(&self, router_index:usize, port: usize) -> (Location,usize)
 	{
 		let (router_local,router_global)=self.unpack(router_index);
@@ -87,10 +82,6 @@ impl Topology for CanonicDragonfly
 	{
 		3
 	}
-	fn average_distance(&self) -> f32
-	{
-		unimplemented!();
-	}
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
 		*self.distance_matrix.get(origin,destination)
@@ -103,10 +94,6 @@ impl Topology for CanonicDragonfly
 	fn average_amount_shortest_paths(&self) -> f32
 	{
 		//self.average_amount
-		unimplemented!();
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
-	{
 		unimplemented!();
 	}
 	fn maximum_degree(&self) -> usize

@@ -64,11 +64,11 @@ impl Topology for NeighboursLists
 		//self.servers.iter().sum()
 		self.routers_by_server.len()
 	}
-	fn num_arcs(&self) -> usize
-	{
-		//self.num_routers()*self.cartesian_data.sides.len()*2
-		unimplemented!()
-	}
+	//fn num_arcs(&self) -> usize
+	//{
+	//	//self.num_routers()*self.cartesian_data.sides.len()*2
+	//	unimplemented!()
+	//}
 	//fn num_servers(&self, _router_index:usize) -> usize
 	//{
 	//	self.servers_per_router
@@ -107,10 +107,6 @@ impl Topology for NeighboursLists
 		}
 		maximum
 	}
-	fn average_distance(&self) -> f32
-	{
-		unimplemented!();
-	}
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
 		//unimplemented!();
@@ -123,10 +119,6 @@ impl Topology for NeighboursLists
 	fn average_amount_shortest_paths(&self) -> f32
 	{
 		self.average_amount
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
-	{
-		unimplemented!();
 	}
 	fn maximum_degree(&self) -> usize
 	{

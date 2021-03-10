@@ -88,13 +88,9 @@ impl Topology for Mesh
 	{
 		self.cartesian_data.size*self.servers_per_router
 	}
-	fn num_arcs(&self) -> usize
-	{
-		self.num_routers()*self.cartesian_data.sides.len()*2
-	}
-	//fn num_servers(&self, _router_index:usize) -> usize
+	//fn num_arcs(&self) -> usize
 	//{
-	//	self.servers_per_router
+	//	self.num_routers()*self.cartesian_data.sides.len()*2
 	//}
 	fn neighbour(&self, router_index:usize, port: usize) -> (Location,usize)
 	{
@@ -141,10 +137,6 @@ impl Topology for Mesh
 	{
 		self.cartesian_data.sides.iter().map(|s|s-1).sum()
 	}
-	fn average_distance(&self) -> f32
-	{
-		unimplemented!();
-	}
 	fn distance(&self,_origin:usize,_destination:usize) -> usize
 	{
 		unimplemented!();
@@ -154,10 +146,6 @@ impl Topology for Mesh
 		unimplemented!();
 	}
 	fn average_amount_shortest_paths(&self) -> f32
-	{
-		unimplemented!();
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
 	{
 		unimplemented!();
 	}
@@ -284,10 +272,10 @@ impl Topology for Torus
 	{
 		self.cartesian_data.size*self.servers_per_router
 	}
-	fn num_arcs(&self) -> usize
-	{
-		self.num_routers()*self.cartesian_data.sides.len()*2
-	}
+	//fn num_arcs(&self) -> usize
+	//{
+	//	self.num_routers()*self.cartesian_data.sides.len()*2
+	//}
 	//fn num_servers(&self, _router_index:usize) -> usize
 	//{
 	//	self.servers_per_router
@@ -333,10 +321,6 @@ impl Topology for Torus
 	{
 		self.cartesian_data.sides.iter().map(|s|s/2).sum()
 	}
-	fn average_distance(&self) -> f32
-	{
-		unimplemented!();
-	}
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
 		let coord_origin=self.cartesian_data.unpack(origin);
@@ -349,10 +333,6 @@ impl Topology for Torus
 		unimplemented!();
 	}
 	fn average_amount_shortest_paths(&self) -> f32
-	{
-		unimplemented!();
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
 	{
 		unimplemented!();
 	}
@@ -476,10 +456,10 @@ impl Topology for Hamming
 	{
 		self.cartesian_data.size*self.servers_per_router
 	}
-	fn num_arcs(&self) -> usize
-	{
-		self.num_routers()*self.maximum_degree()
-	}
+	//fn num_arcs(&self) -> usize
+	//{
+	//	self.num_routers()*self.maximum_degree()
+	//}
 	//fn num_servers(&self, _router_index:usize) -> usize
 	//{
 	//	self.servers_per_router
@@ -533,10 +513,6 @@ impl Topology for Hamming
 	{
 		self.cartesian_data.sides.len()
 	}
-	fn average_distance(&self) -> f32
-	{
-		unimplemented!();
-	}
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
 		let m=self.cartesian_data.sides.len();
@@ -557,10 +533,6 @@ impl Topology for Hamming
 		unimplemented!();
 	}
 	fn average_amount_shortest_paths(&self) -> f32
-	{
-		unimplemented!();
-	}
-	fn distance_distribution(&self,_origin:usize) -> Vec<usize>
 	{
 		unimplemented!();
 	}
