@@ -4,6 +4,7 @@
 
 ### 2021-03-12
 git commit -m "Preparing to publish version 0.2."
+git commit -m "Track multistage.rs"
 
 ### 2021-03-10
 Added plugs for stages.
