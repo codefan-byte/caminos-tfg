@@ -323,7 +323,7 @@ impl Topology for Projective
 	///Routers should be before servers
 	fn neighbour(&self, router_index:usize, port:usize) -> (Location,usize)
 	{
-		let neighs = self.plane.incident_points(router_index).expect(&format!("invalid router_index={}",router_index));
+		let neighs = self.plane.incident_points(router_index).unwrap_or_else(|_|panic!("invalid router_index={}",router_index));
 		if port<neighs.len()
 		{
 			let (neighbour_router, neighbour_port) = neighs[port];
@@ -426,6 +426,10 @@ impl Topology for Projective
 	{
 		false
 	}
+	fn up_down_distance(&self,_origin:usize,_destination:usize) -> Option<(usize,usize)>
+	{
+		None
+	}
 }
 
 impl Projective
@@ -466,7 +470,7 @@ impl Projective
 		let prime=prime.expect("There were no prime");
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
 		Projective{
-			plane: FlatGeometryCache::new_prime(prime).expect(&format!("{} is not prime, which is required for the Projective topology",prime)),
+			plane: FlatGeometryCache::new_prime(prime).unwrap_or_else(|_|panic!("{} is not prime, which is required for the Projective topology",prime)),
 			servers_per_router,
 		}
 	}
@@ -501,7 +505,7 @@ impl Topology for LeviProjective
 		if router_index < np
 		{
 			//The router is a point
-			let neighs = self.plane.incident_lines(router_index).expect(&format!("invalid router_index={}",router_index));
+			let neighs = self.plane.incident_lines(router_index).unwrap_or_else(|_|panic!("invalid router_index={}",router_index));
 			if port<neighs.len()
 			{
 				let (neighbour_line, neighbour_port) = neighs[port];
@@ -518,7 +522,7 @@ impl Topology for LeviProjective
 		} else {
 			//The router is a line
 			let line = router_index - np;
-			let neighs = self.plane.incident_points(line).expect(&format!("invalid router_index={}",router_index));
+			let neighs = self.plane.incident_points(line).unwrap_or_else(|_|panic!("invalid router_index={}",router_index));
 			if port<neighs.len()
 			{
 				let (neighbour_point, neighbour_port) = neighs[port];
@@ -640,6 +644,10 @@ impl Topology for LeviProjective
 	{
 		false
 	}
+	fn up_down_distance(&self,_origin:usize,_destination:usize) -> Option<(usize,usize)>
+	{
+		None
+	}
 }
 
 impl LeviProjective
@@ -680,7 +688,7 @@ impl LeviProjective
 		let prime=prime.expect("There were no prime");
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
 		LeviProjective{
-			plane: FlatGeometryCache::new_prime(prime).expect(&format!("{} is not prime, which is required for the Projective topology",prime)),
+			plane: FlatGeometryCache::new_prime(prime).unwrap_or_else(|_|panic!("{} is not prime, which is required for the Projective topology",prime)),
 			servers_per_router,
 		}
 	}

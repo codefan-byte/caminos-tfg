@@ -125,6 +125,18 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	///Specific for some toologies, but must be checkable for anyone
 	/// Indicates if going from input_port to output_port implies a direction change. Used for the bubble routing.
 	fn is_direction_change(&self, router_index:usize, input_port: usize, output_port: usize) -> bool;
+	///For topologies containing the so called up/down paths. Other topologies should return always `None`.
+	///If the return is `Some((u,d))` it means there is an initial up sub-path of length `u` followed by a down sub-path of length `d` starting at `origin` and ending at `destination`. A return value of `None` means there is no up/down path from `origin` to `destination`.
+	///Some general guidelines, although it is not clear if they must hold always:
+	/// * If there is a down path of length `d` then return `Some((0,d))`
+	/// * If there is a up path of length `u` then return `Some((u,0))`
+	/// * If `up_down_distance(s,t)=(u,d)` with `u>0` then some neighour `m` of `s` should have `up_down_distance(m,t)=(u-1,d)`
+	/// * Return always a path of least `u+d`.
+	/// * Minimize `u` before `d`?
+	/// * If `up_down_distance(s,t)=(u,d)` then `up_down_distance(t,s)=(d,u)`?
+	/// * In multistage networks `u-d` is the difference on levels and allows for some algebra.
+	///Note that in general `u+d` is not an actual distance, since the triangular inequality does not hold.
+	fn up_down_distance(&self,origin:usize,destination:usize) -> Option<(usize,usize)>;
 
 	///Breadth First Search to compute distances from a router to all others.
 	///It may use weights, but it there are multiple paths with different distances it may give a non-minimal distance, since it is not Dijkstra.
@@ -695,7 +707,7 @@ CanonicDragonfly{
 ## Networks built over finite fields. Only prime fields are currently supported.
 
 ### LeviProjective.
-This topology is the Levi graph of the projective plane over a finite field. Both lines and points of the projective plane become vertices, that is, routers. Has average distance around 2.5, diameter 3 and girth 6. The finite field is of order `prime`, that should be a prime number. Powers are not yet supported. The topology degree is the prime plus one.
+This topology is the Levi graph of the projective plane over a finite field. Both lines and points of the projective plane become vertices, that is, routers. Has average distance around 2.5, diameter 3 and girth 6. The finite field is of order `prime`, that should be a prime number. Powers are not yet supported. The topology degree is the prime plus one. Called projective networks in "Projective Networks: Topologies for Large Parallel Computer Systems" by C. Camarero et al.
 ```
 LeviProjective{
 	prime: 19,
@@ -705,7 +717,7 @@ LeviProjective{
 ```
 
 ### Projective.
-This is the quotient of the LeviProjective over a polarity: a bijection between points and lines that maintains incidence. It is also known as Brown graph or Erdös--Renyí graph. The degree is again `prime+1`, except in the fixed points which became loops. These loops are removed from the network, becoming non-conected ports. Has diameter 2, average distance a little below and girth 5.
+This is the quotient of the LeviProjective over a polarity: a bijection between points and lines that maintains incidence. It is also known as Brown graph or Erdös--Renyí graph. The degree is again `prime+1`, except in the fixed points which became loops. These loops are removed from the network, becoming non-conected ports. Has diameter 2, average distance a little below and girth 5. Called demi-projective networks in "Projective Networks: Topologies for Large Parallel Computer Systems" by C. Camarero et al.
 ```
 Projective{
 	prime: 19,
@@ -724,6 +736,64 @@ SlimFly{
 	legend_name: "Slimfly MMS over q=19",
 }
 ```
+
+## Multi-stage networks.
+In a multi-stage network routers are grouped by levels, which the routers within a level connecting only to routers of the preceding and the next levels. Routers at level 0 (the first level) are called leaf routers and they are the ones connected servers. We call stages to the connections from a level to the next. The number of stages is called height and it is one less than the number of levels. The levels hence range from 0 up to height (both inclusive).
+
+### Generic MultiStage
+```
+MultiStage{
+	stages:[
+		Fat { bottom_factor:4, top_factor:4 },
+		Fat { bottom_factor:8, top_factor:4 },
+	],
+	servers_per_leaf: 4,
+	legend_name: "a fat-tree defined using stages"
+}
+```
+
+### XGFT
+An eXtended Generalized Fat-Tree, see "On Generalized Fat Trees" by S. R. Öhring et al.
+
+```
+XGFT{
+	height: 3,
+	down: [4,4,8],
+	up: [4,4,4],
+	servers_per_leaf: 4,
+	legend_name: "XGFT(3;4,4,8;4,4,4)",
+}
+```
+
+### OFT
+Orthogonal Fat-Tree, see "Recursively Scalable Fat-Trees as Interconnection Networks" by M. Valerio et al. Uses the construction shown in "Projective Networks: Topologies for Large Parallel Computer Systems" by C. Camarero et al. For the moment only implemented for projective planes over prime finite fields, excluding higher powers.
+
+The optional parameter `double_topmost_level` (default to true) indicates whether the bottom of the last stage should be doubled, as using all ports in the topmost routers for downwards connections.
+
+```
+OFT{
+	height: 2,
+	prime: 3,
+	servers_per_leaf: 4,
+	//double_topmost_level: false,//optional parameter
+	legend_name: "OFT over the projective plane of 3 points",
+}
+```
+
+### RFC
+Random Folded Clos. See "Random Folded Clos Topologies for Datacenter Networks" by C. Camarero et al.
+
+```
+RFC{
+	height: 3,
+	down: [10,10,20],
+	up: [10,10,10],
+	sizes: [80,80,80,40],
+	servers_per_leaf: 4,
+	legend_name: "RGC of radix 20 with 80 leaf routers",
+}
+```
+
 */
 pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 {

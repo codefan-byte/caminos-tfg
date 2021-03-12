@@ -1,12 +1,20 @@
 # Change Log
 
-## next? [0.2.0]
+## [0.2.0]
+
+### 2021-03-12
+git commit -m "Preparing to publish version 0.2."
 
 ### 2021-03-10
 Added plugs for stages.
 Attributes of `LevelRequirements` made public.
 Removed from the `Topology` interfaz the never used methods `num_arcs`, `average_distance`, `distance_distribution`.
 git commit -m "Added multistage topologies. Cleanup on Topology interfaz."
+Added method `up_down_distance` to `Topology`.
+Splitting up/down distance table in MultiStage into a up-component and a down-component. Removed its pure up-distance table.
+New routing `UpDown`.
+Replaced several `.expect(&format!(...))` by `.wrap_or_else(|_|panic!(...))`, to avoid formatting strings except when reporting errors.
+Added a bit of documentation.
 
 ### 2021-03-09
 Changed `WidenedStage` to use a boxed `base` as to be able to build it.

@@ -213,7 +213,7 @@ impl Topology for SlimFly
 		}
 		let offset = offset - self.field.size();
 		(Location::ServerPort(offset+router_index*self.servers_per_router),2)
-		//let neighs = self.plane.incident_points(router_index).expect(&format!("invalid router_index={}",router_index));
+		//let neighs = self.plane.incident_points(router_index).unwrap_or_else(|_|panic!("invalid router_index={}",router_index));
 		//if port<neighs.len()
 		//{
 		//	let (neighbour_router, neighbour_port) = neighs[port];
@@ -330,6 +330,10 @@ impl Topology for SlimFly
 	{
 		false
 	}
+	fn up_down_distance(&self,_origin:usize,_destination:usize) -> Option<(usize,usize)>
+	{
+		None
+	}
 }
 
 impl SlimFly
@@ -378,7 +382,7 @@ impl SlimFly
 		let field = IntegerIdealRing{modulo:prime};
 		let primitive=primitive.unwrap_or_else(||{
 			let n=field.size();
-			(2..n).find(|x|field.is_primitive(*x)).expect(&format!("Could not find a primtive element in the ring {:?}",field))
+			(2..n).find(|x|field.is_primitive(*x)).unwrap_or_else(||panic!("Could not find a primtive element in the ring {:?}",field))
 		});
 		let epsilon:i32 = {
 			let p4 = prime % 4;

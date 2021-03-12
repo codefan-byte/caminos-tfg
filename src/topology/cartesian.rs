@@ -187,6 +187,10 @@ impl Topology for Mesh
 	{
 		input_port/2 != output_port/2
 	}
+	fn up_down_distance(&self,_origin:usize,_destination:usize) -> Option<(usize,usize)>
+	{
+		None
+	}
 }
 
 impl Mesh
@@ -386,6 +390,10 @@ impl Topology for Torus
 	{
 		input_port/2 != output_port/2
 	}
+	fn up_down_distance(&self,_origin:usize,_destination:usize) -> Option<(usize,usize)>
+	{
+		None
+	}
 }
 
 impl Torus
@@ -565,6 +573,10 @@ impl Topology for Hamming
 	{
 		//input_port/2 != output_port/2
 		true
+	}
+	fn up_down_distance(&self,_origin:usize,_destination:usize) -> Option<(usize,usize)>
+	{
+		None
 	}
 }
 

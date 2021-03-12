@@ -24,6 +24,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Removed surrounding quotes from the config `LitStr` and `Literal`.
 * Now `neighbour_router_iter` must always be used instead of `0..degree()` to check ports to other routers. Note that `degree`  does not give valid ranges when having non-connected ports, as in the case of some irregular topologies as the mesh.
 * `Plugs` now include a `stages` attribute.
+* Removed from the `Topology` interfaz the never used methods `num_arcs`, `average_distance`, `distance_distribution`.
 
 # Public Interface
 
@@ -115,7 +116,7 @@ Configuration
 		//The number of virtual channels. The basic router sets a buffer for each virtual channel in each port, both at input and output.
 		virtual_channels: 6,
 		//Policies that filter the candidate routes given by the routing algorithm. They may be used to break deadlock or to give preference to some choices.
-		virtual_channel_policy: [ WideHops{width:1}, LowestSinghWeight{extra_congestion:0, extra_distance:0, aggregate_buffers:true, use_internal_space:true}, Random ],
+		virtual_channel_policies: [ WideHops{width:1}, LowestSinghWeight{extra_congestion:0, extra_distance:0, aggregate_buffers:true, use_internal_space:true}, Random ],
 		delay: 0,//not actually implemted in the basic router. In the future it may be removed or actually implemented.
 		buffer_size: 64,//phits available in each input buffer
 		bubble: false,//to enable bubble mechanism in Cartesian topologies.
@@ -123,6 +124,7 @@ Configuration
 		intransit_priority: false,//whether to give preference to transit over injection.
 		allow_request_busy_port: true,//whether to allow input buffer to make requests to ports that are transmitting
 		output_buffer_size:32,//Available phits in each output_buffer.
+		output_priorize_lowest_label: true,//whether arbiters give priority to requests with lowest label.
 	},
 	routing: ![//Algorithm to provide candidate exit ports.
 		Shortest { legend_name: "shortest" },
@@ -196,6 +198,7 @@ An example of output decription `main.od` is
 			},
 		],
 		legend: =configuration.routing.legend_name,
+		prefix: "loaddelay",
 		backend: Tikz
 		{
 			//We use tikz to create the figures.
@@ -217,6 +220,7 @@ An example of output decription `main.od` is
 			//max_ordinate: 1.0,
 		}],
 		legend: =configuration.routing.legend_name,
+		prefix: "hophistogram",
 		backend: Tikz
 		{
 			tex_filename: "hop_histogram.tex",

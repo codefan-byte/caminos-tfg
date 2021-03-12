@@ -126,6 +126,10 @@ impl Topology for CanonicDragonfly
 		//input_port/2 != output_port/2
 		true
 	}
+	fn up_down_distance(&self,_origin:usize,_destination:usize) -> Option<(usize,usize)>
+	{
+		None
+	}
 }
 
 impl CanonicDragonfly

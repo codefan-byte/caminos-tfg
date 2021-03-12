@@ -290,7 +290,7 @@ impl<'a> Experiment<'a>
 				//let prefix=line.split(":").next().expect("Not found the expected journal index");
 				let mut s = line.split(":");
 				let prefix=s.next().expect("Not found the expected journal index");
-				journal_index= 1usize+prefix.parse::<usize>().expect(&format!("The journal index must be a non-negative integer (received {})",prefix));
+				journal_index= 1usize+prefix.parse::<usize>().unwrap_or_else(|_|panic!("The journal index must be a non-negative integer (received {})",prefix));
 				let entry = s.next().expect("No content found on the journal line");
 				if entry.starts_with(" Launched jobs ")
 				{
@@ -307,14 +307,14 @@ impl<'a> Experiment<'a>
 							continue;
 						}
 						let mut slurm_pair = slurm_item.split("=");
-						let slurm_job_id = slurm_pair.next().unwrap().parse::<usize>().expect(&format!("left term on '{}' should be an integer",slurm_item));
+						let slurm_job_id = slurm_pair.next().unwrap().parse::<usize>().unwrap_or_else(|_|panic!("left term on '{}' should be an integer",slurm_item));
 						if visible_slurm_jobs.contains(&slurm_job_id)
 						{
 							owned_slurm_jobs.push(slurm_job_id);
 							let slurm_job_content = slurm_pair.next().unwrap();
 							let left_bracket_index = slurm_job_content.find("[").unwrap();
 							let right_bracket_index = slurm_job_content.find("]").unwrap();
-							let experiments=slurm_job_content[left_bracket_index+1 .. right_bracket_index].split(",").map(|item|item.parse::<usize>().expect(&format!("failed with content={} for item {}",slurm_job_content,slurm_item)));
+							let experiments=slurm_job_content[left_bracket_index+1 .. right_bracket_index].split(",").map(|item|item.parse::<usize>().unwrap_or_else(|_|panic!("failed with content={} for item {}",slurm_job_content,slurm_item)));
 							experiments_on_slurm.extend(experiments);
 						}
 					}
@@ -391,9 +391,9 @@ impl<'a> Experiment<'a>
 		let external_experiments = if let Some(ref path) = self.options.external_source
 		{
 			let cfg = path.join("main.cfg");
-			let mut cfg_file=File::open(&cfg).expect(&format!("main.cfg from --source={:?} could not be opened",path));
+			let mut cfg_file=File::open(&cfg).unwrap_or_else(|_|panic!("main.cfg from --source={:?} could not be opened",path));
 			let mut cfg_contents = String::new();
-			cfg_file.read_to_string(&mut cfg_contents).expect(&format!("something went wrong reading main.cfg from --source={:?}",path));
+			cfg_file.read_to_string(&mut cfg_contents).unwrap_or_else(|_|panic!("something went wrong reading main.cfg from --source={:?}",path));
 			let parsed_cfg=match config_parser::parse(&cfg_contents)
 			{
 				Err(x) => panic!("error parsing configuration file: {:?} from --source={:?}",x,path),
@@ -927,7 +927,7 @@ impl<'a> Experiment<'a>
 				};
 				let mut result_contents=String::new();
 				result_file.read_to_string(&mut result_contents).expect("something went wrong reading the result file.");
-				//let result=match config_parser::parse(&result_contents).expect(&format!("could not parse the result file for experiment {}.",experiment_index))
+				//let result=match config_parser::parse(&result_contents).unwrap_or_else(|_|panic!("could not parse the result file for experiment {}.",experiment_index))
 				//{
 				//	config_parser::Token::Value(value) => value,
 				//	_ => panic!("wrong token"),
