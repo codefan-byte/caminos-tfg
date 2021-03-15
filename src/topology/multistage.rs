@@ -689,9 +689,10 @@ pub struct MultiStage
 	group_sizes: Vec<usize>,
 	//up_distances: Vec<Vec<Option<usize>>>,
 	//up_down_distances: Vec<Vec<Option<usize>>>,
-	up_down_distances: Vec<Vec<Option<(usize,usize)>>>,
+	//up_down_distances: Vec<Vec<Option<(usize,usize)>>>,
+	up_down_distances: Matrix<Option<(u8,u8)>>,
 	///Distance as a flat graph. distance_matrix.get(i,j) = distance from router i to router j
-	flat_distance_matrix:Matrix<usize>,
+	flat_distance_matrix:Matrix<u8>,
 }
 
 impl Topology for MultiStage
@@ -752,7 +753,7 @@ impl Topology for MultiStage
 		//up-down distance is not defined to every pair so we cannot use it.
 		//Or perhaps allow infinite / replace return in signature to Option<usize>
 		//self.up_down_distances[origin][destination].unwrap_or_else(||panic!("there is no up/down path among those routers: {} to {}",origin,destination))
-		*self.flat_distance_matrix.get(origin,destination)
+		(*self.flat_distance_matrix.get(origin,destination)).into()
 	}
 	fn amount_shortest_paths(&self,_origin:usize,_destination:usize) -> usize
 	{
@@ -816,7 +817,8 @@ impl Topology for MultiStage
 	}
 	fn up_down_distance(&self,origin:usize,destination:usize) -> Option<(usize,usize)>
 	{
-		self.up_down_distances[origin][destination]
+		//*self.up_down_distances.get(origin,destination)
+		self.up_down_distances.get(origin,destination).map(|(u,d)|(u.into(),d.into()))
 	}
 }
 
@@ -864,7 +866,8 @@ impl MultiStage
 		//Build distance tables
 		//For each origing an ascending BFS build the up-distances and then a descending BFS build the up-down-distances.
 		//self.up_distances.resize(self.total_routers,vec![]);
-		self.up_down_distances.resize(self.total_routers,vec![]);
+		//self.up_down_distances.resize(self.total_routers,vec![]);
+		self.up_down_distances=Matrix::constant(None, self.total_routers,self.total_routers);
 		for origin in 0..self.total_routers
 		{
 			//let mut ud=vec![None;self.total_routers];
@@ -932,10 +935,15 @@ impl MultiStage
 				}
 			}
 			//self.up_distances[origin]=ud;
-			self.up_down_distances[origin]=udd;
+			//self.up_down_distances[origin]=udd;
+			for i in 0..self.total_routers
+			{
+				*self.up_down_distances.get_mut(origin,i) = udd[i];
+			}
 		}
 		//And the flat distances
-		self.flat_distance_matrix=self.compute_distance_matrix(None);
+		//self.flat_distance_matrix=self.compute_distance_matrix(None);
+		self.flat_distance_matrix=self.compute_distance_matrix(None).map(|entry|*entry as u8);
 	}
 	///Unpacks a router giving the level (by index) and its position in that stage.
 	///Only valid when routers_per_level has been already computed.
@@ -1181,7 +1189,7 @@ impl MultiStage
 			total_routers:0,
 			group_sizes: vec![],
 			//up_distances: vec![],
-			up_down_distances: vec![],
+			up_down_distances: Matrix::constant(None,0,0),
 			flat_distance_matrix: Matrix::constant(0,0,0),
 		};
 		network.initialize();

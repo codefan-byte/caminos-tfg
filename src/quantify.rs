@@ -93,6 +93,7 @@ macro_rules! quantifiable_simple
 }
 
 quantifiable_simple!(bool);
+quantifiable_simple!(u8);
 quantifiable_simple!(i32);
 quantifiable_simple!(usize);
 //impl Quantifiable for usize

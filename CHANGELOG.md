@@ -1,5 +1,14 @@
 # Change Log
 
+
+## next [0.3.0]
+
+### 2021-03-15
+Converting `MultiStage::up_down_distances` from `Vec<Vec<Option<(usize,usize)>>>` into `Matrix<Option<(u8,u8)>>`.
+Added `Matrix::map` to ease working with matrices over different types.
+Converting `MultiStage::flat_distance_matrix` from `Matrix<usize>` into `Matrix<u8>`.
+git commit -m "Reduced memory usage of multistage topologies."
+
 ## [0.2.0]
 
 ### 2021-03-12

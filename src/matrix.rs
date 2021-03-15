@@ -32,6 +32,13 @@ impl<T> Matrix<T>
 			num_columns,
 		}
 	}
+	pub fn map<U,F:FnMut(&T)->U>(&self, f:F) -> Matrix<U>
+	{
+		Matrix{
+			data: self.data.iter().map(f).collect(),
+			num_columns: self.num_columns,
+		}
+	}
 }
 
 impl<T:Quantifiable> Quantifiable for Matrix<T>
