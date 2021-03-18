@@ -31,7 +31,7 @@ pub struct CanonicDragonfly
 	/// Number of groups = a*h+1. Dally called it `g`.
 	number_of_groups: usize,
 	///distance_matrix.get(i,j) = distance from router i to router j
-	distance_matrix:Matrix<usize>,
+	distance_matrix:Matrix<u8>,
 }
 
 impl Topology for CanonicDragonfly
@@ -84,7 +84,7 @@ impl Topology for CanonicDragonfly
 	}
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
-		*self.distance_matrix.get(origin,destination)
+		(*self.distance_matrix.get(origin,destination)).into()
 	}
 	fn amount_shortest_paths(&self,_origin:usize,_destination:usize) -> usize
 	{
@@ -178,7 +178,7 @@ impl CanonicDragonfly
 			distance_matrix:Matrix::constant(0,0,0),
 		};
 		let (distance_matrix,_amount_matrix)=topo.compute_amount_shortest_paths();
-		topo.distance_matrix=distance_matrix;
+		topo.distance_matrix=distance_matrix.map(|x|*x as u8);
 		topo
 	}
 	fn unpack(&self, router_index: usize) -> (usize,usize)

@@ -3,11 +3,16 @@
 
 ## next [0.3.0]
 
+### 2021-03-18
+Removed some `dbg!` statements from MultiStage.
+git commit -m "Removed some debug statements."
+
 ### 2021-03-15
 Converting `MultiStage::up_down_distances` from `Vec<Vec<Option<(usize,usize)>>>` into `Matrix<Option<(u8,u8)>>`.
 Added `Matrix::map` to ease working with matrices over different types.
 Converting `MultiStage::flat_distance_matrix` from `Matrix<usize>` into `Matrix<u8>`.
 git commit -m "Reduced memory usage of multistage topologies."
+Converted `dragonfly::distance_matrix` to `u8`.
 
 ## [0.2.0]
 

@@ -861,8 +861,8 @@ impl MultiStage
 		//	}
 		//}
 		self.total_routers=self.routers_per_level.iter().sum();
-		dbg!(&self.group_sizes);
-		dbg!(&self.routers_per_level);
+		//dbg!(&self.group_sizes);
+		//dbg!(&self.routers_per_level);
 		//Build distance tables
 		//For each origing an ascending BFS build the up-distances and then a descending BFS build the up-down-distances.
 		//self.up_distances.resize(self.total_routers,vec![]);
