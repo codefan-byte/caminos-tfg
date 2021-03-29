@@ -8,6 +8,7 @@ use std::cell::{RefCell};
 use ::rand::{Rng,StdRng};
 
 ///Extra information to be used by the policies of virtual channels.
+#[derive(Debug)]
 pub struct RequestInfo<'a>
 {
 	///target_router_index: The index of the router to which the destination server is attached.

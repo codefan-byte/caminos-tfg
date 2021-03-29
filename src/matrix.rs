@@ -23,6 +23,16 @@ impl<T> Matrix<T>
 	{
 		&mut self.data[row*self.num_columns+column]
 	}
+	///Get the number of rows
+	pub fn get_rows(&self) -> usize
+	{
+		self.data.len()/self.num_columns
+	}
+	///Get the number of columns
+	pub fn get_columns(&self) -> usize
+	{
+		self.num_columns
+	}
 	///Build a matrix with constant values.
 	pub fn constant(value:T,num_rows:usize,num_columns:usize) -> Matrix<T> where T:Clone
 	{

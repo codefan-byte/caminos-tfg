@@ -3,9 +3,33 @@
 
 ## next [0.3.0]
 
+### 2021-03-29
+Changed default statistic jain column to ServerGenerationJainIndex.
+New traffic TimeSequenced.
+Added parameter `cycle` to `Traffic::should_generate`.
+Split StatisticMeasurement from the Statistics struct.
+Added support to temporal statistics via `statistics_temporal_step`.
+git commit -m "Improvements on Valiant routing, matrices, traffics, and statistics. Implemented optional tracking of statistics per cycle."
+
+### 2021-03-26
+Documentation improvements.
+Derive Debug for RequestInfo.
+
+### 2021-03-23
+Documentation fix.
+
+### 2021-03-22
+Starting with ExplicitUpDown: implemented UpDownStar construct.
+Added methods `Matrix::{get_rows,get_columns}`.
+
+### 2021-03-18
+Added to Valiant routing the optional parameters `{first,second}_reserved_virtual_channels: Vec<usize>` to easy defining a Valiant over MultiStage topologies using UpDown first with some virtual channel and later with other.
+
 ### 2021-03-18
 Removed some `dbg!` statements from MultiStage.
 git commit -m "Removed some debug statements."
+Added optional parameter `selection_exclude_indirect_routers` to Valiant routing.
+Added warning message when generating traffic over a different amount of servers than the whole of the topology.
 
 ### 2021-03-15
 Converting `MultiStage::up_down_distances` from `Vec<Vec<Option<(usize,usize)>>>` into `Matrix<Option<(u8,u8)>>`.

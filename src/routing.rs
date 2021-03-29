@@ -9,7 +9,7 @@ see [`new_routing`](fn.new_routing.html) for documentation on the configuration 
 
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute};
-use crate::topology::{Topology,Location};
+use crate::topology::{Topology,Location,NeighbourRouterIteratorItem};
 use crate::matrix::Matrix;
 use std::cell::RefCell;
 use ::rand::{StdRng,Rng};
@@ -66,12 +66,15 @@ pub struct RoutingAnnotation
 #[derive(Debug,Default)]
 pub struct CandidateEgress
 {
+	///Candidate exit port
 	pub port: usize,
+	///Candidate virtual channel in which being inserted.
 	pub virtual_channel: usize,
+	///Value used to indicate priorities. Semantics defined per routing and policy. Routing should use low values for more priority.
 	pub label: i32,
 	pub estimated_remaining_hops: Option<usize>,
 
-	///The routing must set this as false.
+	///The routing must set this to None.
 	///The `Router` can set it to `Some(true)` when it satisfies all flow-cotrol criteria and to `Some(false)` when it fails any criterion.
 	pub router_allows: Option<bool>,
 
@@ -143,6 +146,7 @@ Valiant{
 	first: Shortest,
 	second: Shortest,
 	legend_name: "Using Valiant scheme, shortest to intermediate and shortest to destination",
+	//selection_exclude_indirect_routers: false,//optional parameter
 }
 ```
 
@@ -260,6 +264,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"WeighedShortest" => Box::new(WeighedShortest::new(arg)),
 			"Stubborn" => Box::new(Stubborn::new(arg)),
 			"UpDown" => Box::new(UpDown::new(arg)),
+			"UpDownStar" => Box::new(ExplicitUpDown::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}
@@ -385,6 +390,10 @@ pub struct Valiant
 {
 	first: Box<dyn Routing>,
 	second: Box<dyn Routing>,
+	///Whether to avoid selecting routers without attached servers. This helps to apply it to indirect networks.
+	selection_exclude_indirect_routers: bool,
+	first_reserved_virtual_channels: Vec<usize>,
+	second_reserved_virtual_channels: Vec<usize>,
 }
 
 impl Routing for Valiant
@@ -419,8 +428,8 @@ impl Routing for Valiant
 		{
 			None =>
 			{
-				//self.second.next(&routing_info.meta.unwrap()[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
-				self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
+				//self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
+				self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
 			}
 			Some(ref s) =>
 			{
@@ -438,8 +447,7 @@ impl Routing for Valiant
 					}
 					x.unwrap()
 				};
-				//self.first.next(&routing_info.meta.unwrap()[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng)
-				self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng)
+				self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.first_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
 			}
 		}
 		// let num_ports=topology.ports(current_router);
@@ -467,7 +475,27 @@ impl Routing for Valiant
 			_ => panic!("The server is not attached to a router"),
 		};
 		let n=topology.num_routers();
-		let middle=rng.borrow_mut().gen_range(0,n);
+		let middle = if self.selection_exclude_indirect_routers
+		{
+			let available : Vec<usize> = (0..n).filter(|&index|{
+				for i in 0..topology.ports(index)
+				{
+					if let (Location::ServerPort(_),_) = topology.neighbour(index,i)
+					{
+						return true;
+					}
+				}
+				false//there is not server in this router, hence it is excluded
+			}).collect();
+			if available.len()==0
+			{
+				panic!("There are not legal middle routers to select in Valiant from router {} towards router {}",current_router,target_router);
+			}
+			let r = rng.borrow_mut().gen_range(0,available.len());
+			available[r]
+		} else {
+			rng.borrow_mut().gen_range(0,n)
+		};
 		let mut bri=routing_info.borrow_mut();
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
 		if middle==current_router || middle==target_router
@@ -477,6 +505,7 @@ impl Routing for Valiant
 		else
 		{
 			bri.selections=Some(vec![middle as i32]);
+			//FIXME: what do we do when we are not excluding indirect routers?
 			let middle_server=
 			{
 				let mut x=None;
@@ -552,6 +581,9 @@ impl Valiant
 		//let mut servers_per_router=None;
 		let mut first=None;
 		let mut second=None;
+		let mut selection_exclude_indirect_routers=false;
+		let mut first_reserved_virtual_channels=vec![];
+		let mut second_reserved_virtual_channels=vec![];
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
 			if cv_name!="Valiant"
@@ -579,6 +611,28 @@ impl Valiant
 					{
 						second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg}));
 					}
+					"selection_exclude_indirect_routers" => match value
+					{
+						&ConfigurationValue::True => selection_exclude_indirect_routers=true,
+						&ConfigurationValue::False => selection_exclude_indirect_routers=false,
+						_ => panic!("bad value for selection_exclude_indirect_routers"),
+					},
+					"first_reserved_virtual_channels" => match value
+					{
+						&ConfigurationValue::Array(ref a) => first_reserved_virtual_channels=a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in first_reserved_virtual_channels"),
+						}).collect(),
+						_ => panic!("bad value for first_reserved_virtual_channels"),
+					}
+					"second_reserved_virtual_channels" => match value
+					{
+						&ConfigurationValue::Array(ref a) => second_reserved_virtual_channels=a.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in second_reserved_virtual_channels"),
+						}).collect(),
+						_ => panic!("bad value for first_reserved_virtual_channels"),
+					}
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in Valiant",name),
 				}
@@ -590,9 +644,14 @@ impl Valiant
 		}
 		let first=first.expect("There were no first");
 		let second=second.expect("There were no second");
+		//let first_reserved_virtual_channels=first_reserved_virtual_channels.expect("There were no first_reserved_virtual_channels");
+		//let second_reserved_virtual_channels=second_reserved_virtual_channels.expect("There were no second_reserved_virtual_channels");
 		Valiant{
 			first,
 			second,
+			selection_exclude_indirect_routers,
+			first_reserved_virtual_channels,
+			second_reserved_virtual_channels,
 		}
 	}
 }
@@ -1384,6 +1443,201 @@ impl UpDown
 		}
 		//let order=order.expect("There were no order");
 		UpDown{
+		}
+	}
+}
+
+///Use a shortest up/down path from origin to destination.
+///But in contrast with UpDown this uses explicit table instead of querying the topology.
+///Used to define Up*/Down* (UpDownStar), see Autonet, where it is build from some spanning tree.
+#[derive(Debug)]
+pub struct ExplicitUpDown
+{
+	//defining factors to be kept up to initialization
+	root: Option<usize>,
+	//computed at initialization
+	up_down_distances: Matrix<Option<(u8,u8)>>,
+}
+
+impl Routing for ExplicitUpDown
+{
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+		let (up_distance, down_distance) = self.up_down_distances.get(current_router,target_router).unwrap_or_else(||panic!("Missing up/down path from {} to {}",current_router,target_router));
+		if up_distance + down_distance == 0
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+					}
+				}
+			}
+			unreachable!();
+		}
+		let num_ports=topology.ports(current_router);
+		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
+		for i in 0..num_ports
+		{
+			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+			if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+			{
+				if let &Some((new_u, new_d)) = self.up_down_distances.get(router_index,target_router)
+				{
+					if (new_u<up_distance && new_d<=down_distance) || (new_u<=up_distance && new_d<down_distance)
+					{
+						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					}
+				}
+			}
+		}
+		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
+		r
+	}
+	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
+	{
+	}
+	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
+	{
+	}
+	fn initialize(&mut self, topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+		let n = topology.num_routers();
+		if let Some(root) = self.root
+		{
+			self.up_down_distances = Matrix::constant(None,n,n);
+			//First perform a single BFS at root.
+			let mut distance_to_root=vec![None;n];
+			distance_to_root[root]=Some(0);
+			//The updwards BFS.
+			dbg!(root,"upwards");
+			for current in 0..n
+			{
+				if let Some(current_distance) = distance_to_root[current]
+				{
+					let alternate_distance = current_distance + 1;
+					for NeighbourRouterIteratorItem{neighbour_router:neighbour,..} in topology.neighbour_router_iter(current)
+					{
+						if let None = distance_to_root[neighbour]
+						{
+							distance_to_root[neighbour]=Some(alternate_distance);
+						}
+					}
+				}
+			}
+			//Second fill assuming going through root
+			dbg!(root,"fill");
+			for origin in 0..n
+			{
+				if let Some(origin_to_root) = distance_to_root[origin]
+				{
+					for target in 0..n
+					{
+						if let Some(target_to_root) = distance_to_root[target]
+						{
+							*self.up_down_distances.get_mut(origin,target) = Some((origin_to_root,target_to_root));
+						}
+					}
+				}
+			}
+			//Now fix all little segments that do not reach the root.
+			dbg!(root,"segments");
+			for origin in 0..n
+			{
+				//Start towards root annotating those that require only upwards.
+				if let Some(_origin_to_root) = distance_to_root[origin]
+				{
+					let mut upwards=Vec::with_capacity(n);
+					upwards.push((origin,0));
+					let mut read_index = 0;
+					while read_index < upwards.len()
+					{
+						let (current,distance) = upwards[read_index];
+						if let Some(current_to_root) = distance_to_root[current]
+						{
+							read_index+=1;
+							*self.up_down_distances.get_mut(origin,current)=Some((distance,0));
+							*self.up_down_distances.get_mut(current,origin)=Some((0,distance));
+							for NeighbourRouterIteratorItem{neighbour_router:neighbour,..} in topology.neighbour_router_iter(current)
+							{
+								if let Some(neighbour_to_root) = distance_to_root[neighbour]
+								{
+									if neighbour_to_root +1 == current_to_root
+									{
+										upwards.push((neighbour,distance+1));
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			dbg!(root,"finished table");
+		}
+		if n!=self.up_down_distances.get_columns()
+		{
+			panic!("ExplicitUpDown has not being properly initialized");
+		}
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
+}
+
+impl ExplicitUpDown
+{
+	pub fn new(arg: RoutingBuilderArgument) -> ExplicitUpDown
+	{
+		//let mut order=None;
+		//let mut servers_per_router=None;
+		let mut root = None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="UpDownStar"
+			{
+				panic!("A UpDownStar must be created from a `UpDownStar` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"root" => match value
+					{
+						&ConfigurationValue::Number(f) => root=Some(f as usize),
+						_ => panic!("bad value for root"),
+					},
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in ExplicitUpDown",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a ExplicitUpDown from a non-Object");
+		}
+		//let order=order.expect("There were no order");
+		ExplicitUpDown{
+			root,
+			up_down_distances: Matrix::constant(None,0,0),
 		}
 	}
 }

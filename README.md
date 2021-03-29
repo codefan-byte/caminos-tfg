@@ -16,6 +16,10 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 # Breaking changes
 
+## [0.2.0] to [0.3.0]
+
+* Added parameter `cycle` to `Traffic::should_generate`.
+
 ## [0.1.0] to [0.2.0]
 
 * Added methods to `Routing` and `Router` traits to gather statistics.

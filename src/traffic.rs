@@ -45,7 +45,7 @@ pub trait Traffic : Quantifiable + Debug
 	///Indicates if the traffic is not going to generate any more messages.
 	fn is_finished(&self) -> bool;
 	///Returns true if a server should generate a message this cycle
-	fn should_generate(&self, server:usize, rng: &RefCell<StdRng>) -> bool
+	fn should_generate(&self, server:usize, _cycle:usize, rng: &RefCell<StdRng>) -> bool
 	{
 		let p=self.probability_per_cycle(server);
 		let r=rng.borrow_mut().gen_range(0f32,1f32);
@@ -153,6 +153,18 @@ SubRangeTraffic{
 	traffic: HomogeneousTraffic{...},
 }
 ```
+
+### TimeSequenced
+
+Defines a sequence of traffics with the given finalization times.
+
+TimeSequenced{
+	traffics: [HomogeneousTraffic{...}, HomogeneousTraffic{...}],
+	times: [2000, 15000],
+}
+
+
+
 */
 pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 {
@@ -172,6 +184,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"SubRangeTraffic" => Box::new(SubRangeTraffic::new(arg)),
 			"Burst" => Box::new(Burst::new(arg)),
 			"Reactive" => Box::new(Reactive::new(arg)),
+			"TimeSequenced" => Box::new(TimeSequenced::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -307,6 +320,11 @@ impl Homogeneous
 		let message_size=message_size.expect("There were no message_size");
 		let load=load.expect("There were no load");
 		let mut pattern=pattern.expect("There were no pattern");
+		let topo_servers=arg.topology.num_servers();
+		if servers != topo_servers
+		{
+			println!("WARNING: Generating traffic over {} servers when the topology has {} servers.",servers,topo_servers);
+		}
 		pattern.initialize(servers, servers, arg.topology, arg.rng);
 		Homogeneous{
 			servers,
@@ -945,7 +963,7 @@ impl Traffic for Reactive
 	{
 		if self.action_traffic.try_consume(message.clone(),cycle,topology,rng)
 		{
-			if self.reaction_traffic.should_generate(message.origin,rng)
+			if self.reaction_traffic.should_generate(message.origin,cycle,rng)
 			{
 				match self.reaction_traffic.generate_message(message.origin,cycle,topology,rng)
 				{
@@ -1019,4 +1037,117 @@ impl Reactive
 }
 
 
+
+///Selects the traffic from a sequence depending on current cycle
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct TimeSequenced
+{
+	///List of applicable traffics.
+	traffics: Vec<Box<dyn Traffic>>,
+	///End time of each traffic.
+	times: Vec<usize>,
+}
+
+impl Traffic for TimeSequenced
+{
+	fn generate_message(&mut self, origin:usize, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> Result<Rc<Message>,TrafficError>
+	{
+		let mut offset = cycle;
+		let mut traffic_index = 0;
+		while traffic_index<self.traffics.len() && offset >= self.times[traffic_index]
+		{
+			offset -= self.times[traffic_index];
+			traffic_index += 1;
+		}
+		assert!(traffic_index<self.traffics.len());
+		self.traffics[traffic_index].generate_message(origin,cycle,topology,rng)
+	}
+	fn probability_per_cycle(&self,_server:usize) -> f32
+	{
+		//Can we do better here?
+		1.0
+	}
+	fn try_consume(&mut self, message: Rc<Message>, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> bool
+	{
+		for traffic in self.traffics.iter_mut()
+		{
+			if traffic.try_consume(message.clone(),cycle,topology,rng)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	fn is_finished(&self) -> bool
+	{
+		//This is a bit silly for a time sequence
+		for traffic in self.traffics.iter()
+		{
+			if !traffic.is_finished()
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	fn should_generate(&self, server:usize, cycle:usize, rng: &RefCell<StdRng>) -> bool
+	{
+		let mut offset = cycle;
+		let mut traffic_index = 0;
+		while traffic_index<self.traffics.len() && offset >= self.times[traffic_index]
+		{
+			offset -= self.times[traffic_index];
+			traffic_index += 1;
+		}
+		self.traffics[traffic_index].should_generate(server,cycle,rng)
+	}
+}
+
+impl TimeSequenced
+{
+	pub fn new(arg:TrafficBuilderArgument) -> TimeSequenced
+	{
+		let mut traffics=None;
+		let mut times=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="TimeSequenced"
+			{
+				panic!("A TimeSequenced must be created from a `TimeSequenced` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match name.as_ref()
+				{
+					//"pattern" => pattern=Some(new_pattern(value,plugs)),
+					"traffics" => match value
+					{
+						&ConfigurationValue::Array(ref a) => traffics=Some(a.iter().map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect()),
+						_ => panic!("bad value for traffics"),
+					}
+ 					"times" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => times=Some(l.iter().map(|v| match v{
+							ConfigurationValue::Number(f) => *f as usize,
+							_ => panic!("bad value for times"),
+						}).collect()),
+ 						_ => panic!("bad value for times"),
+ 					}
+					_ => panic!("Nothing to do with field {} in TimeSequenced",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a TimeSequenced from a non-Object");
+		}
+		let traffics=traffics.expect("There were no traffics");
+		let times=times.expect("There were no times");
+		TimeSequenced{
+			traffics,
+			times,
+		}
+	}
+}
 
