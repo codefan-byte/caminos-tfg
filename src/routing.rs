@@ -182,6 +182,20 @@ Sum{
 }
 ```
 
+### ChannelsPerHop
+Modify a routing to use a given list of virtual channels each hop.
+```
+ChannelsPerHop{
+	routing: Shortest,
+	channels: [
+		[0],//the first hop from a router to another router
+		[1],
+		[2],
+		[0,1,2],//the last hop, to the server
+	],
+}
+```
+
 ### Stubborn makes a routing to calculate candidates just once. If that candidate is not accepted is trying again every cycle.
 ```
 Stubborn{
@@ -265,6 +279,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"Stubborn" => Box::new(Stubborn::new(arg)),
 			"UpDown" => Box::new(UpDown::new(arg)),
 			"UpDownStar" => Box::new(ExplicitUpDown::new(arg)),
+			"ChannelsPerHop" => Box::new(ChannelsPerHop::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}
@@ -1638,6 +1653,100 @@ impl ExplicitUpDown
 		ExplicitUpDown{
 			root,
 			up_down_distances: Matrix::constant(None,0,0),
+		}
+	}
+}
+
+///Set the virtual channels to use in each hop.
+///Sometimes the same can be achieved by the router policy `Hops`.
+#[derive(Debug)]
+pub struct ChannelsPerHop
+{
+	///The base routing to use.
+	routing: Box<dyn Routing>,
+	///channels[k] is the list of available VCs to use in the k-th hop.
+	///This includes the last hop towards the server.
+	channels: Vec<Vec<usize>>,
+}
+
+impl Routing for ChannelsPerHop
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//println!("{}",topology.diameter());
+		let vcs = &self.channels[routing_info.hops];
+		let candidates = self.routing.next(routing_info,topology,current_router,target_server,num_virtual_channels,rng);
+		candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect()
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		self.routing.initialize_routing_info(routing_info,topology,current_router,target_server,rng);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_server,rng);
+	}
+	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		self.routing.initialize(topology,rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>)
+	{
+		self.routing.performed_request(requested,routing_info,topology,current_router,target_server,num_virtual_channels,rng);
+	}
+	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	{
+		self.routing.statistics(cycle)
+	}
+	fn reset_statistics(&mut self, next_cycle:usize)
+	{
+		self.routing.reset_statistics(next_cycle)
+	}
+}
+
+impl ChannelsPerHop
+{
+	pub fn new(arg: RoutingBuilderArgument) -> ChannelsPerHop
+	{
+		let mut routing =None;
+		let mut channels =None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="ChannelsPerHop"
+			{
+				panic!("A ChannelsPerHop must be created from a `ChannelsPerHop` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+					"channels" => match value
+					{
+						&ConfigurationValue::Array(ref hoplist) => channels=Some(hoplist.iter().map(|v|match v{
+							&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
+								&ConfigurationValue::Number(f) => f as usize,
+								_ => panic!("bad value in channels"),
+							}).collect(),
+							_ => panic!("bad value in channels"),
+						}).collect()),
+						_ => panic!("bad value for channels"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in ChannelsPerHop",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a ChannelsPerHop from a non-Object");
+		}
+		let routing=routing.expect("There were no routing");
+		let channels=channels.expect("There were no channels");
+		ChannelsPerHop{
+			routing,
+			channels,
 		}
 	}
 }

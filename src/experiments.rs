@@ -365,12 +365,14 @@ impl<'a> Experiment<'a>
 			cfg_contents
 		};
 		let mut results;
+		//println!("cfg_contents={:?}",cfg_contents);
 		let parsed_cfg=match config_parser::parse(&cfg_contents)
 		{
 			Err(x) => panic!("error parsing configuration file: {:?}",x),
 			Ok(x) => x,
 			//println!("parsed correctly: {:?}",x);
 		};
+		//println!("parsed_cfg={:?}",parsed_cfg);
 		let experiments=match parsed_cfg
 		{
 			config_parser::Token::Value(ref value) =>
@@ -385,7 +387,7 @@ impl<'a> Experiment<'a>
 					panic!("there are not experiments");
 				}
 			},
-			_ => panic!("Not a value"),
+			_ => panic!("Not a value. Got {:?}",parsed_cfg),
 		};
 
 		let external_experiments = if let Some(ref path) = self.options.external_source
@@ -904,6 +906,7 @@ impl<'a> Experiment<'a>
 			{
 				let experiment_path=runs_path.join(format!("run{}",experiment_index));
 				let result_path=experiment_path.join("local.result");
+				//println!("Reading from {:?}",result_path);
 				//let mut got_result = false;
 				//let mut tried_local = false;
 				//let max_tries=if let Action::Pull=action{2}else{1};
@@ -927,12 +930,7 @@ impl<'a> Experiment<'a>
 				};
 				let mut result_contents=String::new();
 				result_file.read_to_string(&mut result_contents).expect("something went wrong reading the result file.");
-				//let result=match config_parser::parse(&result_contents).unwrap_or_else(|_|panic!("could not parse the result file for experiment {}.",experiment_index))
-				//{
-				//	config_parser::Token::Value(value) => value,
-				//	_ => panic!("wrong token"),
-				//};
-				//results.push((experiment.clone(),result));
+				//println!("result file read into a String");
 				match config_parser::parse(&result_contents)
 				{
 					Ok(cv) =>
@@ -949,6 +947,7 @@ impl<'a> Experiment<'a>
 						println!("There are missing results (experiment {}).",experiment_index);
 					}
 				}
+				//println!("result file processed.");
 			}
 
 
@@ -962,7 +961,7 @@ impl<'a> Experiment<'a>
 				Err(x) => panic!("error parsing output description file: {:?}",x),
 				Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
 				{
-					//println!("description={}",description);
+					println!("description={}",description);
 					match create_output(&description,&results,experiments.len(),&self.root)
 					{
 						Ok(_) => (),

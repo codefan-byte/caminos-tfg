@@ -1,6 +1,6 @@
 extern crate gramatica;
 use std::cmp::Ordering;
-use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,AmbiguityInfo,ParsingError};
+use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,ParsingError};
 use std::rc::Rc;
 use std::fmt::{Display,Formatter,Error};
 #[derive(Clone,Debug,PartialEq,PartialOrd)]
@@ -15,8 +15,14 @@ True,
 False,
 Where(Rc<ConfigurationValue>,Expr),
 Expression(Expr),
+None,
 }
 
+impl Default for ConfigurationValue {
+fn default()->ConfigurationValue{
+ConfigurationValue::None}
+
+}
 impl ConfigurationValue
 {
 	fn write(&self, f: &mut Formatter, indent:usize) -> Result<(),Error>
@@ -54,6 +60,7 @@ impl ConfigurationValue
 			&ConfigurationValue::False => write!(f,"false")?,
 			&ConfigurationValue::Where(ref cv, ref _expr) => write!(f,"{} where FIXME",cv)?,
 			&ConfigurationValue::Expression(ref e) => write!(f,"= {}",e)?,
+			&ConfigurationValue::None => write!(f,"NONE VALUE")?,
 		};
 		Ok(())
 	}
@@ -109,7 +116,7 @@ struct ParsingTables { }
 impl ParsingTablesTrait<Token> for ParsingTables {
 fn initial()->usize { 20 }
 #[allow(unused)]
-fn match_some(parser: &mut Parser<Token,Self>) -> Option<(usize,Token)> { let source=&parser.source[parser.source_index..];
+fn match_some(parser: &mut Parser<Token,Self>) -> Option<(usize,Token)> { let source=parser.cursor;
 match { match parser.keyword("true",source) { None => None, Some((size,_string)) => Some((size,())) } }
 { None => (), Some((size,_result)) => return Some((size,Token::True)), };
 match { match parser.keyword("false",source) { None => None, Some((size,_string)) => Some((size,())) } }
@@ -166,176 +173,176 @@ match { match parser.re("\\s+|\n|//[^\n]*\n|/\\*([^*]|\\*+[^/])*\\*+/",source) {
 None }//match_some
 fn predict(parser:&mut Parser<Token,Self>,index:usize,state_index:usize,token:usize) { match token {
 20 => {
-parser.sets[index].predict(State{rule: 1 ,left: 20 ,right:vec![ 5 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 2 ,left: 20 ,right:vec![ 4 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 3 ,left: 20 ,right:vec![ 21 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 4 ,left: 20 ,right:vec![ 24 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 5 ,left: 20 ,right:vec![ 16,24 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 2 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 6 ,left: 20 ,right:vec![ 6,16,24 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 7 ,left: 20 ,right:vec![ 1 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 8 ,left: 20 ,right:vec![ 2 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 9 ,left: 20 ,right:vec![ 20,3,26 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 10 ,left: 20 ,right:vec![ 18,26 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 2 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(1,20,vec![5],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(2,20,vec![4],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(3,20,vec![21],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(4,20,vec![24],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(5,20,vec![16,24],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(6,20,vec![6,16,24],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(7,20,vec![1],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(8,20,vec![2],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(9,20,vec![20,3,26],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(10,20,vec![18,26],index,EarleyKind::Predict(state_index)));
 }
 21 => {
-parser.sets[index].predict(State{rule: 11 ,left: 21 ,right:vec![ 6 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 12 ,left: 21 ,right:vec![ 6,8,9 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 13 ,left: 21 ,right:vec![ 6,8,22,9 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 4 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 14 ,left: 21 ,right:vec![ 6,8,22,14,9 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 5 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(11,21,vec![6],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(12,21,vec![6,8,9],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(13,21,vec![6,8,22,9],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(14,21,vec![6,8,22,14,9],index,EarleyKind::Predict(state_index)));
 }
 22 => {
-parser.sets[index].predict(State{rule: 15 ,left: 22 ,right:vec![ 23 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 16 ,left: 22 ,right:vec![ 22,14,23 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(15,22,vec![23],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(16,22,vec![22,14,23],index,EarleyKind::Predict(state_index)));
 }
 23 => {
-parser.sets[index].predict(State{rule: 17 ,left: 23 ,right:vec![ 6,15,20 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(17,23,vec![6,15,20],index,EarleyKind::Predict(state_index)));
 }
 24 => {
-parser.sets[index].predict(State{rule: 18 ,left: 24 ,right:vec![ 10,11 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 2 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 19 ,left: 24 ,right:vec![ 10,25,11 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 20 ,left: 24 ,right:vec![ 10,25,14,11 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 4 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(18,24,vec![10,11],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(19,24,vec![10,25,11],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(20,24,vec![10,25,14,11],index,EarleyKind::Predict(state_index)));
 }
 25 => {
-parser.sets[index].predict(State{rule: 21 ,left: 25 ,right:vec![ 20 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 22 ,left: 25 ,right:vec![ 25,14,20 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(21,25,vec![20],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(22,25,vec![25,14,20],index,EarleyKind::Predict(state_index)));
 }
 26 => {
-parser.sets[index].predict(State{rule: 23 ,left: 26 ,right:vec![ 26,7,26 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 24 ,left: 26 ,right:vec![ 5 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 25 ,left: 26 ,right:vec![ 4 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 26 ,left: 26 ,right:vec![ 6 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 27 ,left: 26 ,right:vec![ 26,19,6 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 28 ,left: 26 ,right:vec![ 12,26,13 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 29 ,left: 26 ,right:vec![ 17,26 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 2 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 30 ,left: 26 ,right:vec![ 27 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(23,26,vec![26,7,26],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(24,26,vec![5],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(25,26,vec![4],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(26,26,vec![6],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(27,26,vec![26,19,6],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(28,26,vec![12,26,13],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(29,26,vec![17,26],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(30,26,vec![27],index,EarleyKind::Predict(state_index)));
 }
 27 => {
-parser.sets[index].predict(State{rule: 31 ,left: 27 ,right:vec![ 6,8,9 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 32 ,left: 27 ,right:vec![ 6,8,28,9 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 4 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 33 ,left: 27 ,right:vec![ 6,8,28,14,9 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 5 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(31,27,vec![6,8,9],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(32,27,vec![6,8,28,9],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(33,27,vec![6,8,28,14,9],index,EarleyKind::Predict(state_index)));
 }
 28 => {
-parser.sets[index].predict(State{rule: 34 ,left: 28 ,right:vec![ 29 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 1 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
-parser.sets[index].predict(State{rule: 35 ,left: 28 ,right:vec![ 28,14,29 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(34,28,vec![29],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(35,28,vec![28,14,29],index,EarleyKind::Predict(state_index)));
 }
 29 => {
-parser.sets[index].predict(State{rule: 36 ,left: 29 ,right:vec![ 6,15,26 ],position:0,original_set:index,kind:EarleyKind::Predict(state_index),values:vec![Token::DummyStart; 3 ],computed_value:Token::DummyStart,ambiguity_info:AmbiguityInfo::default(),});
+parser.sets[index].predict(State::new(36,29,vec![6,15,26],index,EarleyKind::Predict(state_index)));
 }
 _ => panic!(""), } }//predict
 #[allow(unused)]
-fn compute_value(state:&mut State<Token>) { state.computed_value = match state.rule { 0 => state.values[0].clone(),
-1 => match &state.values[0] {
-&Token::LitStr(ref s) => Token::Value(ConfigurationValue::Literal(s.clone())),
+fn compute_value(state:&mut State<Token>) { state.computed_value = Some( match state.rule { 0 => state.values[0].clone(),
+1 => match &mut state.values[0] {
+Token::LitStr(ref s) => Token::Value(ConfigurationValue::Literal(s.clone())),
 _ => panic!(""), },
-2 => match &state.values[0] {
-&Token::Number(v) => Token::Value(ConfigurationValue::Number(v)),
+2 => match &mut state.values[0] {
+Token::Number(ref v) => Token::Value(ConfigurationValue::Number(* v)),
 _ => panic!(""), },
-3 => match &state.values[0] {
-&Token::Object(ref value) => Token::Value(value.clone()),
+3 => match &mut state.values[0] {
+Token::Object(ref mut value) => Token::Value(std::mem::take(value)),
 _ => panic!(""), },
-4 => match &state.values[0] {
-&Token::Array(ref list) => Token::Value(ConfigurationValue::Array(list.clone())),
+4 => match &mut state.values[0] {
+Token::Array(ref mut list) => Token::Value(ConfigurationValue::Array(std::mem::take(list))),
 _ => panic!(""), },
-5 => match (&state.values[0],&state.values[1]) {
-(&Token::Bang,&Token::Array(ref list)) => Token::Value(ConfigurationValue::Experiments(list.clone())),
+5 => match &mut state.values[0..2] {
+&mut [Token::Bang,Token::Array(ref mut list)] => Token::Value(ConfigurationValue::Experiments(std::mem::take(list))),
 _ => panic!(""), },
-6 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Ident(ref name),&Token::Bang,&Token::Array(ref list)) => Token::Value(ConfigurationValue::NamedExperiments(name.clone(),list.clone())),
+6 => match &mut state.values[0..3] {
+&mut [Token::Ident(ref name),Token::Bang,Token::Array(ref mut list)] => Token::Value(ConfigurationValue::NamedExperiments(name.clone(),std::mem::take(list))),
 _ => panic!(""), },
-7 => match &state.values[0] {
-&Token::True => Token::Value(ConfigurationValue::True),
+7 => match &mut state.values[0] {
+Token::True => Token::Value(ConfigurationValue::True),
 _ => panic!(""), },
-8 => match &state.values[0] {
-&Token::False => Token::Value(ConfigurationValue::False),
+8 => match &mut state.values[0] {
+Token::False => Token::Value(ConfigurationValue::False),
 _ => panic!(""), },
-9 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Value(ref value),&Token::Where,&Token::Expression(ref expr)) => Token::Value(ConfigurationValue::Where(Rc::new(value.clone()),expr.clone())),
+9 => match &mut state.values[0..3] {
+&mut [Token::Value(ref mut value),Token::Where,Token::Expression(ref expr)] => Token::Value(ConfigurationValue::Where(Rc::new(std::mem::take(value)),expr.clone())),
 _ => panic!(""), },
-10 => match (&state.values[0],&state.values[1]) {
-(&Token::Equal,&Token::Expression(ref e)) => Token::Value(ConfigurationValue::Expression(e.clone())),
+10 => match &mut state.values[0..2] {
+&mut [Token::Equal,Token::Expression(ref e)] => Token::Value(ConfigurationValue::Expression(e.clone())),
 _ => panic!(""), },
-11 => match &state.values[0] {
-&Token::Ident(ref name) => Token::Object(ConfigurationValue::Object(name.clone(),vec![])),
+11 => match &mut state.values[0] {
+Token::Ident(ref name) => Token::Object(ConfigurationValue::Object(name.clone(),vec![])),
 _ => panic!(""), },
-12 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Ident(ref name),&Token::LBrace,&Token::RBrace) => Token::Object(ConfigurationValue::Object(name.clone(),vec![])),
+12 => match &mut state.values[0..3] {
+&mut [Token::Ident(ref name),Token::LBrace,Token::RBrace] => Token::Object(ConfigurationValue::Object(name.clone(),vec![])),
 _ => panic!(""), },
-13 => match (&state.values[0],&state.values[1],&state.values[2],&state.values[3]) {
-(&Token::Ident(ref name),&Token::LBrace,&Token::Members(ref list),&Token::RBrace) => Token::Object(ConfigurationValue::Object(name.clone(),list.clone())),
+13 => match &mut state.values[0..4] {
+&mut [Token::Ident(ref name),Token::LBrace,Token::Members(ref mut list),Token::RBrace] => Token::Object(ConfigurationValue::Object(name.clone(),std::mem::take(list))),
 _ => panic!(""), },
-14 => match (&state.values[0],&state.values[1],&state.values[2],&state.values[3],&state.values[4]) {
-(&Token::Ident(ref name),&Token::LBrace,&Token::Members(ref list),&Token::Comma,&Token::RBrace) => Token::Object(ConfigurationValue::Object(name.clone(),list.clone())),
+14 => match &mut state.values[0..5] {
+&mut [Token::Ident(ref name),Token::LBrace,Token::Members(ref mut list),Token::Comma,Token::RBrace] => Token::Object(ConfigurationValue::Object(name.clone(),std::mem::take(list))),
 _ => panic!(""), },
-15 => match &state.values[0] {
-&Token::Pair(ref s,ref value) => Token::Members(vec![(s . clone () , value . clone ())]),
+15 => match &mut state.values[0] {
+Token::Pair(ref s,ref mut value) => Token::Members(vec![(s . clone () , std :: mem :: take (value))]),
 _ => panic!(""), },
-16 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Members(ref list),&Token::Comma,&Token::Pair(ref s,ref value)) => Token::Members({let mut new=(list.clone());
+16 => match &mut state.values[0..3] {
+&mut [Token::Members(ref mut list),Token::Comma,Token::Pair(ref s,ref mut value)] => Token::Members({let mut new=(std::mem::take(list));
+new.push((s.clone(),std::mem::take(value))); new}),
+_ => panic!(""), },
+17 => match &mut state.values[0..3] {
+&mut [Token::Ident(ref s),Token::Colon,Token::Value(ref mut value)] => { let (x0,x1)=(s.clone(),std::mem::take(value)); Token::Pair(x0,x1) },
+_ => panic!(""), },
+18 => match &mut state.values[0..2] {
+&mut [Token::LBracket,Token::RBracket] => Token::Array(vec![]),
+_ => panic!(""), },
+19 => match &mut state.values[0..3] {
+&mut [Token::LBracket,Token::Elements(ref mut list),Token::RBracket] => Token::Array(std::mem::take(list)),
+_ => panic!(""), },
+20 => match &mut state.values[0..4] {
+&mut [Token::LBracket,Token::Elements(ref mut list),Token::Comma,Token::RBracket] => Token::Array(std::mem::take(list)),
+_ => panic!(""), },
+21 => match &mut state.values[0] {
+Token::Value(ref mut value) => Token::Elements(vec![std :: mem :: take (value)]),
+_ => panic!(""), },
+22 => match &mut state.values[0..3] {
+&mut [Token::Elements(ref mut list),Token::Comma,Token::Value(ref mut value)] => Token::Elements({let mut new=(std::mem::take(list));
+new.push(std::mem::take(value)); new}),
+_ => panic!(""), },
+23 => match &mut state.values[0..3] {
+&mut [Token::Expression(ref left),Token::EqualEqual,Token::Expression(ref right)] => Token::Expression(Expr::Equality(Rc::new(left.clone()),Rc::new(right.clone()))),
+_ => panic!(""), },
+24 => match &mut state.values[0] {
+Token::LitStr(ref s) => Token::Expression(Expr::Literal(s.clone())),
+_ => panic!(""), },
+25 => match &mut state.values[0] {
+Token::Number(ref v) => Token::Expression(Expr::Number(* v)),
+_ => panic!(""), },
+26 => match &mut state.values[0] {
+Token::Ident(ref s) => Token::Expression(Expr::Ident(s.clone())),
+_ => panic!(""), },
+27 => match &mut state.values[0..3] {
+&mut [Token::Expression(ref path),Token::Dot,Token::Ident(ref element)] => Token::Expression(Expr::Member(Rc::new(path.clone()),element.clone())),
+_ => panic!(""), },
+28 => match &mut state.values[0..3] {
+&mut [Token::LPar,Token::Expression(ref expr),Token::RPar] => Token::Expression(Expr::Parentheses(Rc::new(expr.clone()))),
+_ => panic!(""), },
+29 => match &mut state.values[0..2] {
+&mut [Token::At,Token::Expression(ref expr)] => Token::Expression(Expr::Name(Rc::new(expr.clone()))),
+_ => panic!(""), },
+30 => match &mut state.values[0] {
+Token::FunctionCall(ref value) => Token::Expression(value.clone()),
+_ => panic!(""), },
+31 => match &mut state.values[0..3] {
+&mut [Token::Ident(ref name),Token::LBrace,Token::RBrace] => Token::FunctionCall(Expr::FunctionCall(name.clone(),vec![])),
+_ => panic!(""), },
+32 => match &mut state.values[0..4] {
+&mut [Token::Ident(ref name),Token::LBrace,Token::Arguments(ref list),Token::RBrace] => Token::FunctionCall(Expr::FunctionCall(name.clone(),list.clone())),
+_ => panic!(""), },
+33 => match &mut state.values[0..5] {
+&mut [Token::Ident(ref name),Token::LBrace,Token::Arguments(ref list),Token::Comma,Token::RBrace] => Token::FunctionCall(Expr::FunctionCall(name.clone(),list.clone())),
+_ => panic!(""), },
+34 => match &mut state.values[0] {
+Token::ExprPair(ref s,ref value) => Token::Arguments(vec![(s . clone () , value . clone ())]),
+_ => panic!(""), },
+35 => match &mut state.values[0..3] {
+&mut [Token::Arguments(ref list),Token::Comma,Token::ExprPair(ref s,ref value)] => Token::Arguments({let mut new=(list.clone());
 new.push((s.clone(),value.clone())); new}),
 _ => panic!(""), },
-17 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Ident(ref s),&Token::Colon,&Token::Value(ref value)) => { let (x0,x1)=(s.clone(),value.clone()); Token::Pair(x0,x1) },
+36 => match &mut state.values[0..3] {
+&mut [Token::Ident(ref s),Token::Colon,Token::Expression(ref expr)] => { let (x0,x1)=(s.clone(),expr.clone()); Token::ExprPair(x0,x1) },
 _ => panic!(""), },
-18 => match (&state.values[0],&state.values[1]) {
-(&Token::LBracket,&Token::RBracket) => Token::Array(vec![]),
-_ => panic!(""), },
-19 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::LBracket,&Token::Elements(ref list),&Token::RBracket) => Token::Array(list.clone()),
-_ => panic!(""), },
-20 => match (&state.values[0],&state.values[1],&state.values[2],&state.values[3]) {
-(&Token::LBracket,&Token::Elements(ref list),&Token::Comma,&Token::RBracket) => Token::Array(list.clone()),
-_ => panic!(""), },
-21 => match &state.values[0] {
-&Token::Value(ref value) => Token::Elements(vec![value . clone ()]),
-_ => panic!(""), },
-22 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Elements(ref list),&Token::Comma,&Token::Value(ref value)) => Token::Elements({let mut new=(list.clone());
-new.push(value.clone()); new}),
-_ => panic!(""), },
-23 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Expression(ref left),&Token::EqualEqual,&Token::Expression(ref right)) => Token::Expression(Expr::Equality(Rc::new(left.clone()),Rc::new(right.clone()))),
-_ => panic!(""), },
-24 => match &state.values[0] {
-&Token::LitStr(ref s) => Token::Expression(Expr::Literal(s.clone())),
-_ => panic!(""), },
-25 => match &state.values[0] {
-&Token::Number(v) => Token::Expression(Expr::Number(v)),
-_ => panic!(""), },
-26 => match &state.values[0] {
-&Token::Ident(ref s) => Token::Expression(Expr::Ident(s.clone())),
-_ => panic!(""), },
-27 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Expression(ref path),&Token::Dot,&Token::Ident(ref element)) => Token::Expression(Expr::Member(Rc::new(path.clone()),element.clone())),
-_ => panic!(""), },
-28 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::LPar,&Token::Expression(ref expr),&Token::RPar) => Token::Expression(Expr::Parentheses(Rc::new(expr.clone()))),
-_ => panic!(""), },
-29 => match (&state.values[0],&state.values[1]) {
-(&Token::At,&Token::Expression(ref expr)) => Token::Expression(Expr::Name(Rc::new(expr.clone()))),
-_ => panic!(""), },
-30 => match &state.values[0] {
-&Token::FunctionCall(ref value) => Token::Expression(value.clone()),
-_ => panic!(""), },
-31 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Ident(ref name),&Token::LBrace,&Token::RBrace) => Token::FunctionCall(Expr::FunctionCall(name.clone(),vec![])),
-_ => panic!(""), },
-32 => match (&state.values[0],&state.values[1],&state.values[2],&state.values[3]) {
-(&Token::Ident(ref name),&Token::LBrace,&Token::Arguments(ref list),&Token::RBrace) => Token::FunctionCall(Expr::FunctionCall(name.clone(),list.clone())),
-_ => panic!(""), },
-33 => match (&state.values[0],&state.values[1],&state.values[2],&state.values[3],&state.values[4]) {
-(&Token::Ident(ref name),&Token::LBrace,&Token::Arguments(ref list),&Token::Comma,&Token::RBrace) => Token::FunctionCall(Expr::FunctionCall(name.clone(),list.clone())),
-_ => panic!(""), },
-34 => match &state.values[0] {
-&Token::ExprPair(ref s,ref value) => Token::Arguments(vec![(s . clone () , value . clone ())]),
-_ => panic!(""), },
-35 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Arguments(ref list),&Token::Comma,&Token::ExprPair(ref s,ref value)) => Token::Arguments({let mut new=(list.clone());
-new.push((s.clone(),value.clone())); new}),
-_ => panic!(""), },
-36 => match (&state.values[0],&state.values[1],&state.values[2]) {
-(&Token::Ident(ref s),&Token::Colon,&Token::Expression(ref expr)) => { let (x0,x1)=(s.clone(),expr.clone()); Token::ExprPair(x0,x1) },
-_ => panic!(""), },
-_ => panic!(""), } }//compute_value
+_ => panic!(""), }) }//compute_value
 fn table_terminal(token_index:usize)->bool { match token_index {
 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19 => true,
 0|20|21|22|23|24|25|26|27|28|29 => false,

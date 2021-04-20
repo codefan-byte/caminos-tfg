@@ -2,7 +2,7 @@
 extern crate gramatica;
 
 use std::cmp::Ordering;
-use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,AmbiguityInfo,ParsingError};
+use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,ParsingError};
 
 
 use std::rc::Rc;
@@ -22,6 +22,15 @@ pub enum ConfigurationValue
 	False,
 	Where(Rc<ConfigurationValue>,Expr),
 	Expression(Expr),
+	None,
+}
+
+impl Default for ConfigurationValue
+{
+	fn default() -> ConfigurationValue
+	{
+		ConfigurationValue::None
+	}
 }
 
 impl ConfigurationValue
@@ -62,6 +71,7 @@ impl ConfigurationValue
 			&ConfigurationValue::False => write!(f,"false")?,
 			&ConfigurationValue::Where(ref cv, ref _expr) => write!(f,"{} where FIXME",cv)?,
 			&ConfigurationValue::Expression(ref e) => write!(f,"= {}",e)?,
+			&ConfigurationValue::None => write!(f,"NONE VALUE")?,
 		};
 		Ok(())
 	}
@@ -187,14 +197,14 @@ re_terminal!(_,"\\s+|\n|//[^\n]*\n|/\\*([^*]|\\*+[^/])*\\*+/");//Otherwise skip 
 nonterminal Value(ConfigurationValue)
 {
 	(LitStr(ref s)) => ConfigurationValue::Literal(s.clone()),
-	(Number(v)) => ConfigurationValue::Number(v),
-	(Object(ref value)) => value.clone(),
-	(Array(ref list)) => ConfigurationValue::Array(list.clone()),
-	(Bang,Array(ref list)) => ConfigurationValue::Experiments(list.clone()),
-	(Ident(ref name),Bang,Array(ref list)) => ConfigurationValue::NamedExperiments(name.clone(),list.clone()),
+	(Number(ref v)) => ConfigurationValue::Number(*v),
+	(Object(ref mut value)) => std::mem::take(value),
+	(Array(ref mut list)) => ConfigurationValue::Array(std::mem::take(list)),
+	(Bang,Array(ref mut list)) => ConfigurationValue::Experiments(std::mem::take(list)),
+	(Ident(ref name),Bang,Array(ref mut list)) => ConfigurationValue::NamedExperiments(name.clone(),std::mem::take(list)),
 	(True) => ConfigurationValue::True,
 	(False) => ConfigurationValue::False,
-	(Value(ref value),Where,Expression(ref expr)) => ConfigurationValue::Where(Rc::new(value.clone()),expr.clone()),
+	(Value(ref mut value),Where,Expression(ref expr)) => ConfigurationValue::Where(Rc::new(std::mem::take(value)),expr.clone()),
 	(Equal,Expression(ref e)) => ConfigurationValue::Expression(e.clone()),
 }
 
@@ -202,42 +212,42 @@ nonterminal Object(ConfigurationValue)
 {
 	(Ident(ref name)) => ConfigurationValue::Object(name.clone(),vec![]),
 	(Ident(ref name),LBrace,RBrace) => ConfigurationValue::Object(name.clone(),vec![]),
-	(Ident(ref name),LBrace,Members(ref list),RBrace) => ConfigurationValue::Object(name.clone(),list.clone()),
-	(Ident(ref name),LBrace,Members(ref list),Comma,RBrace) => ConfigurationValue::Object(name.clone(),list.clone()),
+	(Ident(ref name),LBrace,Members(ref mut list),RBrace) => ConfigurationValue::Object(name.clone(),std::mem::take(list)),
+	(Ident(ref name),LBrace,Members(ref mut list),Comma,RBrace) => ConfigurationValue::Object(name.clone(),std::mem::take(list)),
 }
 
 nonterminal Members(Vec<(String,ConfigurationValue)>)
 {
-	(Pair(ref s,ref value)) => vec![(s.clone(),value.clone())],
+	(Pair(ref s,ref mut value)) => vec![(s.clone(),std::mem::take(value))],
 	//(Pair,Comma,Members) => (),
-	(Members(ref list),Comma,Pair(ref s,ref value)) =>
+	(Members(ref mut list),Comma,Pair(ref s,ref mut value)) =>
 	{
-		let mut new=(list.clone());
-		new.push((s.clone(),value.clone()));
+		let mut new=(std::mem::take(list));
+		new.push((s.clone(),std::mem::take(value)));
 		new
 	},
 }
 
 nonterminal Pair(String,ConfigurationValue)
 {
-	(Ident(ref s),Colon,Value(ref value)) => (s.clone(),value.clone()),
+	(Ident(ref s),Colon,Value(ref mut value)) => (s.clone(),std::mem::take(value)),
 }
 
 nonterminal Array(Vec<ConfigurationValue>)
 {
 	(LBracket,RBracket) => vec![],
-	(LBracket,Elements(ref list),RBracket) => list.clone(),
-	(LBracket,Elements(ref list),Comma,RBracket) => list.clone(),
+	(LBracket,Elements(ref mut list),RBracket) => std::mem::take(list),
+	(LBracket,Elements(ref mut list),Comma,RBracket) => std::mem::take(list),
 }
 
 nonterminal Elements(Vec<ConfigurationValue>)
 {
-	(Value(ref value)) => vec![value.clone()],
+	(Value(ref mut value)) => vec![std::mem::take(value)],
 	//(Value,Comma,Elements) => (),
-	(Elements(ref list),Comma,Value(ref value)) =>
+	(Elements(ref mut list),Comma,Value(ref mut value)) =>
 	{
-		let mut new=(list.clone());
-		new.push(value.clone());
+		let mut new=(std::mem::take(list));
+		new.push(std::mem::take(value));
 		new
 	},
 }
@@ -247,7 +257,7 @@ nonterminal Expression(Expr)
 	#[priority(comparison)]
 	(Expression(ref left),EqualEqual,Expression(ref right)) => Expr::Equality(Rc::new(left.clone()),Rc::new(right.clone())),
 	(LitStr(ref s)) => Expr::Literal(s.clone()),
-	(Number(v)) => Expr::Number(v),
+	(Number(ref v)) => Expr::Number(*v),
 	(Ident(ref s)) => Expr::Ident(s.clone()),
 	#[priority(membership)]
 	(Expression(ref path),Dot,Ident(ref element)) => Expr::Member(Rc::new(path.clone()),element.clone()),

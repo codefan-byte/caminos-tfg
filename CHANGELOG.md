@@ -3,6 +3,28 @@
 
 ## next [0.3.0]
 
+### 2021-04-20
+Added routing `ChannelsPerHop`.
+git commit -m "Updated grammar tech to manage large files. New routing ChannelsPerHop."
+
+### 2021-04-16
+Removed grammar warning.
+Use public gramatica-0.2.0.
+
+### 2021-04-15
+Updates in grammar technology.
+Added `ConfigurationValue::None` to be able to implement `Default` and use `std::mem::take`.
+
+### 2021-04-08
+Messing with the grammar to avoid cloning values.
+New configuration function `AverageBins`.
+
+### 2021-04-07
+Trying experimental gramatica-0.1.6 to solve the stack overflow.
+
+### 2021-03-30
+Debugging a stack overflow...
+
 ### 2021-03-29
 Changed default statistic jain column to ServerGenerationJainIndex.
 New traffic TimeSequenced.

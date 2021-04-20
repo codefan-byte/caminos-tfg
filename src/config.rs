@@ -398,6 +398,56 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 					};
 					container[position].clone()
 				}
+				"AverageBins" =>
+				{
+					let mut data = None;
+					let mut width = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"data" =>
+							{
+								data=Some(evaluate(val,context));
+							},
+							"width" =>
+							{
+								width=Some(evaluate(val,context));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let data=data.expect("data argument of at not given.");
+					let width=width.expect("width argument of at not given.");
+					let data=match data
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({}:?)",data),
+					};
+					let width=match width
+					{
+						ConfigurationValue::Number(x) => x as usize,
+						_ => panic!("width argument of lt evaluated to a non-number ({}:?)",width),
+					};
+					//TODO: do we want to include incomplete bins?
+					//let n = (data.len()+width-1)/width;
+					let n = data.len()/width;
+					//let mut result = Vec::with_capacity(n);
+					let mut iter = data.into_iter();
+					let result =(0..n).map(|_|{
+						let mut total = 0f64;
+						for _ in 0..width
+						{
+							total += match iter.next().unwrap()
+							{
+								ConfigurationValue::Number(x) => x,
+								x => panic!("AverageBins received {:?}",x),
+							}
+						}
+						ConfigurationValue::Number(total/width as f64)
+					}).collect();
+					ConfigurationValue::Array(result)
+				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
 		}
