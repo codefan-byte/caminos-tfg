@@ -196,6 +196,40 @@ ChannelsPerHop{
 }
 ```
 
+### ChannelsPerHopPerLinkClass
+Modify a routing to use a given list of virtual channels each hop.
+```
+ChannelsPerHopPerLinkClass{
+	routing: Shortest,
+	channels: [
+		[ [0],[1] ],//links in class 0.
+		[ [0],[1] ],//links in class 1.
+		[ [0,1] ],//links in class 2. Last class is towards servers. 
+	],
+}
+```
+
+### ChannelMap
+```
+ChannelMap{
+	routing: Shortest,
+	map: [
+		[1],//map the virtual channel 0 into the vc 1
+		[2,3],//the vc 1 is doubled into 2 and 3
+		[4],
+	],
+}
+```
+
+### AscendantChannelsWithLinkClass
+Virtual channels are used in ascent way. With higher classes meaning higher digits.
+```
+AscendantChannelsWithLinkClass{
+	routing: Shortest,
+	bases: [2,1],//allow two consecutive hops of class 0 before a hop of class 1
+}
+```
+
 ### Stubborn makes a routing to calculate candidates just once. If that candidate is not accepted is trying again every cycle.
 ```
 Stubborn{
@@ -280,6 +314,9 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"UpDown" => Box::new(UpDown::new(arg)),
 			"UpDownStar" => Box::new(ExplicitUpDown::new(arg)),
 			"ChannelsPerHop" => Box::new(ChannelsPerHop::new(arg)),
+			"ChannelsPerHopPerLinkClass" => Box::new(ChannelsPerHopPerLinkClass::new(arg)),
+			"AscendantChannelsWithLinkClass" => Box::new(AscendantChannelsWithLinkClass::new(arg)),
+			"ChannelMap" => Box::new(ChannelMap::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}
@@ -444,7 +481,7 @@ impl Routing for Valiant
 			None =>
 			{
 				//self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
-				self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+				self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.first_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
 			}
 			Some(ref s) =>
 			{
@@ -462,7 +499,7 @@ impl Routing for Valiant
 					}
 					x.unwrap()
 				};
-				self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.first_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+				self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
 			}
 		}
 		// let num_ports=topology.ports(current_router);
@@ -564,6 +601,7 @@ impl Routing for Valiant
 				}
 				else
 				{
+					//FIXME: that target_server
 					let meta=bri.meta.as_mut().unwrap();
 					meta[0].borrow_mut().hops+=1;
 					self.first.update_routing_info(&meta[0],topology,current_router,current_port,target_server,rng);
@@ -571,9 +609,10 @@ impl Routing for Valiant
 			}
 		};
 	}
-	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
 	{
-		//TODO: recurse over routings
+		self.first.initialize(topology,rng);
+		self.second.initialize(topology,rng);
 	}
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
 	{
@@ -1133,6 +1172,8 @@ impl Routing for WeighedShortest
 		};
 		//let distance=topology.distance(current_router,target_router);
 		let distance=*self.distance_matrix.get(current_router,target_router);
+		//let valid = vec![0,1,2,100,101,102];
+		//if !valid.contains(&distance){ panic!("distance={}",distance); }
 		if distance==0
 		{
 			for i in 0..topology.ports(current_router)
@@ -1154,11 +1195,17 @@ impl Routing for WeighedShortest
 		for i in 0..num_ports
 		{
 			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
-			if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+			if let (Location::RouterPort{router_index,router_port:_},link_class)=topology.neighbour(current_router,i)
 			{
-				//if distance-1==topology.distance(router_index,target_router)
-				if distance>*self.distance_matrix.get(router_index,target_router)
+				let link_weight = self.class_weight[link_class];
+				//if distance>*self.distance_matrix.get(router_index,target_router)
+				let new_distance = *self.distance_matrix.get(router_index,target_router);
+				if new_distance + link_weight == distance
 				{
+					//if ![(102,1),(1,1),(101,100),(100,100),(101,1)].contains(&(distance,link_weight)){
+					//	println!("distance={} link_weight={}",distance,link_weight);
+					//}
+					//println!("distance={} link_weight={} hops={}",distance,link_weight,routing_info.hops);
 					//r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
 					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
 				}
@@ -1751,3 +1798,340 @@ impl ChannelsPerHop
 	}
 }
 
+///Set the virtual channels to use in each hop for each link class.
+///See also the simpler transformation by ChannelsPerHop.
+#[derive(Debug)]
+pub struct ChannelsPerHopPerLinkClass
+{
+	///The base routing to use.
+	routing: Box<dyn Routing>,
+	///channels[class][k] is the list of available VCs to use in the k-th hop given in links of the given `class`.
+	channels: Vec<Vec<Vec<usize>>>,
+}
+
+impl Routing for ChannelsPerHopPerLinkClass
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//println!("{}",topology.diameter());
+		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+		let hops = &routing_info.selections.as_ref().unwrap();
+		candidates.into_iter().filter(|c|{
+			let (_next_location,link_class)=topology.neighbour(current_router,c.port);
+			let h = hops[link_class] as usize;
+			//println!("h={} link_class={} channels={:?}",h,link_class,self.channels[link_class]);
+			if self.channels[link_class].len()<=h
+			{
+				panic!("Already given {} hops by link class {}",h,link_class);
+			}
+			//self.channels[link_class].len()>h && self.channels[link_class][h].contains(&c.virtual_channel)
+			self.channels[link_class][h].contains(&c.virtual_channel)
+		}).collect()
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		let mut info = routing_info.borrow_mut();
+		info.meta=Some(vec![ RefCell::new(RoutingInfo::new())]);
+		info.selections = Some(vec![0;self.channels.len()]);
+		self.routing.initialize_routing_info(&info.meta.as_ref().unwrap()[0],topology,current_router,target_server,rng);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		let (_previous_location,link_class)=topology.neighbour(current_router,current_port);
+		let mut info = routing_info.borrow_mut();
+		if let Some(ref mut hops)=info.selections
+		{
+			if hops.len() <= link_class
+			{
+				println!("WARNING: In ChannelsPerHopPerLinkClass, {} classes where not enough, hop through class {}",hops.len(),link_class);
+				hops.resize(link_class+1,0);
+			}
+			hops[link_class] += 1;
+		}
+		let subinfo = &info.meta.as_ref().unwrap()[0];
+		subinfo.borrow_mut().hops+=1;
+		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_server,rng);
+	}
+	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		self.routing.initialize(topology,rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>)
+	{
+		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_server,num_virtual_channels,rng);
+	}
+	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	{
+		self.routing.statistics(cycle)
+	}
+	fn reset_statistics(&mut self, next_cycle:usize)
+	{
+		self.routing.reset_statistics(next_cycle)
+	}
+}
+
+impl ChannelsPerHopPerLinkClass
+{
+	pub fn new(arg: RoutingBuilderArgument) -> ChannelsPerHopPerLinkClass
+	{
+		let mut routing =None;
+		let mut channels =None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="ChannelsPerHopPerLinkClass"
+			{
+				panic!("A ChannelsPerHopPerLinkClass must be created from a `ChannelsPerHopPerLinkClass` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+					"channels" => match value
+					{
+						&ConfigurationValue::Array(ref classlist) => channels=Some(classlist.iter().map(|v|match v{
+							&ConfigurationValue::Array(ref hoplist) => hoplist.iter().map(|v|match v{
+								&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
+									&ConfigurationValue::Number(f) => f as usize,
+									_ => panic!("bad value in channels"),
+								}).collect(),
+								_ => panic!("bad value in channels"),
+							}).collect(),
+							_ => panic!("bad value in channels"),
+						}).collect()),
+						_ => panic!("bad value for channels"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in ChannelsPerHopPerLinkClass",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a ChannelsPerHopPerLinkClass from a non-Object");
+		}
+		let routing=routing.expect("There were no routing");
+		let channels=channels.expect("There were no channels");
+		ChannelsPerHopPerLinkClass{
+			routing,
+			channels,
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct AscendantChannelsWithLinkClass
+{
+	///The base routing to use.
+	routing: Box<dyn Routing>,
+	bases: Vec<usize>,
+}
+
+impl Routing for AscendantChannelsWithLinkClass
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//println!("{}",topology.diameter());
+		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+		let hops_since = &routing_info.selections.as_ref().unwrap();
+		candidates.into_iter().filter(|c|{
+			let (_next_location,link_class)=topology.neighbour(current_router,c.port);
+			if link_class>= self.bases.len() { return true; }
+			//let h = hops_since[link_class] as usize;
+			let vc = (link_class..self.bases.len()).rev().fold(0, |x,class| x*self.bases[class]+(hops_since[class] as usize) );
+			//if link_class==0 && vc!=hops_since[1] as usize{ println!("hops_since={:?} link_class={} vc={}",hops_since,link_class,vc); }
+			c.virtual_channel == vc
+		}).collect()
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		let mut info = routing_info.borrow_mut();
+		info.meta=Some(vec![ RefCell::new(RoutingInfo::new())]);
+		info.selections = Some(vec![0;self.bases.len()]);
+		self.routing.initialize_routing_info(&info.meta.as_ref().unwrap()[0],topology,current_router,target_server,rng);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		let (_previous_location,link_class)=topology.neighbour(current_router,current_port);
+		let mut info = routing_info.borrow_mut();
+		if let Some(ref mut hops_since)=info.selections
+		{
+			if hops_since.len() <= link_class
+			{
+				println!("WARNING: In AscendantChannelsWithLinkClass, {} classes where not enough, hop through class {}",hops_since.len(),link_class);
+				hops_since.resize(link_class+1,0);
+			}
+			hops_since[link_class] += 1;
+			for x in hops_since[0..link_class].iter_mut()
+			{
+				*x=0;
+			}
+		}
+		let subinfo = &info.meta.as_ref().unwrap()[0];
+		subinfo.borrow_mut().hops+=1;
+		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_server,rng);
+	}
+	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		self.routing.initialize(topology,rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>)
+	{
+		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_server,num_virtual_channels,rng);
+	}
+	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	{
+		self.routing.statistics(cycle)
+	}
+	fn reset_statistics(&mut self, next_cycle:usize)
+	{
+		self.routing.reset_statistics(next_cycle)
+	}
+}
+
+impl AscendantChannelsWithLinkClass
+{
+	pub fn new(arg: RoutingBuilderArgument) -> AscendantChannelsWithLinkClass
+	{
+		let mut routing =None;
+		let mut bases =None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="AscendantChannelsWithLinkClass"
+			{
+				panic!("A AscendantChannelsWithLinkClass must be created from a `AscendantChannelsWithLinkClass` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+					"bases" => match value
+					{
+						&ConfigurationValue::Array(ref classlist) => bases=Some(classlist.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
+							_ => panic!("bad value in bases"),
+						}).collect()),
+						_ => panic!("bad value in bases"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in AscendantChannelsWithLinkClass",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a AscendantChannelsWithLinkClass from a non-Object");
+		}
+		let routing=routing.expect("There were no routing");
+		let bases=bases.expect("There were no bases");
+		AscendantChannelsWithLinkClass{
+			routing,
+			bases,
+		}
+	}
+}
+
+///Just remap the virtual channels.
+#[derive(Debug)]
+pub struct ChannelMap
+{
+	///The base routing to use.
+	routing: Box<dyn Routing>,
+	map: Vec<Vec<usize>>,
+}
+
+impl Routing for ChannelMap
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//println!("{}",topology.diameter());
+		//let vcs = &self.channels[routing_info.hops];
+		let candidates = self.routing.next(routing_info,topology,current_router,target_server,self.map.len(),rng);
+		//candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect()
+		let mut r=Vec::with_capacity(candidates.len());
+		for can in candidates.into_iter()
+		{
+			for vc in self.map[can.virtual_channel].iter()
+			{
+				let mut new = can.clone();
+				new.virtual_channel = *vc;
+				r.push(new);
+			}
+		}
+		r
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		self.routing.initialize_routing_info(routing_info,topology,current_router,target_server,rng);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_server,rng);
+	}
+	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		self.routing.initialize(topology,rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng:&RefCell<StdRng>)
+	{
+		self.routing.performed_request(requested,routing_info,topology,current_router,target_server,self.map.len(),rng);
+	}
+	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	{
+		self.routing.statistics(cycle)
+	}
+	fn reset_statistics(&mut self, next_cycle:usize)
+	{
+		self.routing.reset_statistics(next_cycle)
+	}
+}
+
+impl ChannelMap
+{
+	pub fn new(arg: RoutingBuilderArgument) -> ChannelMap
+	{
+		let mut routing =None;
+		let mut map =None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="ChannelMap"
+			{
+				panic!("A ChannelMap must be created from a `ChannelMap` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+					"map" => match value
+					{
+						&ConfigurationValue::Array(ref hoplist) => map=Some(hoplist.iter().map(|v|match v{
+							&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
+								&ConfigurationValue::Number(f) => f as usize,
+								_ => panic!("bad value in map"),
+							}).collect(),
+							_ => panic!("bad value in map"),
+						}).collect()),
+						_ => panic!("bad value for map"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in ChannelMap",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a ChannelMap from a non-Object");
+		}
+		let routing=routing.expect("There were no routing");
+		let map=map.expect("There were no map");
+		ChannelMap{
+			routing,
+			map,
+		}
+	}
+}

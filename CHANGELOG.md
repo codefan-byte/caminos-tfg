@@ -3,6 +3,14 @@
 
 ## next [0.3.0]
 
+### 2021-04-23
+git commit -m "Bugfix on WeighedShortest. New routing transformations related to virtual channels."
+
+### 2021-04-22
+Added routing `ChannelsPerHopPerLinkClass` and `AscendantChannelsWithLinkClass` and `ChannelMap`.
+Routing `WeighedShortest` made to verify the selected link actually belong to the shortest route.
+Implemented nesting of `Valiant` routing initialization.
+
 ### 2021-04-20
 Added routing `ChannelsPerHop`.
 git commit -m "Updated grammar tech to manage large files. New routing ChannelsPerHop."
