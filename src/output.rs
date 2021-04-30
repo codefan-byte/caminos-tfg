@@ -150,6 +150,8 @@ struct Plotkind<'a>
 	label_ordinates: String,
 	min_ordinate: Option<f32>,
 	max_ordinate: Option<f32>,
+	min_abscissa: Option<f32>,
+	max_abscissa: Option<f32>,
 }
 
 impl<'a> Plotkind<'a>
@@ -165,6 +167,8 @@ impl<'a> Plotkind<'a>
 		let mut label_ordinates=None;
 		let mut min_ordinate=None;
 		let mut max_ordinate=None;
+		let mut min_abscissa=None;
+		let mut max_abscissa=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
 		{
 			if cv_name!="Plotkind"
@@ -200,6 +204,16 @@ impl<'a> Plotkind<'a>
 						&ConfigurationValue::Number(f) => max_ordinate=Some(f as f32),
 						_ => panic!("bad value for max_ordinate"),
 					}
+					"min_abscissa" => match value
+					{
+						&ConfigurationValue::Number(f) => min_abscissa=Some(f as f32),
+						_ => panic!("bad value for min_abscissa"),
+					}
+					"max_abscissa" => match value
+					{
+						&ConfigurationValue::Number(f) => max_abscissa=Some(f as f32),
+						_ => panic!("bad value for max_abscissa"),
+					}
 					_ => panic!("Nothing to do with field {} in Plotkind",name),
 				}
 			}
@@ -219,6 +233,8 @@ impl<'a> Plotkind<'a>
 			label_ordinates,
 			min_ordinate,
 			max_ordinate,
+			min_abscissa,
+			max_abscissa,
 		}
 	}
 }
@@ -384,8 +400,26 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationVa
 					git_set.insert(git_str.to_string());
 				}
 			}
-			//averaged.push( (selector_value.clone(),legend_value.clone(),standard_deviation(&current_abscissas),standard_deviation(&current_ordinates)) );
-			averaged.push( AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),git_set} );
+			//averaged.push( AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),git_set} );
+			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),git_set};
+			if let Some(x) = averaged_record.abscissa.0
+			{
+				if let Some(xmin) = pk.min_abscissa
+				{
+					if xmin > x
+					{
+						continue;
+					}
+				}
+				if let Some(xmax) = pk.max_abscissa
+				{
+					if xmax < x
+					{
+						continue;
+					}
+				}
+			}
+			averaged.push(averaged_record);
 		}
 		//println!("averaged as");
 		//for average in averaged.iter()
@@ -493,6 +527,14 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		None => String::new(),
 		Some(x) => format!("ymax={},",x),
 	}).collect();
+	let xmin:Vec<String>=kind.iter().map(|kd| match kd.min_abscissa{
+		None => String::new(),
+		Some(x) => format!("xmin={},",x),
+	}).collect();
+	let xmax:Vec<String>=kind.iter().map(|kd| match kd.max_abscissa{
+		None => String::new(),
+		Some(x) => format!("xmax={},",x),
+	}).collect();
 	let mut all_legend_tex_id_vec:Vec<String> = Vec::new();
 	let mut all_legend_tex_id_set:HashSet<String> = HashSet::new();
 	let mut all_legend_tex_entry:HashSet<String> = HashSet::new();
@@ -563,9 +605,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				}
 				all_legend_tex_entry.insert(format!("\\def\\{}text{{{}}}\n",legend_tex_id,legend_tex_entry));
 				//all_legend_tex_entry.insert(format!("\\expandafter\\def\\csname {}text\\endcsname{{{}}}\n",legend_tex_id,legend_tex_entry));
-				raw_plots.push_str(r"\addplot[");
-				raw_plots.push_str(&legend_tex_id);
-				raw_plots.push_str(r"] coordinates{");
+				//raw_plots.push_str(r"\addplot[");
+				//raw_plots.push_str(&legend_tex_id);
+				//raw_plots.push_str(r"] coordinates{");
+				let mut current_raw_plot=String::new();
 				let mut drawn_points=0;
 				let mut to_draw:Vec<(f32,f32,f32,f32)> = Vec::with_capacity(kaverages.len());
 				while *koffset<kaverages.len() && *selector_value_to_use==kaverages[*koffset].selector && *legend_value==kaverages[*koffset].legend
@@ -578,11 +621,11 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						let ordinate_deviation=ordinate_deviation.unwrap_or(0f32);
 						//if abscissa_deviation.abs()>0.01*x.abs() || ordinate_deviation.abs()>0.01*y.abs()
 						//{
-						//	raw_plots.push_str(&format!("({},{}) +- ({},{})",x,y,abscissa_deviation,ordinate_deviation));
+						//	current_raw_plot.push_str(&format!("({},{}) +- ({},{})",x,y,abscissa_deviation,ordinate_deviation));
 						//}
 						//else
 						//{
-						//	raw_plots.push_str(&format!("({},{})",x,y));
+						//	current_raw_plot.push_str(&format!("({},{})",x,y));
 						//}
 						to_draw.push( (x,y,abscissa_deviation,ordinate_deviation) );
 						drawn_points+=1;
@@ -596,8 +639,22 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				if drawn_points>=1
 				{
 					let cmp = | x:&f32, y:&f32 | if x==y { std::cmp::Ordering::Equal } else { if x<y {std::cmp::Ordering::Less} else {std::cmp::Ordering::Greater}};
-					let to_draw_x_min = to_draw.iter().map(|t|t.0).min_by(cmp).expect("no points");
-					let to_draw_x_max = to_draw.iter().map(|t|t.0).max_by(cmp).expect("no points");
+					let to_draw_x_min = if let Some(x)=kd.min_abscissa
+					{
+						x
+					}
+					else
+					{
+						to_draw.iter().map(|t|t.0).min_by(cmp).expect("no points")
+					};
+					let to_draw_x_max = if let Some(x)=kd.max_abscissa
+					{
+						x
+					}
+					else
+					{
+						to_draw.iter().map(|t|t.0).max_by(cmp).expect("no points")
+					};
 					let to_draw_y_min = if let Some(y)=kd.min_ordinate
 					{
 						y
@@ -620,14 +677,23 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					{
 						if dx.abs()*20f32 > x_range || dy.abs()*20f32 > y_range
 						{
-							raw_plots.push_str(&format!("({},{}) +- ({},{})",x,y,dx,dy));
+							current_raw_plot.push_str(&format!("({},{}) +- ({},{})",x,y,dx,dy));
 						}
 						else
 						{
-							raw_plots.push_str(&format!("({},{})",x,y));
+							current_raw_plot.push_str(&format!("({},{})",x,y));
 						}
 					}
 				}
+				raw_plots.push_str(r"\addplot[");
+				raw_plots.push_str(&legend_tex_id);
+				if drawn_points > 20
+				{
+					let mark_period = drawn_points/10;
+					raw_plots.push_str(&format!(",mark repeat={}",mark_period));
+				}
+				raw_plots.push_str(r"] coordinates{");
+				raw_plots.push_str(&current_raw_plot);
 				if kind_index==0
 				{
 					//raw_plots.push_str(r"};\addlegendentry{\csname ");
@@ -661,8 +727,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		%%ybar interval=0.6,
 		% ymin=%(ymin)s,
 		% ymax=%(ymax)s,
-		{ymin_string}%
-		{ymax_string}%
+		{ymin_string}{ymax_string}{xmin_string}{xmax_string}%
 		%%enlargelimits=false,
 		ymajorgrids=true,
 		yminorgrids=true,
@@ -681,7 +746,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	]
 {plots_string}	\end{{axis}}
 	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
+	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
 		}
 		if wrote==0
 		{

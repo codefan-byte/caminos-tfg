@@ -58,7 +58,6 @@ pub trait VirtualChannelPolicy
 	fn need_port_last_transmission(&self)->bool;
 }
 
-#[non_exhaustive]
 #[derive(Debug)]
 pub struct VCPolicyBuilderArgument<'a>
 {

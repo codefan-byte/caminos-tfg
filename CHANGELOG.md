@@ -3,8 +3,16 @@
 
 ## next [0.3.0]
 
+### 2021-04-30
+Added `{min,max}_abscissa` to Plotkind.
+Make AverageBins return NANs instead of panicing.
+Automatically add `mark repeat` when having too many points within the tikz backend.
+Fixed tracking temporal stastistics of given hops and message delay.
+git commit -m "Fixes and improvemets for temporal statistics."
+
 ### 2021-04-23
 git commit -m "Bugfix on WeighedShortest. New routing transformations related to virtual channels."
+Removed `non_exhaustive` for Builders.
 
 ### 2021-04-22
 Added routing `ChannelsPerHopPerLinkClass` and `AscendantChannelsWithLinkClass` and `ChannelMap`.

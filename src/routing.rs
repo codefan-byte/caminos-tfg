@@ -121,7 +121,6 @@ pub trait Routing : Debug
 }
 
 ///The argument of a builder function for `Routings`.
-#[non_exhaustive]
 #[derive(Debug)]
 pub struct RoutingBuilderArgument<'a>
 {

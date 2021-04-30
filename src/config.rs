@@ -441,7 +441,8 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 							total += match iter.next().unwrap()
 							{
 								ConfigurationValue::Number(x) => x,
-								x => panic!("AverageBins received {:?}",x),
+								//x => panic!("AverageBins received {:?}",x),
+								_ => std::f64::NAN,
 							}
 						}
 						ConfigurationValue::Number(total/width as f64)

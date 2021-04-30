@@ -53,7 +53,6 @@ pub trait Traffic : Quantifiable + Debug
 	}
 }
 
-#[non_exhaustive]
 #[derive(Debug)]
 pub struct TrafficBuilderArgument<'a>
 {

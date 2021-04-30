@@ -830,7 +830,7 @@ impl Statistics
 				self.temporal_statistics.resize_with(index+1,Default::default);
 				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
 			}
-			self.temporal_statistics[index].total_message_delay+=1;
+			self.temporal_statistics[index].total_message_delay+=delay;
 		}
 	}
 	fn track_packet_hops(&mut self, hops:usize, cycle:usize)
@@ -849,7 +849,7 @@ impl Statistics
 				self.temporal_statistics.resize_with(index+1,Default::default);
 				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
 			}
-			self.temporal_statistics[index].total_packet_hops+=1;
+			self.temporal_statistics[index].total_packet_hops+=hops;
 			//Is total_packet_per_hop_count too much here?
 		}
 	}

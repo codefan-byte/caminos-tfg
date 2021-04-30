@@ -35,7 +35,6 @@ pub trait Pattern : Quantifiable + std::fmt::Debug
 }
 
 ///The argument to a builder funtion of patterns.
-#[non_exhaustive]
 #[derive(Debug)]
 pub struct PatternBuilderArgument<'a>
 {
