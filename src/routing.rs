@@ -893,7 +893,7 @@ impl Routing for SumRouting
 					let avc0=&self.first_allowed_virtual_channels;
 					let el0=self.first_extra_label;
 					let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
-					let avc1=&self.first_allowed_virtual_channels;
+					let avc1=&self.second_allowed_virtual_channels;
 					let el1=self.second_extra_label;
 					let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
 					r0.chain(r1).collect()

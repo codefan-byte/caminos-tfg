@@ -3,6 +3,9 @@
 
 ## next [0.3.0]
 
+### 2021-05-03
+git commit -m "Fixed a bug on the allowed virtual channels in SumRouting."
+
 ### 2021-04-30
 Added `{min,max}_abscissa` to Plotkind.
 Make AverageBins return NANs instead of panicing.
