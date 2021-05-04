@@ -3,6 +3,9 @@
 
 ## next [0.3.0]
 
+### 2021-05-04
+git commit -m "Added performed_request recursion to Stubborn routing."
+
 ### 2021-05-03
 git commit -m "Fixed a bug on the allowed virtual channels in SumRouting."
 

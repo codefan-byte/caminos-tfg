@@ -1338,14 +1338,20 @@ impl Routing for Stubborn
 	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>)
 	{
 		let &CandidateEgress{port,virtual_channel,ref annotation,..} = requested;
 		if let Some(annotation) = annotation.as_ref()
 		{
 			let label = annotation.values[0];
-			routing_info.borrow_mut().selections=Some(vec![port as i32, virtual_channel as i32, label]);
-			//TODO: recurse over routing
+			//routing_info.borrow_mut().selections=Some(vec![port as i32, virtual_channel as i32, label]);
+			let mut bri=routing_info.borrow_mut();
+			bri.selections=Some(vec![port as i32, virtual_channel as i32, label]);
+			//recurse over routing
+			let meta_requested = CandidateEgress{annotation:annotation.meta[0].clone(),..*requested};
+			//let meta_info = &routing_info.borrow().meta.as_ref().unwrap()[0];
+			let meta_info = &bri.meta.as_ref().unwrap()[0];
+			self.routing.performed_request(&meta_requested,meta_info,topology,current_router,target_server,num_virtual_channels,rng);
 		}
 		//otherwise it is direct to server
 	}
