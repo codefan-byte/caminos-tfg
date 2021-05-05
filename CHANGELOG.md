@@ -3,6 +3,9 @@
 
 ## next [0.3.0]
 
+### 2021-05-05
+git commit -m "Added initialize recursion to Stubborn routing."
+
 ### 2021-05-04
 git commit -m "Added performed_request recursion to Stubborn routing."
 

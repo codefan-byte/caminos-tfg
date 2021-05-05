@@ -1335,8 +1335,9 @@ impl Routing for Stubborn
 		bri.selections=None;
 		self.routing.update_routing_info(&bri.meta.as_mut().unwrap()[0],topology,current_router,current_port,target_server,rng);
 	}
-	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
 	{
+		self.routing.initialize(topology,rng);
 	}
 	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>)
 	{
