@@ -3,6 +3,14 @@
 
 ## next [0.3.0]
 
+### 2021-05-08
+SumRouting attributes converted into arrays to allow indexing.
+Split SumRouting policy `TryBoth` into `TryBoth`, `Stubborn`, and `StubbornWhenSecond`.
+git commit -m "stubborn policies on SumRouting."
+
+### 2021-05-07
+Space marks with tikz backend only when there are many points in drawing range.
+
 ### 2021-05-05
 git commit -m "Added initialize recursion to Stubborn routing."
 

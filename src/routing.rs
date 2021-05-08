@@ -816,6 +816,8 @@ pub enum SumRoutingPolicy
 {
 	Random,
 	TryBoth,
+	Stubborn,
+	StubbornWhenSecond,
 }
 
 pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
@@ -826,6 +828,8 @@ pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
 		{
 			"Random" => SumRoutingPolicy::Random,
 			"TryBoth" => SumRoutingPolicy::TryBoth,
+			"Stubborn" => SumRoutingPolicy::Stubborn,
+			"StubbornWhenSecond" => SumRoutingPolicy::StubbornWhenSecond,
 			//"Shortest" => SumRoutingPolicy::Shortest,
 			//"Hops" => SumRoutingPolicy::Hops,
 			_ => panic!("Unknown sum routing policy {}",cv_name),
@@ -842,14 +846,21 @@ pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
 pub struct SumRouting
 {
 	policy:SumRoutingPolicy,
-	first_routing:Box<dyn Routing>,
-	second_routing:Box<dyn Routing>,
-	first_allowed_virtual_channels: Vec<usize>,
-	second_allowed_virtual_channels: Vec<usize>,
-	first_extra_label: i32,
-	second_extra_label: i32,
+	//first_routing:Box<dyn Routing>,
+	//second_routing:Box<dyn Routing>,
+	routing: [Box<dyn Routing>;2],
+	//first_allowed_virtual_channels: Vec<usize>,
+	//second_allowed_virtual_channels: Vec<usize>,
+	allowed_virtual_channels: [Vec<usize>;2],
+	//first_extra_label: i32,
+	//second_extra_label: i32,
+	extra_label: [i32;2],
 }
 
+//routin_info.selections uses
+//* [a] if a specific routing a has been decided
+//* [a,b] if the two routings are available
+//* [a,b,c] if a request by routing c has been made, but the two routing are still available.
 impl Routing for SumRouting
 {
 	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
@@ -888,22 +899,31 @@ impl Routing for SumRouting
 			{
 				//let both = if let &SumRoutingPolicy::TryBoth=&self.policy { routing_info.hops==0 } else { false };
 				//if both
-				if s.len()==2
+				if s.len()>=2
 				{
-					let avc0=&self.first_allowed_virtual_channels;
-					let el0=self.first_extra_label;
-					let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
-					let avc1=&self.second_allowed_virtual_channels;
-					let el1=self.second_extra_label;
-					let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
+					//let avc0=&self.first_allowed_virtual_channels;
+					let avc0=&self.allowed_virtual_channels[0];
+					//let el0=self.first_extra_label;
+					let el0=self.extra_label[0];
+					//let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+					let r0=self.routing[0].next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+					//let avc1=&self.second_allowed_virtual_channels;
+					let avc1=&self.allowed_virtual_channels[1];
+					//let el1=self.second_extra_label;
+					let el1=self.extra_label[1];
+					//let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
+					let r1=self.routing[1].next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
 					r0.chain(r1).collect()
 				}
 				else
 				{
 					let index=s[0] as usize;
-					let routing=if s[0]==0 { &self.first_routing } else { &self.second_routing };
-					let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
-					let extra_label = if s[0]==0 { self.first_extra_label } else { self.second_extra_label };
+					//let routing=if s[0]==0 { &self.first_routing } else { &self.second_routing };
+					let routing = &self.routing[index];
+					//let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
+					let allowed_virtual_channels = &self.allowed_virtual_channels[index];
+					//let extra_label = if s[0]==0 { self.first_extra_label } else { self.second_extra_label };
+					let extra_label = self.extra_label[index];
 					let r=routing.next(&meta[index].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
 					//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
 					r.into_iter()
@@ -918,14 +938,15 @@ impl Routing for SumRouting
 		let all:Vec<i32> = match self.policy
 		{
 			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0,2)],
-			SumRoutingPolicy::TryBoth => vec![0,1],
+			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond => vec![0,1],
 		};
 		let mut bri=routing_info.borrow_mut();
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
 		for &s in all.iter()
 		{
-			let routing=if s==0 { &self.first_routing } else { &self.second_routing };
+			//let routing=if s==0 { &self.first_routing } else { &self.second_routing };
+			let routing = &self.routing[s as usize];
 			routing.initialize_routing_info(&bri.meta.as_ref().unwrap()[s as usize],topology,current_router,target_server,rng)
 		}
 		bri.selections=Some(all);
@@ -936,28 +957,48 @@ impl Routing for SumRouting
 		let s=match bri.selections
 		{
 			None => unreachable!(),
-			Some(ref t) => t[0] as usize,
+			Some(ref t) => if t.len()==1 {
+				t[0] as usize
+			} else {
+				let s=t[2];
+				bri.selections=Some(vec![s]);
+				s as usize
+			},
 		};
-		let routing=if s==0 { &self.first_routing } else { &self.second_routing };
+		//let routing=if s==0 { &self.first_routing } else { &self.second_routing };
+		let routing = &self.routing[s];
 		let meta=bri.meta.as_mut().unwrap();
 		meta[s].borrow_mut().hops+=1;
 		routing.update_routing_info(&meta[s],topology,current_router,current_port,target_server,rng);
 	}
 	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
 	{
-		self.first_routing.initialize(topology,rng);
-		self.second_routing.initialize(topology,rng);
+		//self.first_routing.initialize(topology,rng);
+		//self.second_routing.initialize(topology,rng);
+		self.routing[0].initialize(topology,rng);
+		self.routing[1].initialize(topology,rng);
 	}
 	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
 	{
 		let mut bri=routing_info.borrow_mut();
-		if let SumRoutingPolicy::TryBoth=self.policy
+		//if let SumRoutingPolicy::TryBoth=self.policy
+		//if let SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond =self.policy
+		if bri.selections.as_ref().unwrap().len()>1
 		{
 			let &CandidateEgress{ref annotation,..} = requested;
 			if let Some(annotation) = annotation.as_ref()
 			{
 				let s = annotation.values[0];
-				bri.selections=Some(vec![s]);
+				match self.policy
+				{
+					SumRoutingPolicy::Stubborn => bri.selections=Some(vec![s]),
+					SumRoutingPolicy::StubbornWhenSecond => bri.selections = if s==1 {
+						Some(vec![1])
+					} else {
+						Some( vec![ bri.selections.as_ref().unwrap()[0],bri.selections.as_ref().unwrap()[1],s ] )
+					},
+					_ => bri.selections = Some( vec![ bri.selections.as_ref().unwrap()[0],bri.selections.as_ref().unwrap()[1],s ] ),
+				}
 			}
 		}
 		//TODO: recurse over subroutings
@@ -1038,12 +1079,15 @@ impl SumRouting
 		let second_allowed_virtual_channels=second_allowed_virtual_channels.expect("There were no second_allowed_virtual_channels");
 		SumRouting{
 			policy,
-			first_routing,
-			second_routing,
-			first_allowed_virtual_channels,
-			second_allowed_virtual_channels,
-			first_extra_label,
-			second_extra_label,
+			//first_routing,
+			//second_routing,
+			routing: [first_routing,second_routing],
+			//first_allowed_virtual_channels,
+			//second_allowed_virtual_channels,
+			allowed_virtual_channels: [first_allowed_virtual_channels, second_allowed_virtual_channels],
+			//first_extra_label,
+			//second_extra_label,
+			extra_label: [first_extra_label, second_extra_label],
 		}
 	}
 }

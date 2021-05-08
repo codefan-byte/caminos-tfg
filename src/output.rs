@@ -636,6 +636,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					}
 					*koffset+=1;
 				}
+				let mut drawn_in_range=0;
 				if drawn_points>=1
 				{
 					let cmp = | x:&f32, y:&f32 | if x==y { std::cmp::Ordering::Equal } else { if x<y {std::cmp::Ordering::Less} else {std::cmp::Ordering::Greater}};
@@ -683,13 +684,17 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						{
 							current_raw_plot.push_str(&format!("({},{})",x,y));
 						}
+						if to_draw_x_min<=x && x<=to_draw_x_max && to_draw_y_min<=y && y<=to_draw_y_max
+						{
+							drawn_in_range+=1;
+						}
 					}
 				}
 				raw_plots.push_str(r"\addplot[");
 				raw_plots.push_str(&legend_tex_id);
-				if drawn_points > 20
+				if drawn_in_range > 20
 				{
-					let mark_period = drawn_points/10;
+					let mark_period = drawn_in_range/10;
 					raw_plots.push_str(&format!(",mark repeat={}",mark_period));
 				}
 				raw_plots.push_str(r"] coordinates{");
