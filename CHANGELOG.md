@@ -3,6 +3,12 @@
 
 ## next [0.3.0]
 
+### 2021-05-10
+Added field `Packet::cycle_into_network` to allow some additional statistics.
+Removed `track_packet_hops` and added functionality to `track_consumed_packet`.
+Added `average_packet_network_delay` to statistics at several levels.
+git commit -m "Added network delay statistics per packet."
+
 ### 2021-05-08
 SumRouting attributes converted into arrays to allow indexing.
 Split SumRouting policy `TryBoth` into `TryBoth`, `Stubborn`, and `StubbornWhenSecond`.

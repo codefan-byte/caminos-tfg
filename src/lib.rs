@@ -381,10 +381,10 @@ impl Server
 		if phit.is_end()
 		{
 			//statistics.consumed_packets+=1;
-			statistics.track_consumed_packet(cycle);
-			let hops=phit.packet.routing_info.borrow().hops;
+			statistics.track_consumed_packet(cycle,&phit.packet);
+			//let hops=phit.packet.routing_info.borrow().hops;
 			//statistics.total_packet_hops+=hops;
-			statistics.track_packet_hops(hops,cycle);
+			//statistics.track_packet_hops(hops,cycle);
 			//if statistics.total_packet_per_hop_count.len() <= hops
 			//{
 			//	statistics.total_packet_per_hop_count.resize( hops+1, 0 );
@@ -509,6 +509,9 @@ pub struct Packet
 	pub message: Rc<Message>,
 	///position inside the message
 	pub index: usize,
+	///The cycle when the packet has touched the first router. This is, the packet leading phit has been inserted into a router.
+	///We set it to 0 if the packet has not entered the network yet.
+	pub cycle_into_network: RefCell<usize>,
 }
 
 ///An application message, broken into packets
@@ -625,6 +628,8 @@ pub struct StatisticMeasurement
 	consumed_messages: usize,
 	///Accumulated delay of al messages. From message creation (in traffic.rs) to server consumption.
 	total_message_delay: usize,
+	///Accumulated network delay for all packets. From the leading phit being inserted into a router to the consumption of the tail phit.
+	total_packet_network_delay: usize,
 	///Accumulated count of hops made for all consumed packets.
 	total_packet_hops: usize,
 	///Count of consumed packets indexed by the number of hops it made.
@@ -777,9 +782,18 @@ impl Statistics
 			self.temporal_statistics[index].consumed_phits+=1;
 		}
 	}
-	fn track_consumed_packet(&mut self, cycle:usize)
+	fn track_consumed_packet(&mut self, cycle:usize, packet:&Packet)
 	{
 		self.current_measurement.consumed_packets+=1;
+		let network_delay = cycle-*packet.cycle_into_network.borrow();
+		self.current_measurement.total_message_delay += network_delay;
+		let hops=packet.routing_info.borrow().hops;
+		self.current_measurement.total_packet_hops+=hops;
+		if self.current_measurement.total_packet_per_hop_count.len() <= hops
+		{
+			self.current_measurement.total_packet_per_hop_count.resize( hops+1, 0 );
+		}
+		self.current_measurement.total_packet_per_hop_count[hops]+=1;
 		if self.temporal_step>0
 		{
 			let index = cycle / self.temporal_step;
@@ -789,6 +803,9 @@ impl Statistics
 				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
 			}
 			self.temporal_statistics[index].consumed_packets+=1;
+			self.temporal_statistics[index].total_message_delay+=network_delay;
+			self.temporal_statistics[index].total_packet_hops+=hops;
+			//Is total_packet_per_hop_count too much here?
 		}
 	}
 	fn track_consumed_message(&mut self, cycle:usize)
@@ -833,26 +850,26 @@ impl Statistics
 			self.temporal_statistics[index].total_message_delay+=delay;
 		}
 	}
-	fn track_packet_hops(&mut self, hops:usize, cycle:usize)
-	{
-		self.current_measurement.total_packet_hops+=hops;
-		if self.current_measurement.total_packet_per_hop_count.len() <= hops
-		{
-			self.current_measurement.total_packet_per_hop_count.resize( hops+1, 0 );
-		}
-		self.current_measurement.total_packet_per_hop_count[hops]+=1;
-		if self.temporal_step>0
-		{
-			let index = cycle / self.temporal_step;
-			if self.temporal_statistics.len()<=index
-			{
-				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
-			}
-			self.temporal_statistics[index].total_packet_hops+=hops;
-			//Is total_packet_per_hop_count too much here?
-		}
-	}
+	//fn track_packet_hops(&mut self, hops:usize, cycle:usize)
+	//{
+	//	self.current_measurement.total_packet_hops+=hops;
+	//	if self.current_measurement.total_packet_per_hop_count.len() <= hops
+	//	{
+	//		self.current_measurement.total_packet_per_hop_count.resize( hops+1, 0 );
+	//	}
+	//	self.current_measurement.total_packet_per_hop_count[hops]+=1;
+	//	if self.temporal_step>0
+	//	{
+	//		let index = cycle / self.temporal_step;
+	//		if self.temporal_statistics.len()<=index
+	//		{
+	//			self.temporal_statistics.resize_with(index+1,Default::default);
+	//			self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
+	//		}
+	//		self.temporal_statistics[index].total_packet_hops+=hops;
+	//		//Is total_packet_per_hop_count too much here?
+	//	}
+	//}
 }
 
 ///The available statistical columns. Each column has a string for the header and a way to compute what to print each period.
@@ -866,6 +883,7 @@ enum ReportColumnKind
 	ServerGenerationJainIndex,
 	ServerConsumptionJainIndex,
 	AverageMessageDelay,
+	AveragePacketNetworkDelay,
 	AveragePacketHops,
 	AverageLinkUtilization,
 	MaximumLinkUtilization,
@@ -883,6 +901,7 @@ impl ReportColumnKind
 			ReportColumnKind::ServerGenerationJainIndex => "server_generation_jain_index",
 			ReportColumnKind::ServerConsumptionJainIndex => "server_consumption_jain_index",
 			ReportColumnKind::AverageMessageDelay => "average_message_delay",
+			ReportColumnKind::AveragePacketNetworkDelay => "average_packet_network_delay",
 			ReportColumnKind::AveragePacketHops => "average_packet_hops",
 			ReportColumnKind::AverageLinkUtilization => "average_link_utilization",
 			ReportColumnKind::MaximumLinkUtilization => "maximum_link_utilization",
@@ -924,6 +943,7 @@ impl ReportColumn
 			ReportColumnKind::ServerGenerationJainIndex => format!{"{}",statistics.current_measurement.jain_server_created_phits(network)},
 			ReportColumnKind::ServerConsumptionJainIndex => format!{"{}",statistics.current_measurement.jain_server_consumed_phits(network)},
 			ReportColumnKind::AverageMessageDelay => format!("{}",statistics.current_measurement.total_message_delay as f64/statistics.current_measurement.consumed_messages as f64),
+			ReportColumnKind::AveragePacketNetworkDelay => format!("{}",statistics.current_measurement.total_packet_network_delay as f64/statistics.current_measurement.consumed_packets as f64),
 			ReportColumnKind::AveragePacketHops => format!("{}",statistics.current_measurement.total_packet_hops as f64 / statistics.current_measurement.consumed_packets as f64),
 			ReportColumnKind::AverageLinkUtilization =>
 			{
@@ -1223,6 +1243,7 @@ impl<'a> Simulation<'a>
 							{
 								&Location::ServerPort(_server_index) => if phit.is_begin()
 								{
+									*phit.packet.cycle_into_network.borrow_mut() = self.cycle;
 									self.routing.initialize_routing_info(&phit.packet.routing_info, self.network.topology.as_ref(), router, phit.packet.message.destination,&self.rng);
 								},
 								&Location::RouterPort{../*router_index,router_port*/} => if phit.is_begin()
@@ -1369,6 +1390,7 @@ impl<'a> Simulation<'a>
 							routing_info: RefCell::new(RoutingInfo::new()),
 							message:message.clone(),
 							index:0,
+							cycle_into_network:RefCell::new(0),
 						}));
 						size-=ps;
 					}
@@ -1453,6 +1475,7 @@ impl<'a> Simulation<'a>
 		let injected_load=measurement.created_phits as f64/cycles as f64/num_servers as f64;
 		let accepted_load=measurement.consumed_phits as f64/cycles as f64/num_servers as f64;
 		let average_message_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
+		let average_packet_network_delay=measurement.total_packet_network_delay as f64/measurement.consumed_packets as f64;
 		let jscp=measurement.jain_server_consumed_phits(&self.network);
 		let jsgp=measurement.jain_server_created_phits(&self.network);
 		let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
@@ -1470,6 +1493,7 @@ impl<'a> Simulation<'a>
 			(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
 			(String::from("accepted_load"),ConfigurationValue::Number(accepted_load)),
 			(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay)),
+			(String::from("average_packet_network_delay"),ConfigurationValue::Number(average_packet_network_delay)),
 			(String::from("server_generation_jain_index"),ConfigurationValue::Number(jsgp)),
 			(String::from("server_consumption_jain_index"),ConfigurationValue::Number(jscp)),
 			(String::from("average_packet_hops"),ConfigurationValue::Number(average_packet_hops)),
@@ -1507,6 +1531,7 @@ impl<'a> Simulation<'a>
 			let mut injected_load_collect = Vec::with_capacity(samples);
 			let mut accepted_load_collect = Vec::with_capacity(samples);
 			let mut average_message_delay_collect = Vec::with_capacity(samples);
+			let mut average_packet_network_delay_collect = Vec::with_capacity(samples);
 			let mut jscp_collect = Vec::with_capacity(samples);
 			let mut jsgp_collect = Vec::with_capacity(samples);
 			let mut average_packet_hops_collect = Vec::with_capacity(samples);
@@ -1518,6 +1543,8 @@ impl<'a> Simulation<'a>
 				accepted_load_collect.push(ConfigurationValue::Number(accepted_load));
 				let average_message_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
 				average_message_delay_collect.push(ConfigurationValue::Number(average_message_delay));
+				let average_packet_network_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
+				average_packet_network_delay_collect.push(ConfigurationValue::Number(average_packet_network_delay));
 				let jscp=measurement.jain_server_consumed_phits(&self.network);
 				jscp_collect.push(ConfigurationValue::Number(jscp));
 				let jsgp=measurement.jain_server_created_phits(&self.network);
@@ -1530,6 +1557,7 @@ impl<'a> Simulation<'a>
 				(String::from("injected_load"),ConfigurationValue::Array(injected_load_collect)),
 				(String::from("accepted_load"),ConfigurationValue::Array(accepted_load_collect)),
 				(String::from("average_message_delay"),ConfigurationValue::Array(average_message_delay_collect)),
+				(String::from("average_packet_network_delay"),ConfigurationValue::Array(average_packet_network_delay_collect)),
 				(String::from("server_generation_jain_index"),ConfigurationValue::Array(jsgp_collect)),
 				(String::from("server_consumption_jain_index"),ConfigurationValue::Array(jscp_collect)),
 				(String::from("average_packet_hops"),ConfigurationValue::Array(average_packet_hops_collect)),
@@ -1539,33 +1567,6 @@ impl<'a> Simulation<'a>
 				//(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
 			];
 			result_content.push((String::from("temporal_statistics"),ConfigurationValue::Object(String::from("TemporalStatistics"),temporal_content)));
-			//result_content.push((String::from("temporal_statistics"),ConfigurationValue::Array(self.statistics.temporal_statistics.iter().map(|measurement|{
-			//	let injected_load=measurement.created_phits as f64/step as f64/num_servers as f64;
-			//	let accepted_load=measurement.consumed_phits as f64/step as f64/num_servers as f64;
-			//	let average_message_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
-			//	let jscp=measurement.jain_server_consumed_phits(&self.network);
-			//	let jsgp=measurement.jain_server_created_phits(&self.network);
-			//	let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
-			//	//let total_packet_per_hop_count=measurement.total_packet_per_hop_count.iter().map(|&count|ConfigurationValue::Number(count as f64)).collect();
-			//	//let total_arrivals:usize = (0..self.network.topology.num_routers()).map(|i|(0..self.network.topology.degree(i)).map(|j|self.statistics.link_statistics[i][j].phit_arrivals).sum::<usize>()).sum();
-			//	//let total_links: usize = (0..self.network.topology.num_routers()).map(|i|self.network.topology.degree(i)).sum();
-			//	//let average_link_utilization = total_arrivals as f64 / step as f64 / total_links as f64;
-			//	//let maximum_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).max().unwrap()).max().unwrap();
-			//	//let maximum_link_utilization = maximum_arrivals as f64 / step as f64;
-			//	let step_content = vec![
-			//		(String::from("cycle"),ConfigurationValue::Number(measurement.begin_cycle as f64)),
-			//		(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
-			//		(String::from("accepted_load"),ConfigurationValue::Number(accepted_load)),
-			//		(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay)),
-			//		(String::from("server_generation_jain_index"),ConfigurationValue::Number(jsgp)),
-			//		(String::from("server_consumption_jain_index"),ConfigurationValue::Number(jscp)),
-			//		(String::from("average_packet_hops"),ConfigurationValue::Number(average_packet_hops)),
-			//		//(String::from("total_packet_per_hop_count"),ConfigurationValue::Array(total_packet_per_hop_count)),
-			//		//(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
-			//		//(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
-			//	];
-			//	ConfigurationValue::Object(String::from("StepStatistics"),step_content)
-			//}).collect())));
 		}
 		let result=ConfigurationValue::Object(String::from("Result"),result_content);
 		writeln!(output,"{}",result).unwrap();
