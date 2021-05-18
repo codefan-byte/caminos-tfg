@@ -15,7 +15,7 @@ use indicatif::{ProgressBar,ProgressStyle};
 use crate::config_parser::{self,ConfigurationValue};
 use crate::{Simulation,Plugs};
 use crate::output::{create_output};
-use crate::config::{evaluate,flatten_configuration_value};
+use crate::config::{self,evaluate,flatten_configuration_value};
 
 #[derive(Debug,Clone,Copy)]
 pub enum Action
@@ -427,6 +427,33 @@ impl<'a> Experiment<'a>
 			self.write_journal_entry(&format!("message: {}",message));
 		}
 
+		let packed_results_path = self.root.join("binary.results");
+		let mut packed_results = {
+			let n = experiments.len();
+			match File::open(&packed_results_path)
+			{
+				Err(_) => {
+					ConfigurationValue::Experiments( (0..n).map(|_|ConfigurationValue::None).collect() )
+				},
+				Ok(ref mut file) => {
+					let mut contents = Vec::with_capacity(n);
+					file.read_to_end(&mut contents).expect("something went wrong reading binary.results");
+					let got = config::config_from_binary(&contents,0).expect("something went wrong while deserializing binary.results");
+					match got
+					{
+						ConfigurationValue::Experiments(ref a) => {
+							if a.len()!=n {
+								panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
+							}
+						},
+						_ => panic!("A non-Experiments stored on binary.results"),
+					};
+					got
+				},
+			}
+		};
+		let mut added_packed_results = 0usize;
+
 		let mut must_draw=false;
 		let mut job_pack_size=1;//how many binary runs per job.
 		//let mut pending_jobs=vec![];
@@ -740,6 +767,13 @@ impl<'a> Experiment<'a>
 			{
 				fs::create_dir(&experiment_path).expect("Something went wrong when creating the run directory.");
 			}
+			let is_packed = if let ConfigurationValue::Array(ref a) = packed_results {
+				match a[experiment_index]
+				{
+					ConfigurationValue::None => false,
+					_ => true,
+				}
+			} else {false};
 			let real_experiment_path=experiment_path.canonicalize().expect("This path cannot be resolved");
 			let experiment_path_string = real_experiment_path.to_str().expect("You should use paths representable with unicode");
 			let result_path=experiment_path.join("local.result");
@@ -754,7 +788,7 @@ impl<'a> Experiment<'a>
 			{
 				result_path.metadata().unwrap().len()>=5
 			};
-			if !has_content
+			if !has_content && !is_packed
 			{
 				if let Some(ref external_experiment_list) = external_experiments
 				{
@@ -794,7 +828,7 @@ impl<'a> Experiment<'a>
 				}
 			}
 			//if !result_path.is_file() || result_path.metadata().unwrap().len()==0
-			if has_content
+			if has_content || is_packed
 			{
 				before_amount_completed+=1;
 			}
@@ -865,10 +899,33 @@ impl<'a> Experiment<'a>
 						}
 						else
 						{
-							//create file
-							let mut new_result_file=File::create(&result_path).expect("Could not create result file.");
-							writeln!(new_result_file,"{}",remote_result_contents).unwrap();
-							//drop(new_result_file);//ensure it closes and syncs
+							if let ConfigurationValue::Experiments(ref mut a) = packed_results
+							{
+								match config_parser::parse(&remote_result_contents)
+								{
+									Ok(cv) =>
+									{
+										let result=match cv
+										{
+											config_parser::Token::Value(value) => value,
+											_ => panic!("wrong token"),
+										};
+										a[experiment_index] = result;
+										added_packed_results+=1;
+									}
+									Err(_error)=>
+									{
+										println!("pulled invalid results (experiment {}).",experiment_index);
+									}
+								}
+							}
+							else
+							{
+								//create file
+								let mut new_result_file=File::create(&result_path).expect("Could not create result file.");
+								writeln!(new_result_file,"{}",remote_result_contents).unwrap();
+								//drop(new_result_file);//ensure it closes and syncs
+							}
 							delta_completed+=1;
 							pulled+=1;
 						}
@@ -904,21 +961,19 @@ impl<'a> Experiment<'a>
 			//for (experiment_index,experiment) in experiments.iter().enumerate()
 			for (experiment_index,experiment) in experiments.iter().enumerate().skip(start_index).take(end_index-start_index)
 			{
+				if let ConfigurationValue::Experiments(ref a) = packed_results
+				{
+					match &a[experiment_index]
+					{
+						&ConfigurationValue::None => (),
+						result => {
+							results.push((experiment.clone(),result.clone()));
+							continue;
+						},
+					}
+				}
 				let experiment_path=runs_path.join(format!("run{}",experiment_index));
 				let result_path=experiment_path.join("local.result");
-				//println!("Reading from {:?}",result_path);
-				//let mut got_result = false;
-				//let mut tried_local = false;
-				//let max_tries=if let Action::Pull=action{2}else{1};
-				//while !got_result
-				//for itry in 0..max_tries
-				//if itry==1
-				//{
-				//	if let Action::Pull=action
-				//	{
-				//	}
-				//}
-				//let mut result_file=File::open(&result_path).expect("result could not be opened.");
 				let mut result_file=match File::open(&result_path)
 				{
 					Ok(rf) => rf,
@@ -940,6 +995,11 @@ impl<'a> Experiment<'a>
 							config_parser::Token::Value(value) => value,
 							_ => panic!("wrong token"),
 						};
+						if let ConfigurationValue::Experiments(ref mut a) = packed_results
+						{
+							a[experiment_index] = result.clone();
+							added_packed_results+=1;
+						}
 						results.push((experiment.clone(),result));
 					}
 					Err(_error)=>
@@ -949,7 +1009,11 @@ impl<'a> Experiment<'a>
 				}
 				//println!("result file processed.");
 			}
-
+			//let binary_results_path = self.root.join("binary.results");
+			//let mut binary_results_file=File::create(&binary_results_path).expect("Could not create binary results file.");
+			//let full_results = ConfigurationValue::Experiments(results.iter().map(|(_cfg,res)|res.clone()).collect());
+			//let binary_results = config::config_to_binary(&full_results).expect("error while serializing into binary");
+			//binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
 
 			//println!("results={:?}",results);
 			let od=self.root.join("main.od");
@@ -970,6 +1034,13 @@ impl<'a> Experiment<'a>
 				},
 				_ => panic!("The output description file does not contain a list.")
 			};
+		}
+		if added_packed_results>=1
+		{
+			let mut binary_results_file=File::create(&packed_results_path).expect("Could not create binary results file.");
+			let binary_results = config::config_to_binary(&packed_results).expect("error while serializing into binary");
+			binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
+			println!("Added {} results to binary.results.",added_packed_results);
 		}
 		let fin = format!("Finished action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string());
 		self.write_journal_entry(&fin);

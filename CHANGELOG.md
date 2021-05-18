@@ -3,6 +3,15 @@
 
 ## next [0.3.0]
 
+### 2021-05-18
+Read results from binary.results.
+Changed in `config_from_binary` things from `usize` to `u32` to clear sizes in binary format.
+Pull remote results into memory and then into binary.results, instead of copying the local files.
+git commit -m "Pack results into a bianry file"
+
+### 2021-05-12
+Implemented `config_to_binary`, `config_from_binary`, and BinaryConfigWriter. Tested to create them, remains to test loading them.
+
 ### 2021-05-10
 Added field `Packet::cycle_into_network` to allow some additional statistics.
 Removed `track_packet_hops` and added functionality to `track_consumed_packet`.

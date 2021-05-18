@@ -1,5 +1,7 @@
 
+use std::io::{self,Write};
 use std::collections::{BTreeMap};
+use std::convert::TryInto;
 
 use crate::config_parser::{ConfigurationValue,Expr};
 
@@ -483,4 +485,308 @@ pub fn values_to_f32(list:&Vec<ConfigurationValue>) -> Vec<f32>
 	}).collect()
 }
 
+
+///Convert a ConfigurationValue into a Vec<u8>.
+///Intended to create binary files for result files.
+pub fn config_to_binary(value:&ConfigurationValue) -> io::Result<Vec<u8>>
+{
+	//let mut map:BTreeMap<String,usize> = BTreeMap::new();
+	//let mut vector:Vec<u8> = Vec::new();
+	//config_into_binary(value,&mut vector,&mut map)?;
+	//Ok(vector)
+	let mut writer = BinaryConfigWriter::default();
+	//writer.insert(value)?;
+	writer.insert(value).unwrap_or_else(|e|panic!("error={:?} data={:?}",e,writer.vector));
+	Ok(writer.take_vector())
+}
+
+
+#[derive(Debug,Default)]
+pub struct BinaryConfigWriter
+{
+	vector:Vec<u8>,
+	name_locations:BTreeMap<String,u32>
+}
+
+impl BinaryConfigWriter
+{
+	pub fn new() -> BinaryConfigWriter
+	{
+		Self::default()
+	}
+	pub fn take_vector(self) -> Vec<u8>
+	{
+		self.vector
+	}
+	///Append the binary version of a ConfigurationValue into a Vec<u8> using a map from names to locations inside the vector.
+	///Returns the location at which it has been appended
+	//pub fn config_into_binary(value:&ConfigurationValue, vector:&mut Vec<u8>, name_locations:&mut BTreeMap<String,usize>) -> io::Result<usize>
+	pub fn insert(&mut self, value:&ConfigurationValue) -> io::Result<u32>
+	{
+		//Using little endian for everything, to allow moving the binary files between machines.
+		//This is, we use to_le_bytes instead to_ne_bytes.
+		let location:u32 = {
+			//Align to 4 bytes
+			const ALIGNMENT: usize = 4;
+			let s:usize = self.vector.len();
+			let r = s % ALIGNMENT;
+			if r == 0 { s } else {
+				let new = s + (ALIGNMENT-r);
+				self.vector.resize(new, 0u8);
+				new
+			}.try_into().unwrap()
+		};
+		match value
+		{
+			&ConfigurationValue::Literal(ref name) => {
+				self.vector.resize((location+2*4).try_into().unwrap(), 0u8);
+				let loc:u32 = self.locate(name)?;
+				let mut writer = &mut self.vector[location as usize..];
+				writer.write_all(&0u32.to_le_bytes())?;
+				writer.write_all(&loc.to_le_bytes())?;
+				//match self.name_locations.get(name)
+				//{
+				//	Some(loc) =>{
+				//		self.vector.write_all(&loc.to_le_bytes())?;
+				//	},
+				//	None =>{
+				//		let loc = location+4;
+				//		self.name_locations.insert(name.to_string(),loc);
+				//		self.vector.write_all(&loc.to_ne_bytes())?;
+				//		self.vector.write_all(name.as_bytes())?;
+				//	},
+				//};
+			},
+			&ConfigurationValue::Number(f) => {
+				self.vector.write_all(&1u32.to_le_bytes())?;
+				//using f: f64
+				self.vector.write_all(&f.to_le_bytes())?;
+			},
+			&ConfigurationValue::Object(ref name, ref pairs) =>{
+				let n:u32 = pairs.len().try_into().unwrap();
+				let end = location + 8*n + 3*4;
+				self.vector.resize(end as usize, 0u8);
+				let loc:u32 = self.locate(name)?;
+				//self.vector[location..].write_all(&2u32.to_le_bytes())?;
+				let mut writer = &mut self.vector[location as usize..];
+				//Write::write_all(&mut self.vector[location..],&2u32.to_le_bytes())?;
+				writer.write_all(&2u32.to_le_bytes())?;
+				//let mut writer = &mut self.vector[location + 4..];//this allows a drop for the string write before.
+				writer.write_all(&loc.to_le_bytes())?;
+				//match self.name_locations.get(name)
+				//{
+				//	Some(loc) =>{
+				//		//self.vector[location+1*4..].write_all(&loc.to_le_bytes())?;
+				//		writer.write_all(&loc.to_le_bytes())?;
+				//	},
+				//	None =>{
+				//		let loc = end;
+				//		self.name_locations.insert(name.to_string(),loc);
+				//		writer.write_all(&loc.to_le_bytes())?;
+				//		self.vector.write_all(name.as_bytes())?;
+				//	},
+				//};
+				//let mut writer = &mut self.vector[location + 2*4..];//this allows a drop for the string write before.
+				writer.write_all(&n.to_le_bytes())?;
+				let base:usize = (location +3*4).try_into().unwrap();
+				for (index,(key,val)) in pairs.iter().enumerate(){
+					//write key
+					let loc:u32 = self.locate(key)?;
+					let mut writer = &mut self.vector[base + index*2*4 ..];
+					writer.write_all(&loc.to_le_bytes())?;
+					//match self.name_locations.get(key)
+					//{
+					//	Some(loc) =>{
+					//		let mut writer = &mut self.vector[base + index*2*4 ..];
+					//		writer.write_all(&loc.to_le_bytes())?;
+					//	},
+					//	None =>{
+					//		let loc = self.vector.len();
+					//		self.name_locations.insert(key.to_string(),loc);
+					//		let mut writer = &mut self.vector[base + index*2*4 ..];
+					//		writer.write_all(&loc.to_le_bytes())?;
+					//		self.vector.write_all(key.as_bytes())?;
+					//	},
+					//};
+					//write value
+					//let loc = config_into_binary(val,self.vector,name_locations)?;
+					let loc:u32 = self.insert(val)?;
+					let mut writer = &mut self.vector[base + index*2*4 +4 ..];
+					writer.write_all(&loc.to_le_bytes())?;
+				}
+			},
+			&ConfigurationValue::Array(ref a) => {
+				let n:u32 = a.len().try_into().unwrap();
+				let end = location + 4*n + 2*4;
+				self.vector.resize(end as usize, 0u8);
+				let mut writer = &mut self.vector[location as usize..];
+				writer.write_all(&3u32.to_le_bytes())?;
+				writer.write_all(&n.to_le_bytes())?;
+				let base:usize = (location +2*4).try_into().unwrap();
+				for (index,val) in a.iter().enumerate(){
+					let loc = self.insert(val)?;
+					let mut writer = &mut self.vector[base + index*4 ..];
+					writer.write_all(&loc.to_le_bytes())?;
+				}
+			},
+			&ConfigurationValue::Experiments(ref list) => {
+				let n:u32 = list.len().try_into().unwrap();
+				let end = location + 4*n + 2*4;
+				self.vector.resize(end as usize, 0u8);
+				let mut writer = &mut self.vector[location as usize..];
+				writer.write_all(&4u32.to_le_bytes())?;
+				writer.write_all(&n.to_le_bytes())?;
+				let base:usize = (location +2*4).try_into().unwrap();
+				for (index,val) in list.iter().enumerate(){
+					let loc = self.insert(val)?;
+					let mut writer = &mut self.vector[base  + index*4 ..];
+					writer.write_all(&loc.to_le_bytes())?;
+				}
+			},
+			&ConfigurationValue::NamedExperiments(ref name, ref list) => {
+				let n:u32 = list.len().try_into().unwrap();
+				let end = location + 4*n + 3*4;
+				self.vector.resize(end as usize, 0u8);
+				let loc = self.locate(name)?;
+				let mut writer = &mut self.vector[location as usize ..];
+				writer.write_all(&5u32.to_le_bytes())?;
+				writer.write_all(&loc.to_le_bytes())?;
+				writer.write_all(&n.to_le_bytes())?;
+				let base:usize = (location +3*4).try_into().unwrap();
+				for (index,val) in list.iter().enumerate(){
+					let loc = self.insert(val)?;
+					let mut writer = &mut self.vector[base + index*4 ..];
+					writer.write_all(&loc.to_le_bytes())?;
+				}
+			},
+			&ConfigurationValue::True => self.vector.write_all(&6u32.to_le_bytes())?,
+			&ConfigurationValue::False => self.vector.write_all(&7u32.to_le_bytes())?,
+			&ConfigurationValue::Where(ref _id, ref _expr) => {
+				//TODO: This is not yet supported
+				//its id=8 is reserved
+				self.vector.write_all(&8u32.to_le_bytes())?;
+			},
+			&ConfigurationValue::Expression(ref _expr) => {
+				//TODO: This is not yet supported
+				//its id=9 is reserved
+				self.vector.write_all(&9u32.to_le_bytes())?;
+			},
+			&ConfigurationValue::None => self.vector.write_all(&10u32.to_le_bytes())?,
+		}
+		Ok(location.try_into().unwrap())
+	}
+	///Get a location with the name given. Insert it in the map and vector if necessary.
+	fn locate(&mut self, name:&str) -> io::Result<u32>
+	{
+		Ok(match self.name_locations.get(name)
+		{
+			Some(loc) =>{
+				*loc
+			},
+			None =>{
+				let loc:u32 = self.vector.len().try_into().unwrap();
+				self.name_locations.insert(name.to_string(),loc);
+				self.vector.write_all(&(name.len() as u32).to_le_bytes())?;
+				self.vector.write_all(name.as_bytes())?;
+				loc
+			},
+		})
+	}
+}
+
+///Read the value from the input at the given offset.
+pub fn config_from_binary(data:&[u8], offset:usize) -> Result<ConfigurationValue,std::string::FromUtf8Error>
+{
+	let magic = u32::from_le_bytes(data[offset..offset+4].try_into().unwrap());
+	//println!(">>config_from_binary data.len={} offset={} magic={}",data.len(),offset,magic);
+	match magic{
+		0 => {
+			let loc:usize = u32::from_le_bytes(data[offset+4..offset+8].try_into().unwrap()).try_into().unwrap();
+			let size:usize = u32::from_le_bytes(data[loc..loc+4].try_into().unwrap()).try_into().unwrap();
+			Ok(ConfigurationValue::Literal(String::from_utf8(data[loc+4..loc+4+size].to_vec())?))
+		},
+		1 => {
+			let f= f64::from_le_bytes(data[offset+4..offset+4+8].try_into().unwrap());
+			Ok(ConfigurationValue::Number(f))
+		},
+		2 => {
+			let loc:usize = u32::from_le_bytes(data[offset+4..offset+2*4].try_into().unwrap()).try_into().unwrap();
+			let n:usize = u32::from_le_bytes(data[offset+2*4..offset+3*4].try_into().unwrap()).try_into().unwrap();
+			let size:usize = u32::from_le_bytes(data[loc..loc+4].try_into().unwrap()).try_into().unwrap();
+			let name = String::from_utf8(data[loc+4..loc+4+size].to_vec())?;
+			let mut pairs = Vec::with_capacity(n);
+			for index in 0..n
+			{
+				let item_offset = offset+3*4 +index*2*4;
+				let loc:usize = u32::from_le_bytes(data[item_offset..item_offset+4].try_into().unwrap()).try_into().unwrap();
+				let size:usize = u32::from_le_bytes(data[loc..loc+4].try_into().unwrap()).try_into().unwrap();
+				let key = String::from_utf8(data[loc+4..loc+4+size].to_vec())?;
+				let loc:usize = u32::from_le_bytes(data[item_offset+4..item_offset+2*4].try_into().unwrap()).try_into().unwrap();
+				let val = config_from_binary(data,loc)?;
+				pairs.push( (key,val) );
+			}
+			Ok(ConfigurationValue::Object(name,pairs))
+		},
+		3 => {
+			let n:usize = u32::from_le_bytes(data[offset+1*4..offset+2*4].try_into().unwrap()).try_into().unwrap();
+			let mut a = Vec::with_capacity(n);
+			for index in 0..n
+			{
+				let item_offset = offset+2*4 +index*4;
+				let loc:usize = u32::from_le_bytes(data[item_offset..item_offset+4].try_into().unwrap()).try_into().unwrap();
+				let val = config_from_binary(data,loc)?;
+				a.push( val );
+			}
+			Ok(ConfigurationValue::Array(a))
+		},
+		4 => {
+			let n:usize = u32::from_le_bytes(data[offset+1*4..offset+2*4].try_into().unwrap()).try_into().unwrap();
+			let mut list = Vec::with_capacity(n);
+			for index in 0..n
+			{
+				let item_offset = offset+2*4 +index*4;
+				let loc:usize = u32::from_le_bytes(data[item_offset..item_offset+4].try_into().unwrap()).try_into().unwrap();
+				let val = config_from_binary(data,loc)?;
+				list.push( val );
+			}
+			Ok(ConfigurationValue::Experiments(list))
+		},
+		5 => {
+			let loc:usize = u32::from_le_bytes(data[offset+4..offset+2*4].try_into().unwrap()).try_into().unwrap();
+			let n:usize = u32::from_le_bytes(data[offset+2*4..offset+3*4].try_into().unwrap()).try_into().unwrap();
+			let size:usize = u32::from_le_bytes(data[loc..loc+4].try_into().unwrap()).try_into().unwrap();
+			let name = String::from_utf8(data[loc+4..loc+4+size].to_vec())?;
+			let mut list = Vec::with_capacity(n);
+			for index in 0..n
+			{
+				let item_offset = offset+3*4 +index*4;
+				let loc:usize = u32::from_le_bytes(data[item_offset..item_offset+4].try_into().unwrap()).try_into().unwrap();
+				let val = config_from_binary(data,loc)?;
+				list.push( val );
+			}
+			Ok(ConfigurationValue::NamedExperiments(name,list))
+		},
+		6 => Ok(ConfigurationValue::True),
+		7 => Ok(ConfigurationValue::False),
+		8 => panic!("binary format of where clauses is not yet supported"),
+		9 => panic!("binary format of expressions is not yet supported"),
+		10 => Ok(ConfigurationValue::None),
+		_ => panic!("Do not know what to do with magic={}",magic),
+	}
+}
+
+
+//#[derive(Debug,Default)]
+//pub struct BinaryConfigReader
+//{
+//}
+//
+//impl BinaryConfigReader
+//{
+//	pub fn new() -> BinaryConfigReader
+//	{
+//		Self::default()
+//	}
+//	pub fn 
+//}
 
