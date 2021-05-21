@@ -767,7 +767,7 @@ impl<'a> Experiment<'a>
 			{
 				fs::create_dir(&experiment_path).expect("Something went wrong when creating the run directory.");
 			}
-			let is_packed = if let ConfigurationValue::Array(ref a) = packed_results {
+			let is_packed = if let ConfigurationValue::Experiments(ref a) = packed_results {
 				match a[experiment_index]
 				{
 					ConfigurationValue::None => false,
@@ -831,6 +831,7 @@ impl<'a> Experiment<'a>
 			if has_content || is_packed
 			{
 				before_amount_completed+=1;
+				progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already",pulled,empty,missing,before_amount_completed));
 			}
 			else
 			{
@@ -930,7 +931,7 @@ impl<'a> Experiment<'a>
 							pulled+=1;
 						}
 						//File::open(&result_path).expect("did not work even after pulling it.")
-						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing",pulled,empty,missing));
+						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already",pulled,empty,missing,before_amount_completed));
 					}
 					Action::Output | Action::Check | Action::RemoteCheck | Action::Push | Action::SlurmCancel =>
 					{

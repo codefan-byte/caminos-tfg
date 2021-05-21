@@ -3,6 +3,13 @@
 
 ## next [0.3.0]
 
+### 2021-05-21
+git commit -m "fixes on using binary results"
+
+### 2021-05-20
+Added `already` count to progress bar message.
+Fixed detection of results in binary format.
+
 ### 2021-05-18
 Read results from binary.results.
 Changed in `config_from_binary` things from `usize` to `u32` to clear sizes in binary format.
