@@ -72,6 +72,7 @@ pub struct CandidateEgress
 	pub virtual_channel: usize,
 	///Value used to indicate priorities. Semantics defined per routing and policy. Routing should use low values for more priority.
 	pub label: i32,
+	///An estimation of the number of hops pending. This include the hop we are requesting.
 	pub estimated_remaining_hops: Option<usize>,
 
 	///The routing must set this to None.
@@ -749,6 +750,8 @@ impl<R:SourceRouting+Debug> Routing for R
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
 		let next_router=routing_info.selected_path.as_ref().unwrap()[routing_info.hops+1];
+		let length =routing_info.selected_path.as_ref().unwrap().len() - 1;//substract source router
+		let remain = length - routing_info.hops;
 		for i in 0..num_ports
 		{
 			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -757,8 +760,12 @@ impl<R:SourceRouting+Debug> Routing for R
 				//if distance-1==topology.distance(router_index,target_router)
 				if router_index==next_router
 				{
-					//r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
-					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					r.extend((0..num_virtual_channels).map(|vc|{
+						let mut egress = CandidateEgress::new(i,vc);
+						egress.estimated_remaining_hops = Some(remain);
+						egress
+					}));
 				}
 			}
 		}

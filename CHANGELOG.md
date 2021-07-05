@@ -3,6 +3,11 @@
 
 ## next [0.3.0]
 
+### 2021-07-05
+Set `estimated_remaining_hops` in `SourceRouting`.
+Added `use_estimation` to `LowestSinghWeight`.
+git commit -m "Generate hop estimations in SourceRouting and use them in LowestSinghWeight"
+
 ### 2021-05-21
 git commit -m "fixes on using binary results"
 

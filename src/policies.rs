@@ -416,6 +416,8 @@ pub struct LowestSinghWeight
 	///Whether to use internal output space in the calculations instead of the counters relative to the next router.
 	///defaults to false
 	use_internal_space: bool,
+	///Try `estimated_remaining_hops` before calling distance
+	use_estimation: bool,
 }
 
 impl VirtualChannelPolicy for LowestSinghWeight
@@ -438,7 +440,7 @@ impl VirtualChannelPolicy for LowestSinghWeight
 			//for CandidateEgress{port:p,virtual_channel:vc,label,estimated_remaining_hops} in candidates
 			for candidate in candidates
 			{
-				let CandidateEgress{port:p,virtual_channel:vc, ..} = candidate;
+				let CandidateEgress{port:p,virtual_channel:vc, estimated_remaining_hops, ..} = candidate;
 				//let (p,vc)=candidates[i];
 				//let next_credits=self.virtual_ports[p][vc].neighbour_credits;
 				//let next_consumed_credits=extra_congestion + self.buffer_size - next_credits;
@@ -475,7 +477,12 @@ impl VirtualChannelPolicy for LowestSinghWeight
 				{
 					panic!("We trying to go to the server when we are at distance {} greater than 0.",dist);
 				};
-				let distance=self.extra_distance + 1+topology.distance(next_router,info.target_router_index);
+				//let distance=self.extra_distance + 1+topology.distance(next_router,info.target_router_index);
+				let distance = self.extra_distance + if let (true,Some(d)) = (self.use_estimation,estimated_remaining_hops) {
+					d
+				} else {
+					1 + topology.distance(next_router,info.target_router_index)
+				};
 				let next_weight= next_consumed_credits * (distance as f32);
 				if next_weight<best_weight
 				{
@@ -518,6 +525,7 @@ impl LowestSinghWeight
 		let mut extra_distance=None;
 		let mut aggregate_buffers=false;
 		let mut use_internal_space=false;
+		let mut use_estimation=true;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
 			if cv_name!="LowestSinghWeight"
@@ -550,6 +558,12 @@ impl LowestSinghWeight
  						&ConfigurationValue::False => use_internal_space=false,
  						_ => panic!("bad value for use_internal_space"),
  					}
+ 					"use_estimation" => match value
+ 					{
+ 						&ConfigurationValue::True => use_estimation=true,
+ 						&ConfigurationValue::False => use_estimation=false,
+ 						_ => panic!("bad value for use_estimation"),
+ 					}
 					_ => panic!("Nothing to do with field {} in LowestSinghWeight",name),
 				}
 			}
@@ -565,6 +579,7 @@ impl LowestSinghWeight
 			extra_distance,
 			aggregate_buffers,
 			use_internal_space,
+			use_estimation,
 		}
 	}
 }
