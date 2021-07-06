@@ -412,10 +412,14 @@ pub struct LowestSinghWeight
 	extra_distance: usize,
 	///Whether we consider all the space in each port (when true) or we segregate by virtual channels (when false).
 	///defaults to false
-	aggregate_buffers: bool,
+	///Previously called aggregate_buffers
+	aggregate: bool,
 	///Whether to use internal output space in the calculations instead of the counters relative to the next router.
 	///defaults to false
 	use_internal_space: bool,
+	///Whether to add the neighbour space.
+	///Defaults to true.
+	use_neighbour_space: bool,
 	///Try `estimated_remaining_hops` before calling distance
 	use_estimation: bool,
 }
@@ -424,7 +428,7 @@ impl VirtualChannelPolicy for LowestSinghWeight
 {
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
-		let port_average_neighbour_queue_length=info.port_average_neighbour_queue_length.expect("port_average_neighbour_queue_length have not been computed for policy LowestSinghWeight");
+		//let port_average_neighbour_queue_length=info.port_average_neighbour_queue_length.expect("port_average_neighbour_queue_length have not been computed for policy LowestSinghWeight");
 		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
 		if dist==0
 		{
@@ -435,40 +439,68 @@ impl VirtualChannelPolicy for LowestSinghWeight
 		{
 			let mut best=vec![];
 			//let mut best_weight=<usize>::max_value();
-			let mut best_weight=::std::f32::MAX;
+			let mut best_weight=<i32>::max_value();
+			//let mut best_weight=::std::f32::MAX;
 			//for i in 0..candidates.len()
 			//for CandidateEgress{port:p,virtual_channel:vc,label,estimated_remaining_hops} in candidates
 			for candidate in candidates
 			{
 				let CandidateEgress{port:p,virtual_channel:vc, estimated_remaining_hops, ..} = candidate;
-				//let (p,vc)=candidates[i];
-				//let next_credits=self.virtual_ports[p][vc].neighbour_credits;
-				//let next_consumed_credits=extra_congestion + self.buffer_size - next_credits;
-				let next_consumed_credits:f32=(self.extra_congestion as f32)+if self.aggregate_buffers
+				//let next_consumed_credits:f32=(self.extra_congestion as f32)+if self.aggregate_buffers
+				//{
+				//	if self.use_internal_space
+				//	{
+				//		let port_occupied_output_space=info.port_occupied_output_space.expect("port_occupied_output_space have not been computed for policy LowestSinghWeight");
+				//		port_occupied_output_space[p] as f32
+				//	}
+				//	else
+				//	{
+				//		port_average_neighbour_queue_length[p]
+				//	}
+				//}
+				//else
+				//{
+				//	if self.use_internal_space
+				//	{
+				//		unimplemented!()
+				//	}
+				//	else
+				//	{
+				//		//(router.buffer_size - router.virtual_ports[p][vc].neighbour_credits) as f32
+				//		let next_credits=router.get_status_at_emisor(p).expect("This router does not have transmission status").known_available_space_for_virtual_channel(vc).expect("remote available space is not known");
+				//		(router.get_maximum_credits_towards(p,vc).expect("we need routers with maximum credits") - next_credits) as f32
+				//	}
+				//};
+				let q:i32 = (self.extra_congestion as i32) + if self.use_internal_space
 				{
-					if self.use_internal_space
+					if self.aggregate
 					{
 						let port_occupied_output_space=info.port_occupied_output_space.expect("port_occupied_output_space have not been computed for policy LowestSinghWeight");
-						port_occupied_output_space[p] as f32
+						port_occupied_output_space[p] as i32
 					}
 					else
 					{
-						port_average_neighbour_queue_length[p]
+						let virtual_channel_occupied_output_space=info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for LowestSinghWeight");
+						virtual_channel_occupied_output_space[p][vc] as i32
 					}
 				}
-				else
+				else {0} + if self.use_neighbour_space
 				{
-					if self.use_internal_space
+					if self.aggregate
 					{
-						unimplemented!()
+						//port_average_neighbour_queue_length[p]
+						let status=router.get_status_at_emisor(p).expect("This router does not have transmission status");
+						//FIXME: this could be different than the whole occuped space if using a DAMQ or something, although they are yet to be implemented.
+						(0..status.num_virtual_channels()).map(|c|router.get_maximum_credits_towards(p,c).expect("we need routers with maximum credits") as i32 - status.known_available_space_for_virtual_channel(c).expect("remote available space is not known.") as i32).sum()
 					}
 					else
 					{
-						//(router.buffer_size - router.virtual_ports[p][vc].neighbour_credits) as f32
-						let next_credits=router.get_status_at_emisor(p).expect("This router does not have transmission status").known_available_space_for_virtual_channel(vc).expect("remote available space is not known");
-						(router.get_maximum_credits_towards(p,vc).expect("we need routers with maximum credits") - next_credits) as f32
+						//port_average_neighbour_queue_length[p]
+						let status=router.get_status_at_emisor(p).expect("This router does not have transmission status");
+						router.get_maximum_credits_towards(p,vc).expect("we need routers with maximum credits") as i32 - status.known_available_space_for_virtual_channel(vc).expect("remote available space is not known.") as i32
 					}
-				};
+				}
+				else {0};
 				let next_router=if let (Location::RouterPort{router_index, router_port:_},_link_class)=topology.neighbour(router.get_index().expect("we need routers with index"),p)
 				{
 					router_index
@@ -483,7 +515,7 @@ impl VirtualChannelPolicy for LowestSinghWeight
 				} else {
 					1 + topology.distance(next_router,info.target_router_index)
 				};
-				let next_weight= next_consumed_credits * (distance as f32);
+				let next_weight= q * (distance as i32);
 				if next_weight<best_weight
 				{
 					best_weight=next_weight;
@@ -507,7 +539,8 @@ impl VirtualChannelPolicy for LowestSinghWeight
 
 	fn need_port_average_queue_length(&self)->bool
 	{
-		true
+		//We have removed it. Now it uses router.get_status_at_emisor
+		false
 	}
 
 	fn need_port_last_transmission(&self)->bool
@@ -523,8 +556,9 @@ impl LowestSinghWeight
 	{
 		let mut extra_congestion=None;
 		let mut extra_distance=None;
-		let mut aggregate_buffers=false;
+		let mut aggregate=false;
 		let mut use_internal_space=false;
+		let mut use_neighbour_space=true;
 		let mut use_estimation=true;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
@@ -546,17 +580,32 @@ impl LowestSinghWeight
  						&ConfigurationValue::Number(f) => extra_distance=Some(f as usize),
  						_ => panic!("bad value for extra_distance"),
  					}
- 					"aggregate_buffers" => match value
+ 					"aggregate" => match value
  					{
- 						&ConfigurationValue::True => aggregate_buffers=true,
- 						&ConfigurationValue::False => aggregate_buffers=false,
- 						_ => panic!("bad value for aggregate_buffers"),
+ 						&ConfigurationValue::True => aggregate=true,
+ 						&ConfigurationValue::False => aggregate=false,
+ 						_ => panic!("bad value for aggregate"),
  					}
+ 					"aggregate_buffers" => {
+						println!("WARNING: the name `aggregate_buffers` has been deprecated in favour of just `aggregate`");
+						match value
+						{
+							&ConfigurationValue::True => aggregate=true,
+							&ConfigurationValue::False => aggregate=false,
+							_ => panic!("bad value for aggregate_buffers"),
+						}
+					},
  					"use_internal_space" => match value
  					{
  						&ConfigurationValue::True => use_internal_space=true,
  						&ConfigurationValue::False => use_internal_space=false,
  						_ => panic!("bad value for use_internal_space"),
+ 					}
+ 					"use_neighbour_space" => match value
+ 					{
+ 						&ConfigurationValue::True => use_neighbour_space=true,
+ 						&ConfigurationValue::False => use_neighbour_space=false,
+ 						_ => panic!("bad value for use_neighbour_space"),
  					}
  					"use_estimation" => match value
  					{
@@ -577,8 +626,9 @@ impl LowestSinghWeight
 		LowestSinghWeight{
 			extra_congestion,
 			extra_distance,
-			aggregate_buffers,
+			aggregate,
 			use_internal_space,
+			use_neighbour_space,
 			use_estimation,
 		}
 	}
