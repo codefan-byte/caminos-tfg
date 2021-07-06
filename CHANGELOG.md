@@ -8,6 +8,8 @@ Set `estimated_remaining_hops` in `SourceRouting`.
 Added `use_estimation` to `LowestSinghWeight`.
 git commit -m "Generate hop estimations in SourceRouting and use them in LowestSinghWeight"
 git commit -m "Enhancing LowestSinghWeight with things in OccupancyFunction"
+New pseudo-routing wrapper `SourceAdaptiveRouting`.
+git commit -m "New wrapper for source adaptive routings."
 
 ### 2021-05-21
 git commit -m "fixes on using binary results"
