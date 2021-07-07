@@ -369,8 +369,12 @@ impl Routing for Shortest
 			{
 				if distance-1==topology.distance(router_index,target_router)
 				{
-					//r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
-					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					r.extend((0..num_virtual_channels).map(|vc|{
+						let mut egress = CandidateEgress::new(i,vc);
+						egress.estimated_remaining_hops = Some(distance);
+						egress
+					}));
 				}
 			}
 		}
@@ -500,7 +504,17 @@ impl Routing for Valiant
 					}
 					x.unwrap()
 				};
-				self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+				let second_distance=topology.distance(middle,target_router);//Only exact if the base routing is shortest.
+				//self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+				self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter_map(|mut egress|{
+					if self.second_reserved_virtual_channels.contains(&egress.virtual_channel) { None } else {
+						if let Some(ref mut eh)=egress.estimated_remaining_hops
+						{
+							*eh += second_distance;
+						}
+						Some(egress)
+					}
+				}).collect()
 			}
 		}
 		// let num_ports=topology.ports(current_router);

@@ -3,6 +3,9 @@
 
 ## next [0.3.0]
 
+### 2021-07-07
+git commit -m "Added hop estimation to Shortest and Valiant candidates."
+
 ### 2021-07-05
 Set `estimated_remaining_hops` in `SourceRouting`.
 Added `use_estimation` to `LowestSinghWeight`.
