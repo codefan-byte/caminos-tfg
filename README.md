@@ -113,14 +113,15 @@ Configuration
 		//The load offered from the servers. A common case where to include many simulation values.
 		load: ![0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0],
 		message_size: 16,//The size in phits of the messages created by the servers.
-	}
+	},
 	maximum_packet_size: 16,//Messages of greater length will be broken into several packets.
 	router: Basic//The router is another object with a large description
 	{
 		//The number of virtual channels. The basic router sets a buffer for each virtual channel in each port, both at input and output.
-		virtual_channels: 6,
+		virtual_channels: 8,
 		//Policies that filter the candidate routes given by the routing algorithm. They may be used to break deadlock or to give preference to some choices.
-		virtual_channel_policies: [ WideHops{width:1}, LowestSinghWeight{extra_congestion:0, extra_distance:0, aggregate_buffers:true, use_internal_space:true}, Random ],
+		//EnforceFlowControl must be included to actually use flow control restrictions.
+		virtual_channel_policies: [ EnforceFlowControl, WideHops{width:1}, LowestSinghWeight{extra_congestion:0, extra_distance:0, aggregate_buffers:true, use_internal_space:true}, Random ],
 		delay: 0,//not actually implemted in the basic router. In the future it may be removed or actually implemented.
 		buffer_size: 64,//phits available in each input buffer
 		bubble: false,//to enable bubble mechanism in Cartesian topologies.
@@ -150,7 +151,7 @@ Configuration
 		LinkClass { delay: 1},
 		//In a dragonfly topology we would have 0=server, 1=routers from same group, 2=routers from different groups.
 	],
-	launch_configuration: [
+	launch_configurations: [
 		//We may put here options to send to the SLURM system.
 		Slurm
 		{

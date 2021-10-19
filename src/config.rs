@@ -266,6 +266,30 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 		{
 			match function_name.as_ref()
 			{
+				"eq" | "equal" =>
+				{
+					let mut first=None;
+					let mut second=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"first" =>
+							{
+								first=Some(evaluate(val,context));
+							},
+							"second" =>
+							{
+								second=Some(evaluate(val,context));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let first=first.expect("first argument of lt not given.");
+					let second=second.expect("second argument of lt not given.");
+					//allow any type
+					if first==second { ConfigurationValue::True } else { ConfigurationValue::False }
+				}
 				"lt" =>
 				{
 					let mut first=None;

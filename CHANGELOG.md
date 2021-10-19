@@ -3,6 +3,21 @@
 
 ## next [0.3.0]
 
+### 2021-10-19
+Fixed example configuration in the readme.
+git commit -m "Support for bar graphs. meta routing EachLengthSourceAdaptiveRouting. readme fixes."
+
+### 2021-09-17
+Implemented `EachLengthSourceAdaptiveRouting` as source routing storing a path of each length.
+
+### 2021-07-16
+Added styles for bars.
+
+### 2021-07-15
+Updated merge functionality to work with binary results.
+Added `eq | equal` config evaluation function.
+Added support for symbolic abscissa.
+
 ### 2021-07-07
 git commit -m "Added hop estimation to Shortest and Valiant candidates."
 

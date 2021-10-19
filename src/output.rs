@@ -133,6 +133,8 @@ struct AveragedRecord
 	abscissa: (Option<f32>,Option<f32>),
 	///The average value and standard deviation in the ordinates (a.k.a., x-axis).
 	ordinate: (Option<f32>,Option<f32>),
+	///Keep the original value if it is shared by all the averaged.
+	shared_abscissa: Option<ConfigurationValue>,
 	///Set of involved `git_id`s.
 	git_set: HashSet<String>,
 }
@@ -152,6 +154,8 @@ struct Plotkind<'a>
 	max_ordinate: Option<f32>,
 	min_abscissa: Option<f32>,
 	max_abscissa: Option<f32>,
+	///Whether to be a bar plot
+	bar: bool,
 }
 
 impl<'a> Plotkind<'a>
@@ -169,6 +173,7 @@ impl<'a> Plotkind<'a>
 		let mut max_ordinate=None;
 		let mut min_abscissa=None;
 		let mut max_abscissa=None;
+		let mut bar=false;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
 		{
 			if cv_name!="Plotkind"
@@ -214,6 +219,12 @@ impl<'a> Plotkind<'a>
 						&ConfigurationValue::Number(f) => max_abscissa=Some(f as f32),
 						_ => panic!("bad value for max_abscissa"),
 					}
+					"bar" => match value
+					{
+						&ConfigurationValue::True => bar=true,
+						&ConfigurationValue::False => bar=false,
+						_ => panic!("bad value for bar"),
+					}
 					_ => panic!("Nothing to do with field {} in Plotkind",name),
 				}
 			}
@@ -235,6 +246,7 @@ impl<'a> Plotkind<'a>
 			max_ordinate,
 			min_abscissa,
 			max_abscissa,
+			bar,
 		}
 	}
 }
@@ -400,8 +412,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(ConfigurationVa
 					git_set.insert(git_str.to_string());
 				}
 			}
-			//averaged.push( AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),git_set} );
-			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),git_set};
+			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),shared_abscissa:shared_element(&mut current_abscissas.iter()).map(|x|x.clone()),git_set};
 			if let Some(x) = averaged_record.abscissa.0
 			{
 				if let Some(xmin) = pk.min_abscissa
@@ -535,6 +546,24 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		None => String::new(),
 		Some(x) => format!("xmax={},",x),
 	}).collect();
+	//let mut xsymbols : Vec<String> = vec![];
+	//for kind in averages.iter()
+	//{
+	//	for average in kind.iter()
+	//	{
+	//		if average.abscissa.0.is_none()
+	//		{
+	//			if let Some(ref symbol) = average.shared_abscissa
+	//			{
+	//				let str_symbol: String = format!("{}",symbol);
+	//				if !xsymbols.contains(&str_symbol)
+	//				{
+	//					xsymbols.push(str_symbol);
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
 	let mut all_legend_tex_id_vec:Vec<String> = Vec::new();
 	let mut all_legend_tex_id_set:HashSet<String> = HashSet::new();
 	let mut all_legend_tex_entry:HashSet<String> = HashSet::new();
@@ -592,6 +621,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			wrote+=1;
 			let mut raw_plots=String::new();
 			let mut good_plots=0;
+			let mut symbols:Vec<String> = vec![];
 			while *koffset<kaverages.len() && *selector_value_to_use==kaverages[*koffset].selector
 			{
 				let legend_value=&kaverages[*koffset].legend;
@@ -611,6 +641,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				let mut current_raw_plot=String::new();
 				let mut drawn_points=0;
 				let mut to_draw:Vec<(f32,f32,f32,f32)> = Vec::with_capacity(kaverages.len());
+				let mut symbolic_to_draw: Vec<(String,f32,f32)> = Vec::with_capacity(kaverages.len());
 				while *koffset<kaverages.len() && *selector_value_to_use==kaverages[*koffset].selector && *legend_value==kaverages[*koffset].legend
 				{
 					let (abscissa_average,abscissa_deviation)=kaverages[*koffset].abscissa;
@@ -629,6 +660,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						//}
 						to_draw.push( (x,y,abscissa_deviation,ordinate_deviation) );
 						drawn_points+=1;
+					} else if let (Some(symbol),Some(y)) = (kaverages[*koffset].shared_abscissa.as_ref(),ordinate_average)
+					{
+						let ordinate_deviation=ordinate_deviation.unwrap_or(0f32);
+						let str_symbol: String = format!("{}",symbol);
+						symbolic_to_draw.push( (str_symbol,y,ordinate_deviation) );
+						drawn_points+=1;
 					}
 					for git_id in kaverages[*koffset].git_set.iter()
 					{
@@ -642,19 +679,19 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					let cmp = | x:&f32, y:&f32 | if x==y { std::cmp::Ordering::Equal } else { if x<y {std::cmp::Ordering::Less} else {std::cmp::Ordering::Greater}};
 					let to_draw_x_min = if let Some(x)=kd.min_abscissa
 					{
-						x
+						Some(x)
 					}
 					else
 					{
-						to_draw.iter().map(|t|t.0).min_by(cmp).expect("no points")
+						to_draw.iter().map(|t|t.0).min_by(cmp)
 					};
 					let to_draw_x_max = if let Some(x)=kd.max_abscissa
 					{
-						x
+						Some(x)
 					}
 					else
 					{
-						to_draw.iter().map(|t|t.0).max_by(cmp).expect("no points")
+						to_draw.iter().map(|t|t.0).max_by(cmp)
 					};
 					let to_draw_y_min = if let Some(y)=kd.min_ordinate
 					{
@@ -662,7 +699,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					}
 					else
 					{
-						to_draw.iter().map(|t|t.1).min_by(cmp).expect("no points")
+						//to_draw.iter().map(|t|t.1).min_by(cmp).expect("no points")
+						to_draw.iter().map(|t|t.1).chain( symbolic_to_draw.iter().map(|t|t.1) ).min_by(cmp).expect("no points")
 					};
 					let to_draw_y_max = if let Some(y) = kd.max_ordinate
 					{
@@ -670,13 +708,16 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					}
 					else
 					{
-						to_draw.iter().map(|t|t.1).max_by(cmp).expect("no points")
+						//to_draw.iter().map(|t|t.1).max_by(cmp).expect("no points")
+						to_draw.iter().map(|t|t.1).chain( symbolic_to_draw.iter().map(|t|t.1) ).max_by(cmp).expect("no points")
 					};
-					let x_range = to_draw_x_max - to_draw_x_min;
+					//let x_range = to_draw_x_max - to_draw_x_min;
+					let x_range = if let (Some(a),Some(b)) = (to_draw_x_max , to_draw_x_min) { Some(a - b) } else { None };
 					let y_range = to_draw_y_max - to_draw_y_min;
 					for (x,y,dx,dy) in to_draw
 					{
-						if dx.abs()*20f32 > x_range || dy.abs()*20f32 > y_range
+						//if dx.abs()*20f32 > x_range || dy.abs()*20f32 > y_range
+						if x_range.map_or(true, |xr|dx.abs()*20f32>xr) || dy.abs()*20f32 > y_range
 						{
 							current_raw_plot.push_str(&format!("({},{}) +- ({},{})",x,y,dx,dy));
 						}
@@ -684,7 +725,26 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						{
 							current_raw_plot.push_str(&format!("({},{})",x,y));
 						}
-						if to_draw_x_min<=x && x<=to_draw_x_max && to_draw_y_min<=y && y<=to_draw_y_max
+						if to_draw_x_min.unwrap()<=x && x<=to_draw_x_max.unwrap() && to_draw_y_min<=y && y<=to_draw_y_max
+						{
+							drawn_in_range+=1;
+						}
+					}
+					for (symbol,y,dy) in symbolic_to_draw
+					{
+						if dy.abs()*20f32 > y_range
+						{
+							current_raw_plot.push_str(&format!("({},{}) +- ({},{})",symbol,y,0,dy));
+						}
+						else
+						{
+							current_raw_plot.push_str(&format!("({},{})",symbol,y));
+						}
+						if !symbols.contains(&symbol)
+						{
+							symbols.push(symbol);
+						}
+						if to_draw_y_min<=y && y<=to_draw_y_max
 						{
 							drawn_in_range+=1;
 						}
@@ -692,6 +752,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				}
 				raw_plots.push_str(r"\addplot[");
 				raw_plots.push_str(&legend_tex_id);
+				if kd.bar
+				{
+					raw_plots.push_str("bar");
+				}
 				if drawn_in_range > 20
 				{
 					let mark_period = drawn_in_range/10;
@@ -723,11 +787,23 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			//\path (yticklabel cs:0) ++(-1pt,0pt) coordinate (left trim point);
 			let selectorname=latex_make_command_name(&selector_value_to_use.to_string());
 			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorname,kind_index);
+			let mut axis = "axis";
+			let mut extra = "".to_string();
+			if symbols.len()>0
+			{
+				axis="symbolic";
+				let symbolic_coords = symbols.join(",");
+				extra += &format!("symbolic x coords={{{symbolic_coords}}}, xtick = {{{symbolic_coords}}},",symbolic_coords=symbolic_coords);
+			}
+			if kd.bar
+			{
+				extra += "ybar,bar width=3pt,enlarge x limits=0.2,";
+			}
 			figure_tikz.push_str(&format!(r#"
 	\tikzsetnextfilename{{externalized-plots/external-{tikzname}}}
 	\begin{{tikzpicture}}[baseline,remember picture]
 	\begin{{axis}}[
-		automatically generated axis,
+		automatically generated {axis},{extra}
 		{kind_index_style},{legend_to_name},
 		%%ybar interval=0.6,
 		% ymin=%(ymin)s,
@@ -751,7 +827,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	]
 {plots_string}	\end{{axis}}
 	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
+	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=kd.label_abscissas,ylabel_string=kd.label_ordinates,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
 		}
 		if wrote==0
 		{
@@ -781,13 +857,22 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 \pgfplotsset{{compat=newest}}
 \pgfplotsset{{minor grid style={{dashed,very thin, color=blue!15}}}}
 \pgfplotsset{{major grid style={{very thin, color=black!30}}}}
-\pgfplotsset{{automatically generated axis/.style={{
+\pgfplotsset{{
+	automatically generated axis/.style={{
 		%default: height=207pt, width=240pt. 240:207 ~~ 7:6
 		%height=115pt,%may fit 3figures with 1 line caption
 		height=105pt,%may fit 3figures with 2 line caption
 		width=174pt,
 		scaled ticks=false,
 		xticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
+		yticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
+		x label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{x label}},anchor=north,font=\scriptsize}},
+		y label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{y label}},anchor=south,font=\scriptsize}},
+	}},
+	automatically generated symbolic/.style={{
+		height=105pt,
+		width=500pt,
+		xticklabel style={{font=\tiny,rotate=90}},
 		yticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
 		x label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{x label}},anchor=north,font=\scriptsize}},
 		y label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{y label}},anchor=south,font=\scriptsize}},
@@ -816,6 +901,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		/pgfplots/error bars/error bar style={{ultra thin,solid}},
 		/tikz/mark options={{solid}},
 	}},
+	automatically generated bar plot/.style={{
+		/pgfplots/error bars/y dir=both,
+		/pgfplots/error bars/y explicit,
+	}},
 	%/pgf/images/aux in dpth=true,
 }}"#);
 	let mut local_prelude=format!(r#"
@@ -831,6 +920,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let tikz_pens=["solid","dashed","dotted","dash dot"];
 	//let tikz_marks=["o","square","triangle"];
 	let tikz_marks=["o","square","triangle","star","diamond","Mercedes star flipped"];
+	let tikz_patterns=["horizontal lines","grid","crosshatch","dots","north east lines","vertical lines"];
+	let tikz_fill_colors=["red!20","green!20","blue!20","black!20","violet!20","orange!20","lightgray!20","pink!20","olive!20","teal!20","purple!20"];
 	let mut color_index=0;
 	let mut pen_index=0;
 	let mut mark_index=0;
@@ -839,6 +930,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		local_prelude.push_str(r"\tikzset{");
 		local_prelude.push_str(&legend_tex_id);
 		local_prelude.push_str(&format!("/.style={{automatically generated plot,{},{},mark={}}}}}\n",tikz_colors[color_index],tikz_pens[pen_index],tikz_marks[mark_index]));
+		local_prelude.push_str(r"\tikzset{");
+		local_prelude.push_str(&legend_tex_id);
+		local_prelude.push_str("bar");
+		local_prelude.push_str(&format!("/.style={{automatically generated bar plot,fill={},postaction={{pattern={}}},}}}}\n",tikz_fill_colors[color_index],tikz_patterns[mark_index]));
 		color_index+=1;
 		pen_index+=1;
 		mark_index+=1;
@@ -917,7 +1012,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 \usepackage{{float}}
 \usepackage{{tikz}}
 \usepackage{{pgfplots}}
-\usetikzlibrary{{calc,external}}
+\usetikzlibrary{{calc,external,patterns}}
 \tikzexternaldisable
 \tikzexternalize
 %\tikzexternalize[prefix=externalized/]
@@ -1007,5 +1102,16 @@ fn standard_deviation(list:&Vec<ConfigurationValue>) -> (Option<f32>,Option<f32>
 		x.sqrt()
 	};
 	(Some(average),Some(deviation))
+}
+
+///Get a Some(x) if all alements are equal.
+fn shared_element<I:Iterator>(iter:&mut I) -> Option<I::Item> where I::Item : PartialEq
+{
+	if let Some( first ) = iter.next()
+	{
+		if iter.all(|x|x==first) { Some(first) } else { None }
+	} else {
+		None
+	}
 }
 

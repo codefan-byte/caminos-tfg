@@ -390,7 +390,7 @@ impl<'a> Experiment<'a>
 			_ => panic!("Not a value. Got {:?}",parsed_cfg),
 		};
 
-		let external_experiments = if let Some(ref path) = self.options.external_source
+		let (external_experiments,external_binary_results) = if let Some(ref path) = self.options.external_source
 		{
 			let cfg = path.join("main.cfg");
 			let mut cfg_file=File::open(&cfg).unwrap_or_else(|_|panic!("main.cfg from --source={:?} could not be opened",path));
@@ -419,8 +419,35 @@ impl<'a> Experiment<'a>
 				},
 				_ => panic!("Not a value in --cource={:?}",path),
 			};
-			Some(experiments)
-		} else {None};
+			let packed_results_path = path.join("binary.results");
+			let packed_results = {
+				let n = experiments.len();
+				match File::open(&packed_results_path)
+				{
+					Err(_) => {
+						println!("Error opening external binary.results");
+						//ConfigurationValue::Experiments( (0..n).map(|_|ConfigurationValue::None).collect() )
+						None
+					},
+					Ok(ref mut file) => {
+						let mut contents = Vec::with_capacity(n);
+						file.read_to_end(&mut contents).expect("something went wrong reading binary.results");
+						let got = config::config_from_binary(&contents,0).expect("something went wrong while deserializing binary.results");
+						match got
+						{
+							ConfigurationValue::Experiments(ref a) => {
+								if a.len()!=n {
+									panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
+								}
+							},
+							_ => panic!("A non-Experiments stored on binary.results"),
+						};
+						Some(got)
+					},
+				}
+			};
+			(Some(experiments),packed_results)
+		} else {(None,None)};
 		
 		if let Some(message)=&self.options.message
 		{
@@ -745,6 +772,7 @@ impl<'a> Experiment<'a>
 		let mut pulled=0;
 		let mut empty=0;
 		let mut missing=0;
+		let mut merged=0;
 		match action
 		{
 			Action::Pull => progress_bar.set_prefix("pulling files"),
@@ -788,6 +816,7 @@ impl<'a> Experiment<'a>
 			{
 				result_path.metadata().unwrap().len()>=5
 			};
+			let mut is_merged = false;
 			if !has_content && !is_packed
 			{
 				if let Some(ref external_experiment_list) = external_experiments
@@ -797,41 +826,89 @@ impl<'a> Experiment<'a>
 						if experiment==ext_experiment
 						{
 							//println!("matching local experiment {} with external experiment {}",experiment_index,ext_index);
-							let ext_path=self.options.external_source.as_ref().unwrap().join(format!("runs/run{}/local.result",ext_index));
-							let mut ext_result_file=match File::open(&ext_path)
+							let mut ext_result_contents=None;
+							let mut ext_result_value:Option<ConfigurationValue> = None;
+							if let Some(ref results) = external_binary_results
 							{
-								Ok(rf) => rf,
-								Err(_error) =>
+								if let ConfigurationValue::Experiments(ref a) = results
 								{
-									//panic!("There are problems opening results (external experiment {}).",ext_index);
-									continue;
+									//println!("got {:?}", a[ext_index]);
+									ext_result_value = Some( a[ext_index].clone() );
 								}
-							};
-							let mut ext_result_contents=String::new();
-							//remote_result_channel.read_to_string(&mut ext_result_contents);
-							ext_result_file.read_to_string(&mut ext_result_contents).expect("Could not read remote result file.");
-							if ext_result_contents.len()<5
-							{
-								//panic!("Exernal file does not have contents.");
-								//empty+=1;
+								//println!("external data in binary");
+							} else {
+								let ext_path=self.options.external_source.as_ref().unwrap().join(format!("runs/run{}/local.result",ext_index));
+								let mut ext_result_file=match File::open(&ext_path)
+								{
+									Ok(rf) => rf,
+									Err(_error) =>
+									{
+										//panic!("There are problems opening results (external experiment {}).",ext_index);
+										continue;
+									}
+								};
+								let mut aux=String::new();
+								//remote_result_channel.read_to_string(&mut aux);
+								ext_result_file.read_to_string(&mut aux).expect("Could not read remote result file.");
+								if aux.len()>=5
+								{
+									ext_result_contents = Some ( aux );
+								}
 							}
-							else
+							//println!("external data file:{} value:{}",ext_result_contents.is_some(),ext_result_value.is_some());
+							if ext_result_contents.is_some() || ext_result_value.is_some()
 							{
 								//create file
-								let mut new_result_file=File::create(&result_path).expect("Could not create result file.");
-								writeln!(new_result_file,"{}",ext_result_contents).unwrap();
-								delta_completed+=1;
-								//pulled+=1;
+								if let ConfigurationValue::Experiments(ref mut a) = packed_results
+								{
+									if ext_result_value.is_none()
+									{
+										if let Some(ref contents) = ext_result_contents
+										{
+											match config_parser::parse(&contents)
+											{
+												Ok(cv) =>
+												{
+													let result=match cv
+													{
+														config_parser::Token::Value(value) => value,
+														_ => panic!("wrong token"),
+													};
+													ext_result_value = Some(result);
+												}
+												Err(_error)=>
+												{
+													println!("pulled invalid results (experiment {}).",experiment_index);
+												}
+											}
+										}
+									}
+									a[experiment_index] = ext_result_value.unwrap();
+									added_packed_results+=1;
+								}
+								else
+								{
+									//create file
+									if ext_result_contents.is_none()
+									{
+										ext_result_contents = Some(format!("{}",ext_result_value.as_ref().unwrap()));
+									}
+									let mut new_result_file=File::create(&result_path).expect("Could not create result file.");
+									writeln!(new_result_file,"{}",ext_result_contents.unwrap()).unwrap();
+									//drop(new_result_file);//ensure it closes and syncs
+								}
+								merged+=1;
+								is_merged=true;
 							}
 						}
 					}
 				}
 			}
 			//if !result_path.is_file() || result_path.metadata().unwrap().len()==0
-			if has_content || is_packed
+			if has_content || is_packed || is_merged
 			{
 				before_amount_completed+=1;
-				progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already",pulled,empty,missing,before_amount_completed));
+				progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged",pulled,empty,missing,before_amount_completed,merged));
 			}
 			else
 			{
@@ -931,7 +1008,7 @@ impl<'a> Experiment<'a>
 							pulled+=1;
 						}
 						//File::open(&result_path).expect("did not work even after pulling it.")
-						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already",pulled,empty,missing,before_amount_completed));
+						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged",pulled,empty,missing,before_amount_completed,merged));
 					}
 					Action::Output | Action::Check | Action::RemoteCheck | Action::Push | Action::SlurmCancel =>
 					{

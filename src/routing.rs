@@ -2357,3 +2357,147 @@ impl Routing for SourceAdaptiveRouting
 
 
 
+///Encapsulation of SourceRouting, a variant of SourceAdaptiveRouting. Stores in the packet one path of each length.
+///Set label equal to the path length minus the smallest length.
+#[derive(Debug)]
+pub struct EachLengthSourceAdaptiveRouting
+{
+	///The base routing
+	pub routing: Box<dyn InstantiableSourceRouting>,
+}
+
+impl Routing for EachLengthSourceAdaptiveRouting
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+		let distance=topology.distance(current_router,target_router);
+		if distance==0
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+					}
+				}
+			}
+			unreachable!();
+		}
+		let source_router = routing_info.visited_routers.as_ref().unwrap()[0];
+		let num_ports=topology.ports(current_router);
+		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
+		let selections = routing_info.selections.as_ref().unwrap().clone();
+		for path_index in selections
+		{
+			let path = &self.routing.get_paths(source_router,target_router)[<usize>::try_from(path_index).unwrap()];
+			let next_router = path[routing_info.hops+1];
+			let length = path.len() - 1;//substract source router
+			let remain = length - routing_info.hops;
+			for i in 0..num_ports
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+				{
+					//if distance-1==topology.distance(router_index,target_router)
+					if router_index==next_router
+					{
+						//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+						r.extend((0..num_virtual_channels).map(|vc|{
+							let mut egress = CandidateEgress::new(i,vc);
+							egress.estimated_remaining_hops = Some(remain);
+							egress.label = i32::try_from(remain - distance).unwrap();
+							egress
+						}));
+					}
+				}
+			}
+		}
+		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
+		r
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	{
+		let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
+		if current_router!=target_router
+		{
+			let path_collection = self.routing.get_paths(current_router,target_router);
+			//println!("path_collection.len={} for source={} target={}\n",path_collection.len(),current_router,target_router);
+			if path_collection.is_empty()
+			{
+				panic!("No path found from router {} to router {}",current_router,target_router);
+			}
+			let min_length:usize = path_collection.iter().map(|path|path.len()).min().unwrap();
+			let max_length:usize = path_collection.iter().map(|path|path.len()).max().unwrap();
+			let selected_indices : Vec<i32> = (min_length..=max_length).filter_map(|length|{
+				//get some random path with the given length
+				let candidates : Vec<usize> = (0..path_collection.len()).filter(|&index|path_collection[index].len()==length).collect();
+				if candidates.len()==0 {
+					None
+				} else {
+					let r = rng.borrow_mut().gen_range(0,candidates.len());
+					Some(i32::try_from(candidates[r]).unwrap())
+				}
+			}).collect();
+			routing_info.borrow_mut().selections=Some(selected_indices);
+		}
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, _current_port:usize, target_server:usize, _rng: &RefCell<StdRng>)
+	{
+		let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+		let mut ri=routing_info.borrow_mut();
+		let hops = ri.hops;
+		if let Some(ref mut visited)=ri.visited_routers
+		{
+			let source_router = visited[0];
+			visited.push(current_router);
+			//Now discard all selections toward other routers.
+			let paths = &self.routing.get_paths(source_router,target_router);
+			if let Some(ref mut selections)=ri.selections
+			{
+				selections.retain(|path_index|{
+					let path = &paths[<usize>::try_from(*path_index).unwrap()];
+					path[hops]==current_router
+				});
+				if selections.is_empty()
+				{
+					panic!("No selections remaining.");
+				}
+			}
+		}
+	}
+	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		self.routing.initialize(topology,rng);
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	{
+	}
+	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:usize)
+	{
+	}
+}
