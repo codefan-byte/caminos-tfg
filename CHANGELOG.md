@@ -8,6 +8,7 @@ Fixed example configuration in the readme.
 git commit -m "Support for bar graphs. meta routing EachLengthSourceAdaptiveRouting. readme fixes."
 git tag 0.3.0 -m "v0.3.0"
 git commit -m "version update to 0.3.0"
+git commit -m "update to 0.3.0 in Cargo.toml"
 
 ### 2021-09-17
 Implemented `EachLengthSourceAdaptiveRouting` as source routing storing a path of each length.
