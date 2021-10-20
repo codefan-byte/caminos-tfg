@@ -1,5 +1,14 @@
 # Change Log
 
+## next [0.3.1]
+
+
+### 2021-10-19
+Updated readme to say 0.3 and `pgfplots`.
+Canonicalize path before extracting folder name, to work when a dot is given as path.
+Cargo.toml version to 0.3.1.
+git tag 0.3.1 -m "v0.3.1"
+git commit -m "version update to 0.3.1, fixing using dot as path."
 
 ## [0.3.0]
 

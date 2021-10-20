@@ -10,7 +10,7 @@ This crate is `caminos-lib`. To use it add `caminos-lib` to your dependencies in
 
 ```toml
 [dependencies]
-caminos-lib = "0.2"
+caminos-lib = "0.3"
 ```
 
 Alternatively, consider whether the binary crate `caminos` fits your intended use.
@@ -98,7 +98,7 @@ Configuration
 		servers_per_router: 5,//Number of host connected to each router
 		routers: 500,//Total number of routers in the network
 		degree: 10,//Number of router ports reserved to go to other routers
-		legend_name: "random 100-regular graph",//Name used on generated outputs
+		legend_name: "random 500-regular graph",//Name used on generated outputs
 	},
 	traffic: HomogeneousTraffic//Select a traffic. e.g., traffic repeating a pattern continously.
 	{
@@ -231,6 +231,8 @@ An example of output decription `main.od` is
 	},
 ]
 ```
+
+Fot the `tikz` backend to work it is necessary to have a working `LaTeX` installation that included the `pgfplots` package.
 
 # Plugging
 

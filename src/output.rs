@@ -567,8 +567,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let mut all_legend_tex_id_vec:Vec<String> = Vec::new();
 	let mut all_legend_tex_id_set:HashSet<String> = HashSet::new();
 	let mut all_legend_tex_entry:HashSet<String> = HashSet::new();
-	let folder=path.file_name().unwrap().to_str().unwrap();
-	let folder_id = latex_make_command_name(folder);
+	let folder=path.canonicalize().expect("path does not have canonical form").file_name().expect("could not get name of the folder").to_str().unwrap().to_string();
+	let folder_id = latex_make_command_name(&folder);
 	//while index<averaged.len()
 	//let mut figure_index=0;
 	let mut all_git_ids: HashSet<String> = HashSet::new();
@@ -849,7 +849,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	};
 	let git_id=get_git_id();
 	let title=format!("{}/{} ({})",folder,pdf_filename,amount_string);
-	let header=format!("\\tiny {}:{} ({})\\\\pdflatex on \\today\\\\git\\_id={}",latex_protect_text(folder),latex_protect_text(&pdf_filename),amount_string,latex_protect_text(git_id));
+	let header=format!("\\tiny {}:{} ({})\\\\pdflatex on \\today\\\\git\\_id={}",latex_protect_text(&folder),latex_protect_text(&pdf_filename),amount_string,latex_protect_text(git_id));
 	let shared_prelude=format!(r#"
 %% -- common pgfplots prelude --
 \newenvironment{{experimentfigure}}{{\begin{{figure}}[H]\tikzexternalenable}}{{\tikzexternaldisable\end{{figure}}}}
