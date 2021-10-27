@@ -268,6 +268,8 @@ use std::ops::DerefMut;
 use std::path::{Path};
 use std::mem::{size_of};
 use std::fmt::Debug;
+use std::convert::TryFrom;
+use std::cmp::Ordering;
 //use std::default::default;
 //use std::borrow::Cow;
 use rand::{StdRng,SeedableRng};
@@ -689,13 +691,19 @@ pub struct Statistics
 	temporal_step: usize,
 	///The periodic measurements requested by non-zero statistics_temporal_step.
 	temporal_statistics: Vec<StatisticMeasurement>,
+	///For each percentile `perc` write statistics for that percentile. This is, the lowest value such that `perc`% of the servers have lower value.
+	///These values will appear in the `server_percentile{perc}` field of the result file.
+	///For example, `server_percentile25.injected_load` will be a value with 25% of the servers generating less load and `server_percentile25.accepted_load` will be a value with 25% of the servers consuming less load. Note those values will probably correspond to different servers, despite being written into the same record.
+	///The percentiles are integer numbers mostly to make obvious their representation in the name of the field.
+	///The default value is empty.
+	server_percentiles: Vec<u8>,
 	///The columns to print in the periodic reports.
 	columns: Vec<ReportColumn>,
 }
 
 impl Statistics
 {
-	fn new(statistics_temporal_step:usize, topology: &dyn Topology)->Statistics
+	fn new(statistics_temporal_step:usize, server_percentiles: Vec<u8>, topology: &dyn Topology)->Statistics
 	{
 		Statistics{
 			//begin_cycle:0,
@@ -710,6 +718,7 @@ impl Statistics
 			link_statistics: (0..topology.num_routers()).map(|i| (0..topology.ports(i)).map(|_|LinkStatistics::new()).collect() ).collect(),
 			temporal_step: statistics_temporal_step,
 			temporal_statistics: vec![],
+			server_percentiles,
 			columns: vec![
 				ReportColumnKind::BeginEndCycle.into(),
 				ReportColumnKind::InjectedLoad.into(),
@@ -1030,6 +1039,7 @@ impl<'a> Simulation<'a>
 		let mut link_classes = None;
 		let mut statistics_temporal_step = 0;
 		let mut launch_configurations: Vec<ConfigurationValue> = vec![];
+		let mut statistics_server_percentiles: Vec<u8> = vec![];
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="Configuration"
@@ -1042,17 +1052,17 @@ impl<'a> Simulation<'a>
 				{
 					"random_seed" => match value
 					{
-						&ConfigurationValue::Number(f) => seed=Some(f as usize),
+						&ConfigurationValue::Number(f) => seed=Some(f.round() as usize),
 						_ => panic!("bad value for random_seed"),
 					}
 					"warmup" => match value
 					{
-						&ConfigurationValue::Number(f) => warmup=Some(f as usize),
+						&ConfigurationValue::Number(f) => warmup=Some(f.round() as usize),
 						_ => panic!("bad value for warmup"),
 					}
 					"measured" => match value
 					{
-						&ConfigurationValue::Number(f) => measured=Some(f as usize),
+						&ConfigurationValue::Number(f) => measured=Some(f.round() as usize),
 						_ => panic!("bad value for measured"),
 					}
 					//"topology" => topology=Some(new_topology(value)),
@@ -1064,7 +1074,7 @@ impl<'a> Simulation<'a>
 					},
 					"maximum_packet_size" => match value
 					{
-						&ConfigurationValue::Number(f) => maximum_packet_size=Some(f as usize),
+						&ConfigurationValue::Number(f) => maximum_packet_size=Some(f.round() as usize),
 						_ => panic!("bad value for maximum_packet_size"),
 					}
 					"router" => router_cfg=Some(&value),
@@ -1076,13 +1086,21 @@ impl<'a> Simulation<'a>
 					}
 					"statistics_temporal_step" => match value
 					{
-						&ConfigurationValue::Number(f) => statistics_temporal_step=f as usize,
+						&ConfigurationValue::Number(f) => statistics_temporal_step=f.round() as usize,
 						_ => panic!("bad value for statistics_temporal_step"),
 					}
 					"launch_configurations" => match value
 					{
 						&ConfigurationValue::Array(ref l) => launch_configurations=l.clone(),
 						_ => panic!("bad value for launch_configurations"),
+					}
+					"statistics_server_percentiles" => match value
+					{
+						&ConfigurationValue::Array(ref l) => statistics_server_percentiles=l.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => u8::try_from(f.round() as u8).unwrap_or_else(|e|panic!("could not convert {} to u8 ({})",f,e)),
+							x => panic!("{} is a bad value for statistics_server_percentiles",x),
+						}).collect(),
+						_ => panic!("bad value for statistics_server_percentiles"),
 					}
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in Configuration",name),
@@ -1155,7 +1173,7 @@ impl<'a> Simulation<'a>
 			topology:&topology,
 			rng:&rng,
 		});
-		let statistics=Statistics::new(statistics_temporal_step,topology.as_ref());
+		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,topology.as_ref());
 		Simulation{
 			configuration: cv.clone(),
 			seed,
@@ -1570,6 +1588,31 @@ impl<'a> Simulation<'a>
 				//(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
 			];
 			result_content.push((String::from("temporal_statistics"),ConfigurationValue::Object(String::from("TemporalStatistics"),temporal_content)));
+		}
+		if !self.statistics.server_percentiles.is_empty()
+		{
+			let mut servers_injected_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.created_phits as f64/cycles as f64).collect();
+			let mut servers_accepted_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.consumed_phits as f64/cycles as f64).collect();
+			let mut servers_average_message_delay : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.total_message_delay as f64/s.statistics.consumed_messages as f64).collect();
+			//XXX There are more efficient ways to find percentiles than to sort them, but should not be notable in any case. See https://en.wikipedia.org/wiki/Selection_algorithm
+			servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
+			servers_accepted_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
+			servers_average_message_delay.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
+			for &percentile in self.statistics.server_percentiles.iter()
+			{
+				let mut index:usize = num_servers * usize::from(percentile) /100;
+				if index >= num_servers
+				{
+					//We cannot find a value greater than ALL, just return the greatest
+					index = num_servers -1;
+				}
+				let server_content = vec![
+					(String::from("injected_load"),ConfigurationValue::Number(servers_injected_load[index])),
+					(String::from("accepted_load"),ConfigurationValue::Number(servers_accepted_load[index])),
+					(String::from("average_message_delay"),ConfigurationValue::Number(servers_average_message_delay[index])),
+				];
+				result_content.push((format!("server_percentile{}",percentile),ConfigurationValue::Object(String::from("ServerStatistics"),server_content)));
+			}
 		}
 		let result=ConfigurationValue::Object(String::from("Result"),result_content);
 		writeln!(output,"{}",result).unwrap();

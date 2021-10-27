@@ -1,7 +1,12 @@
 # Change Log
 
-## next [0.3.1]
+## next [0.3.2]
 
+### 2021-10-27
+Added `Statistics.server_percentiles` and configuration `statistics_server_percentiles` to generate in the result file fields such as `server_percentile25` with values of the server in the given percentile.
+git commit -m "Added statistics_server_percentiles"
+
+## [0.3.1]
 
 ### 2021-10-19
 Updated readme to say 0.3 and `pgfplots`.
