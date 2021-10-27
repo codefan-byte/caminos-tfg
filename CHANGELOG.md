@@ -5,6 +5,8 @@
 ### 2021-10-27
 Added `Statistics.server_percentiles` and configuration `statistics_server_percentiles` to generate in the result file fields such as `server_percentile25` with values of the server in the given percentile.
 git commit -m "Added statistics_server_percentiles"
+Added `Statistics.{packet_percentiles,packet_statistics}`, struct StatisticPacketMeasurement and configuration `statistics_packet_percentiles` to generate per packet statistics percentile data.
+git commit -m "Added statistics_packet_percentiles"
 
 ## [0.3.1]
 

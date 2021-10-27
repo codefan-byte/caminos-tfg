@@ -679,6 +679,17 @@ impl StatisticMeasurement
 	}
 }
 
+#[derive(Debug)]
+struct StatisticPacketMeasurement
+{
+	///The cycle in which the packet was consumed, including its tail phit.
+	consumed_cycle: usize,
+	///The number of router-to-router links the packet has traversed.
+	hops: usize,
+	///The number of cycles since the packet was created until it was consumed.
+	delay: usize,
+}
+
 ///All the global statistics captured.
 #[derive(Debug)]
 pub struct Statistics
@@ -691,19 +702,23 @@ pub struct Statistics
 	temporal_step: usize,
 	///The periodic measurements requested by non-zero statistics_temporal_step.
 	temporal_statistics: Vec<StatisticMeasurement>,
-	///For each percentile `perc` write statistics for that percentile. This is, the lowest value such that `perc`% of the servers have lower value.
+	///For each percentile `perc` write server statistics for that percentile. This is, the lowest value such that `perc`% of the servers have lower value.
 	///These values will appear in the `server_percentile{perc}` field of the result file.
 	///For example, `server_percentile25.injected_load` will be a value with 25% of the servers generating less load and `server_percentile25.accepted_load` will be a value with 25% of the servers consuming less load. Note those values will probably correspond to different servers, despite being written into the same record.
 	///The percentiles are integer numbers mostly to make obvious their representation in the name of the field.
 	///The default value is empty.
 	server_percentiles: Vec<u8>,
+	///For each percentile `perc` write packet statistics for that percentile.
+	packet_percentiles: Vec<u8>,
+	///Data collected to show `packet_percentiles` if not empty.
+	packet_statistics: Vec<StatisticPacketMeasurement>,
 	///The columns to print in the periodic reports.
 	columns: Vec<ReportColumn>,
 }
 
 impl Statistics
 {
-	fn new(statistics_temporal_step:usize, server_percentiles: Vec<u8>, topology: &dyn Topology)->Statistics
+	fn new(statistics_temporal_step:usize, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, topology: &dyn Topology)->Statistics
 	{
 		Statistics{
 			//begin_cycle:0,
@@ -719,6 +734,8 @@ impl Statistics
 			temporal_step: statistics_temporal_step,
 			temporal_statistics: vec![],
 			server_percentiles,
+			packet_percentiles,
+			packet_statistics: vec![],
 			columns: vec![
 				ReportColumnKind::BeginEndCycle.into(),
 				ReportColumnKind::InjectedLoad.into(),
@@ -818,6 +835,10 @@ impl Statistics
 			self.temporal_statistics[index].total_message_delay+=network_delay;
 			self.temporal_statistics[index].total_packet_hops+=hops;
 			//Is total_packet_per_hop_count too much here?
+		}
+		if !self.packet_percentiles.is_empty()
+		{
+			self.packet_statistics.push(StatisticPacketMeasurement{consumed_cycle:cycle,hops,delay:network_delay});
 		}
 	}
 	fn track_consumed_message(&mut self, cycle:usize)
@@ -1040,6 +1061,7 @@ impl<'a> Simulation<'a>
 		let mut statistics_temporal_step = 0;
 		let mut launch_configurations: Vec<ConfigurationValue> = vec![];
 		let mut statistics_server_percentiles: Vec<u8> = vec![];
+		let mut statistics_packet_percentiles: Vec<u8> = vec![];
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="Configuration"
@@ -1101,6 +1123,14 @@ impl<'a> Simulation<'a>
 							x => panic!("{} is a bad value for statistics_server_percentiles",x),
 						}).collect(),
 						_ => panic!("bad value for statistics_server_percentiles"),
+					}
+					"statistics_packet_percentiles" => match value
+					{
+						&ConfigurationValue::Array(ref l) => statistics_packet_percentiles=l.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => u8::try_from(f.round() as u8).unwrap_or_else(|e|panic!("could not convert {} to u8 ({})",f,e)),
+							x => panic!("{} is a bad value for statistics_packet_percentiles",x),
+						}).collect(),
+						_ => panic!("bad value for statistics_packet_percentiles"),
 					}
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in Configuration",name),
@@ -1173,7 +1203,7 @@ impl<'a> Simulation<'a>
 			topology:&topology,
 			rng:&rng,
 		});
-		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,topology.as_ref());
+		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,statistics_packet_percentiles,topology.as_ref());
 		Simulation{
 			configuration: cv.clone(),
 			seed,
@@ -1603,7 +1633,8 @@ impl<'a> Simulation<'a>
 				let mut index:usize = num_servers * usize::from(percentile) /100;
 				if index >= num_servers
 				{
-					//We cannot find a value greater than ALL, just return the greatest
+					//This happens at least in percentile 100%.
+					//We cannot find a value greater than ALL, just return the greatest.
 					index = num_servers -1;
 				}
 				let server_content = vec![
@@ -1612,6 +1643,29 @@ impl<'a> Simulation<'a>
 					(String::from("average_message_delay"),ConfigurationValue::Number(servers_average_message_delay[index])),
 				];
 				result_content.push((format!("server_percentile{}",percentile),ConfigurationValue::Object(String::from("ServerStatistics"),server_content)));
+			}
+		}
+		if !self.statistics.packet_percentiles.is_empty()
+		{
+			let mut packets_delay : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.delay).collect();
+			let mut packets_hops : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.hops).collect();
+			packets_delay.sort();
+			packets_hops.sort();
+			let num_packets = packets_delay.len();
+			for &percentile in self.statistics.packet_percentiles.iter()
+			{
+				let mut index:usize = num_packets * usize::from(percentile) /100;
+				if index >= num_packets
+				{
+					//This happens at least in percentile 100%.
+					//We cannot find a value greater than ALL, just return the greatest.
+					index = num_packets -1;
+				}
+				let packet_content = vec![
+					(String::from("delay"),ConfigurationValue::Number(packets_delay[index] as f64)),
+					(String::from("hops"),ConfigurationValue::Number(packets_hops[index] as f64)),
+				];
+				result_content.push((format!("packet_percentile{}",percentile),ConfigurationValue::Object(String::from("PacketStatistics"),packet_content)));
 			}
 		}
 		let result=ConfigurationValue::Object(String::from("Result"),result_content);
