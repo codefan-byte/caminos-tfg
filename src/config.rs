@@ -1,9 +1,11 @@
 
-use std::io::{self,Write};
+use std::io::{self,Write,Read,Seek};
 use std::collections::{BTreeMap};
 use std::convert::TryInto;
+use std::path::Path;
+use std::fs::File;
 
-use crate::config_parser::{ConfigurationValue,Expr};
+use crate::config_parser::{self,ConfigurationValue,Expr};
 
 ///Given a list of vectors, `[A1,A2,A3,A4,...]`, `Ai` beging a `Vec<T>` and second vector `b:&Vec<T>=[b1,b2,b3,b4,...]`, each `bi:T`.
 ///It creates a list of vectors with each combination Ai+bj.
@@ -189,24 +191,61 @@ fn particularize_named_experiments_selected(value:&ConfigurationValue, names:&BT
 
 
 ///Just returns a `Context{configuration:<configuration>, result:<result>}`.
-pub fn combine(configuration:&ConfigurationValue, result:&ConfigurationValue) -> ConfigurationValue
+pub fn combine(experiment_index:usize, configuration:&ConfigurationValue, result:&ConfigurationValue) -> ConfigurationValue
 {
 	ConfigurationValue::Object(String::from("Context"),vec![
+		(String::from("index"),ConfigurationValue::Number(experiment_index as f64)),
 		(String::from("configuration"),configuration.clone()),
 		(String::from("result"),result.clone()),
 	])
 }
 
-///Evaluates an expression given in a context.
-///For example the expression `=Alpha.beta` will return 42 for the context `Alpha{beta:42}`.
-pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
+/**Evaluates an expression given in a context.
+
+For example the expression `=Alpha.beta` will return 42 for the context `Alpha{beta:42}`.
+
+# Available functions
+
+## Comparisons
+
+Arguments `first` and `second`. It evaluates to `ConfigurationValue::{True,False}`.
+
+* eq or equal
+* lt
+
+## Arithmetic
+
+* add
+* mul
+
+Arguments `first` and `second`. It evaluates to `ConfigurationValue::Number`.
+
+## if
+
+Evaluates to whether its argument `true_expression` or `false_expression` depending on its `condition` argument.
+
+## at
+
+Evaluates to the element at `position` inside the array in `container`.
+
+## AverageBins
+
+Evaluates to an array smaller than the input `data`, as each `width` entries are averaged into a single one.
+
+## FileExpression
+
+Evaluates an `expression` including the file `filename` into the current context under the name `file_data`. For example `FileExpression{filename:"peak.cfg",expression:at{container:file_data,position:index}}.maximum_value` to access into the `peak.cfg` file and evaluating the expression `at{container:file_data,position:index}`. This example assume that `peak.cfg` read into `file_data` is an array and can be accessed by `index`, the entry of the associated execution. The value returned by `FileExpression` is then accessed to its `maximum_value` field.
+
+
+**/
+pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> ConfigurationValue
 {
 	match expr
 	{
 		&Expr::Equality(ref a,ref b) =>
 		{
-			let va=evaluate(a,context);
-			let vb=evaluate(b,context);
+			let va=evaluate(a,context,path);
+			let vb=evaluate(b,context,path);
 			if va==vb
 			{
 				ConfigurationValue::True
@@ -235,7 +274,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 		},
 		&Expr::Member(ref expr, ref attribute) =>
 		{
-			let value=evaluate(expr,context);
+			let value=evaluate(expr,context,path);
 			match value
 			{
 				ConfigurationValue::Object(ref _name, ref attributes) =>
@@ -252,10 +291,10 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 				_ => panic!("There is no member {} in {}",attribute,value),
 			}
 		},
-		&Expr::Parentheses(ref expr) => evaluate(expr,context),
+		&Expr::Parentheses(ref expr) => evaluate(expr,context,path),
 		&Expr::Name(ref expr) =>
 		{
-			let value=evaluate(expr,context);
+			let value=evaluate(expr,context,path);
 			match value
 			{
 				ConfigurationValue::Object(ref name, ref _attributes) => ConfigurationValue::Literal(name.clone()),
@@ -276,11 +315,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context));
+								first=Some(evaluate(val,context,path));
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context));
+								second=Some(evaluate(val,context,path));
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -300,11 +339,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context));
+								first=Some(evaluate(val,context,path));
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context));
+								second=Some(evaluate(val,context,path));
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -334,15 +373,15 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 						{
 							"condition" =>
 							{
-								condition=Some(evaluate(val,context));
+								condition=Some(evaluate(val,context,path));
 							},
 							"true_expression" =>
 							{
-								true_expression=Some(evaluate(val,context));
+								true_expression=Some(evaluate(val,context,path));
 							},
 							"false_expression" =>
 							{
-								false_expression=Some(evaluate(val,context));
+								false_expression=Some(evaluate(val,context,path));
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -368,11 +407,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context));
+								first=Some(evaluate(val,context,path));
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context));
+								second=Some(evaluate(val,context,path));
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -391,6 +430,39 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 					};
 					ConfigurationValue::Number(first+second)
 				}
+				"mul" =>
+				{
+					let mut first=None;
+					let mut second=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"first" =>
+							{
+								first=Some(evaluate(val,context,path));
+							},
+							"second" =>
+							{
+								second=Some(evaluate(val,context,path));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let first=first.expect("first argument of and not given.");
+					let second=second.expect("second argument of and not given.");
+					let first=match first
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("first argument of mul evaluated to a non-number ({}:?)",first),
+					};
+					let second=match second
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("second argument of mul evaluated to a non-number ({}:?)",second),
+					};
+					ConfigurationValue::Number(first*second)
+				}
 				"at" =>
 				{
 					let mut container=None;
@@ -401,11 +473,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 						{
 							"container" =>
 							{
-								container=Some(evaluate(val,context));
+								container=Some(evaluate(val,context,path));
 							},
 							"position" =>
 							{
-								position=Some(evaluate(val,context));
+								position=Some(evaluate(val,context,path));
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -420,7 +492,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 					let position=match position
 					{
 						ConfigurationValue::Number(x) => x as usize,
-						_ => panic!("position argument of lt evaluated to a non-number ({}:?)",position),
+						_ => panic!("position argument of at evaluated to a non-number ({}:?)",position),
 					};
 					container[position].clone()
 				}
@@ -434,11 +506,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 						{
 							"data" =>
 							{
-								data=Some(evaluate(val,context));
+								data=Some(evaluate(val,context,path));
 							},
 							"width" =>
 							{
-								width=Some(evaluate(val,context));
+								width=Some(evaluate(val,context,path));
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -448,12 +520,12 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 					let data=match data
 					{
 						ConfigurationValue::Array(a) => a,
-						_ => panic!("first argument of at evaluated to a non-array ({}:?)",data),
+						_ => panic!("first argument of AverageBins evaluated to a non-array ({}:?)",data),
 					};
 					let width=match width
 					{
 						ConfigurationValue::Number(x) => x as usize,
-						_ => panic!("width argument of lt evaluated to a non-number ({}:?)",width),
+						_ => panic!("width argument of AverageBins evaluated to a non-number ({}:?)",width),
 					};
 					//TODO: do we want to include incomplete bins?
 					//let n = (data.len()+width-1)/width;
@@ -475,6 +547,87 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 					}).collect();
 					ConfigurationValue::Array(result)
 				}
+				"FileExpression" =>
+				{
+					let mut filename = None;
+					let mut expression = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"filename" =>
+							{
+								filename=Some(evaluate(val,context,path));
+							},
+							"expression" =>
+							{
+								expression = Some(val);
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let filename=filename.expect("filename argument of at not given.");
+					let expression=expression.expect("expression argument of at not given.");
+					let filename = match filename
+					{
+						ConfigurationValue::Literal(s) => s,
+						_ => panic!("filename argument of FileExpression evaluated to a non-literal ({}:?)",filename),
+					};
+					let file_path = path.join(filename);
+					let file_data={
+						let mut data = ConfigurationValue::None;
+						let mut file_contents = String::new();
+						let mut cfg_file=File::open(&file_path).expect("data file could not be opened");
+						let mut try_raw = true;
+						let mut try_binary = false;
+						if try_raw
+						{
+							match cfg_file.read_to_string(&mut file_contents)
+							{
+								Ok(_) => (),
+								Err(_e) => {
+									//println!("Got error {} when reading",e);//too noisy
+									try_raw = false;
+									try_binary = true;
+								}
+							}
+						}
+						if try_raw
+						{
+							let parsed_file=match config_parser::parse(&file_contents)
+							{
+								Err(x) => panic!("error parsing data file {:?}: {:?}",file_path,x),
+								Ok(x) => x,
+							};
+							data = match parsed_file
+							{
+								config_parser::Token::Value(value) =>
+								{
+									value
+								},
+								_ => panic!("Not a value. Got {:?}",parsed_file),
+							}
+						}
+						if try_binary
+						{
+							let mut contents = vec![];
+							cfg_file.rewind().expect("some problem rewinding data file");
+							cfg_file.read_to_end(&mut contents).expect("something went wrong reading binary data");
+							data=config_from_binary(&contents,0).expect("something went wrong while deserializing binary data");
+						}
+						data
+					};
+					let context = match context{
+						ConfigurationValue::Object(name, data) =>
+						{
+							let mut content = data.clone();
+							content.push( (String::from("file_data"), file_data ) );
+							ConfigurationValue::Object(name.to_string(),content)
+						},
+						_ => panic!("wrong context"),
+					};
+					evaluate( expression, &context, path)
+				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
 		}
@@ -482,11 +635,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue) -> ConfigurationValue
 }
 
 /// Evaluate some expressions inside a ConfigurationValue
-pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue) -> ConfigurationValue
+pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue, path:&Path) -> ConfigurationValue
 {
 	//if let &ConfigurationValue::Expression(ref expr)=value
 	//{
-	//	evaluate(expr,context)
+	//	evaluate(expr,context,path)
 	//}
 	//else
 	//{
@@ -494,8 +647,8 @@ pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue) -> Con
 	//}
 	match value
 	{
-		&ConfigurationValue::Expression(ref expr) => evaluate(expr,context),
-		&ConfigurationValue::Array(ref l) => ConfigurationValue::Array(l.iter().map(|e|reevaluate(e,context)).collect()),
+		&ConfigurationValue::Expression(ref expr) => evaluate(expr,context,path),
+		&ConfigurationValue::Array(ref l) => ConfigurationValue::Array(l.iter().map(|e|reevaluate(e,context,path)).collect()),
 		_ => value.clone(),
 	}
 }

@@ -408,7 +408,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	}
 
 	/// Find the coponents of the subtopology induced via the allowed links.
-	/// Returns vector ret with ret[k] containing the vertices in the k-th component.
+	/// Returns vector `ret` with `ret[k]` containing the vertices in the `k`-th component.
 	fn components(&self,allowed_classes:&[bool]) -> Vec<Vec<usize>>
 	{
 		let mut r=vec![];
@@ -437,10 +437,10 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		return r;
 	}
 	
-	/// returns a cople matrices (N,F) with
-	///	N[u,v] = number of neighbours w of v with D(u,v)>D(u,w).
-	///	F[u,v] = number of neighbours w of v with D(u,v)<D(u,w).
-	/// A router v with F[u,v]=0 is called a boundary vertex of u.
+	/// returns a couple matrices `(N,F)` with
+	///	`N[u,v]` = number of neighbours w of v with `D(u,v)>D(u,w)`.
+	///	`F[u,v]` = number of neighbours w of v with `D(u,v)<D(u,w)`.
+	/// A router `v` with `F[u,v]=0` is called a boundary vertex of u.
 	fn compute_near_far_matrices(&self) -> (Matrix<usize>,Matrix<usize>)
 	{
 		let n=self.num_routers();
@@ -641,7 +641,7 @@ Build a topology. All topologies should admit an optional `legend_name` to be us
 ## Cartesian topologies
 
 ### Mesh example: a bidimensional mesh of side 16. Routers in the periphery has less degree, defined as un-connected ports.
-```
+```ignore
 Mesh{
 	sides: [16,16],
 	servers_per_router:1,

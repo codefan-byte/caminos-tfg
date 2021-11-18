@@ -2,11 +2,38 @@
 
 ## next [0.3.2]
 
+### 2021-11-18
+Refer to `texlive-pictures` in the README.md.
+Adding `Action::Shell`.
+Added documentation to `output.rs` and made it public to actually have docs to be generated.
+git commit -m "boxplots, preprocsessing output files, improvements on documentations, shell action, and more."
+
+### 2021-11-17
+Added `Sequence` traffic.
+New policy `SumRoutingPolicy::SecondWhenFirstEmpty` to complete a routing with another when the first does not find any candidates.
+
+### 2021-11-10
+Made `preprocessArgMax` work with incomplete data.
+Fixed a bit the documentation syntax.
+
+### 2021-11-01
+Added preprocessing outputs: `PreprocessArgMax`.
+New config functions `mul` and `FileExpression`.
+Added `path` argument to `config::{evaluate,reevaluate}`.
+File `create_output` and similar now receive in its `results` argument also the experiment indices.
+
+### 2021-10-28
+Improved style of Box Plots.
+
+### 2021-10-28
+Added option to generate Box Plots.
+
 ### 2021-10-27
 Added `Statistics.server_percentiles` and configuration `statistics_server_percentiles` to generate in the result file fields such as `server_percentile25` with values of the server in the given percentile.
 git commit -m "Added statistics_server_percentiles"
 Added `Statistics.{packet_percentiles,packet_statistics}`, struct StatisticPacketMeasurement and configuration `statistics_packet_percentiles` to generate per packet statistics percentile data.
 git commit -m "Added statistics_packet_percentiles"
+Protect some latex labels.
 
 ## [0.3.1]
 

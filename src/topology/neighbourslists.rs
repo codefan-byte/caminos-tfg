@@ -19,15 +19,15 @@ use crate::matrix::Matrix;
 #[derive(Debug)]
 pub struct NeighboursLists
 {
-	///list[router][k] = k-th neighbour of router; router_index + port.
+	///`list[router][k]` = `k`-th neighbour of router; router_index + port.
 	list: Vec<Vec<(usize,usize)>>,
-	///servers[router] = number of servers connected to router
+	///`servers[router]` = number of servers connected to router
 	servers: Vec<usize>,
 
 	//Caches.
-	///servers_offsets[router] = s means the servers s,s+1,... are atached to router
+	///`servers_offsets[router] = s` means the servers s,s+1,... are atached to router
 	server_offsets: Vec<usize>,
-	///router_by_server[server] = attached router + port
+	///`router_by_server[server] = attached router + port`
 	routers_by_server: Vec<(usize,usize)>,
 	///distance_matrix.get(i,j) = distance from router i to router j
 	distance_matrix:Matrix<usize>,
@@ -159,8 +159,8 @@ impl Topology for NeighboursLists
 impl NeighboursLists
 {
 	///Build a topology with the given list of adjacency for routers and servers.
-	///list[i][j] = (r,p) with r the j-th neighbour router of the i-th router, where i is the p-th neighbour of r.
-	///servers[i] = amount of servers connected to the i-th router.
+	///`list[i][j] = (r,p)` with `r` the `j`-th neighbour router of the `i`-th router, where `i` is the `p`-th neighbour of `r`.
+	///`servers[i]` = amount of servers connected to the `i`-th router.
 	pub fn new(list:Vec<Vec<(usize,usize)>>,servers:Vec<usize>) -> NeighboursLists
 	{
 		let mut server_offsets=Vec::with_capacity(servers.len());

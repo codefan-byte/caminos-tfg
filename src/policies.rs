@@ -29,9 +29,9 @@ pub struct RequestInfo<'a>
 	pub port_occupied_output_space: Option<&'a Vec<usize>>,
 	///Number of available phits in the output space of the current router at the indexed port.
 	pub port_available_output_space: Option<&'a Vec<usize>>,
-	///Number of phits currently in the output space allocated to a virtual channel. Index by [port_index][virtual_channel].
+	///Number of phits currently in the output space allocated to a virtual channel. Index by `[port_index][virtual_channel]`.
 	pub virtual_channel_occupied_output_space: Option<&'a Vec<Vec<usize>>>,
-	///Number of available phits in the output space allocated to a virtual channel. Index by [port_index][virtual_channel].
+	///Number of available phits in the output space allocated to a virtual channel. Index by `[port_index][virtual_channel]`.
 	pub virtual_channel_available_output_space: Option<&'a Vec<Vec<usize>>>,
 	///Number of cycles at the front of input space,
 	pub time_at_front: Option<usize>,
@@ -1197,7 +1197,7 @@ impl NegateLabel
 
 
 ///Vector of labels
-///new_label = vector[old_label]
+///`new_label = vector[old_label]`
 #[derive(Debug)]
 pub struct VecLabel
 {

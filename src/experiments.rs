@@ -17,7 +17,7 @@ use crate::{Simulation,Plugs};
 use crate::output::{create_output};
 use crate::config::{self,evaluate,flatten_configuration_value};
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug,Clone,Copy,PartialEq)]
 pub enum Action
 {
 	///Default action of executing locally and creating the output files.
@@ -39,6 +39,8 @@ pub enum Action
 	Push,
 	///Cancel all slurm jobs owned by the experiment.
 	SlurmCancel,
+	///Create shell/skeleton/carcase files. This is, create a folder containing the files: main.cfg, main.od, remote. Use `--source` to copy them from a existing one.
+	Shell,
 }
 
 impl FromStr for Action
@@ -58,6 +60,7 @@ impl FromStr for Action
 			"remote_check" => Ok(Action::RemoteCheck),
 			"push" => Ok(Action::Push),
 			"slurm_cancel" => Ok(Action::SlurmCancel),
+			"shell" => Ok(Action::Shell),
 			_ => Err(()),
 		}
 	}
@@ -358,6 +361,27 @@ impl<'a> Experiment<'a>
 		//let mut cfg_contents = String::new();
 		//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
 		//cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
+		match action
+		{
+			Action::Shell => 
+			{
+				if cfg.exists()
+				{
+					panic!("{:?} already exists, could not proceed with the shell action. To generate new files delete main.cfg manually.",cfg);
+				}
+				if let Some(ref path) = self.options.external_source
+				{
+					//Copy files from the source path.
+					fs::copy(path.join("main.cfg"),&cfg).expect("error copying main.cfg");
+					fs::copy(path.join("main.od"),self.root.join("main.od")).expect("error copying main.od");
+					//TODO: Try to update the paths in the remote file.
+					fs::copy(path.join("remote"),self.root.join("remote")).expect("error copying remote");
+				} else {
+					//Write some default files.
+				};
+			},
+			_ => (),
+		}
 		let cfg_contents={
 			let mut cfg_contents = String::new();
 			let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
@@ -390,7 +414,7 @@ impl<'a> Experiment<'a>
 			_ => panic!("Not a value. Got {:?}",parsed_cfg),
 		};
 
-		let (external_experiments,external_binary_results) = if let Some(ref path) = self.options.external_source
+		let (external_experiments,external_binary_results) = if let (Some(ref path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  )
 		{
 			let cfg = path.join("main.cfg");
 			let mut cfg_file=File::open(&cfg).unwrap_or_else(|_|panic!("main.cfg from --source={:?} could not be opened",path));
@@ -711,6 +735,7 @@ impl<'a> Experiment<'a>
 				}
 				scancel.output().expect("scancel failed");
 			},
+			Action::Shell => (),
 		};
 
 		//Remove mutabiity to prevent mistakes.
@@ -783,7 +808,7 @@ impl<'a> Experiment<'a>
 			progress_bar.inc(1);
 			if let Some(ref expr) = self.options.where_clause
 			{
-				match evaluate(&expr,experiment)
+				match evaluate(&expr,experiment,&self.root)
 				{
 					ConfigurationValue::True => (),//good
 					ConfigurationValue::False => continue,//discard this index
@@ -1010,7 +1035,7 @@ impl<'a> Experiment<'a>
 						//File::open(&result_path).expect("did not work even after pulling it.")
 						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged",pulled,empty,missing,before_amount_completed,merged));
 					}
-					Action::Output | Action::Check | Action::RemoteCheck | Action::Push | Action::SlurmCancel =>
+					Action::Output | Action::Check | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell =>
 					{
 					},
 				};
@@ -1045,7 +1070,7 @@ impl<'a> Experiment<'a>
 					{
 						&ConfigurationValue::None => (),
 						result => {
-							results.push((experiment.clone(),result.clone()));
+							results.push((experiment_index,experiment.clone(),result.clone()));
 							continue;
 						},
 					}
@@ -1078,7 +1103,7 @@ impl<'a> Experiment<'a>
 							a[experiment_index] = result.clone();
 							added_packed_results+=1;
 						}
-						results.push((experiment.clone(),result));
+						results.push((experiment_index,experiment.clone(),result));
 					}
 					Err(_error)=>
 					{

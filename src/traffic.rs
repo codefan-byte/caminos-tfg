@@ -162,6 +162,13 @@ TimeSequenced{
 	times: [2000, 15000],
 }
 
+### Sequence
+
+Defines a sequence of traffics. When one is completed the next starts.
+
+Sequence{
+	traffics: [Burst{...}, Burst{...}],
+}
 
 
 */
@@ -184,6 +191,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"Burst" => Box::new(Burst::new(arg)),
 			"Reactive" => Box::new(Reactive::new(arg)),
 			"TimeSequenced" => Box::new(TimeSequenced::new(arg)),
+			"Sequence" => Box::new(Sequence::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1146,6 +1154,115 @@ impl TimeSequenced
 		TimeSequenced{
 			traffics,
 			times,
+		}
+	}
+}
+
+///A sequence of traffics. When a traffic declares itself to be finished moves to the next.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Sequence
+{
+	///List of applicable traffics.
+	traffics: Vec<Box<dyn Traffic>>,
+	//How many times to apply the whole traffic period. default to 1.
+	//period_limit: usize,
+	///The traffic which is currently in use.
+	current_traffic: usize,
+	//The period number, starting at 0. The whole traffic finishes before `current_period` reaching `period_limit`.
+	//current_period: usize,
+}
+
+impl Traffic for Sequence
+{
+	fn generate_message(&mut self, origin:usize, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> Result<Rc<Message>,TrafficError>
+	{
+		while self.traffics[self.current_traffic].is_finished()
+		{
+			self.current_traffic += 1;
+			//self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
+		}
+		assert!(self.current_traffic<self.traffics.len());
+		self.traffics[self.current_traffic].generate_message(origin,cycle,topology,rng)
+	}
+	fn probability_per_cycle(&self,server:usize) -> f32
+	{
+		self.traffics[self.current_traffic].probability_per_cycle(server)
+	}
+	fn try_consume(&mut self, message: Rc<Message>, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> bool
+	{
+		for traffic in self.traffics.iter_mut()
+		{
+			if traffic.try_consume(message.clone(),cycle,topology,rng)
+			{
+				while self.current_traffic < self.traffics.len() && self.traffics[self.current_traffic].is_finished()
+				{
+					//self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
+					self.current_traffic += 1;
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+	fn is_finished(&self) -> bool
+	{
+		//return current_period == period_limit;
+		return self.current_traffic>=self.traffics.len() || (self.current_traffic==self.traffics.len()-1 && self.traffics[self.current_traffic].is_finished())
+	}
+	fn should_generate(&self, server:usize, cycle:usize, rng: &RefCell<StdRng>) -> bool
+	{
+		if self.current_traffic>=self.traffics.len()
+		{
+			false
+		} else {
+			self.traffics[self.current_traffic].should_generate(server,cycle,rng)
+		}
+	}
+}
+
+impl Sequence
+{
+	pub fn new(arg:TrafficBuilderArgument) -> Sequence
+	{
+		let mut traffics_args=None;
+		let mut period_number=1usize;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Sequence"
+			{
+				panic!("A Sequence must be created from a `Sequence` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match name.as_ref()
+				{
+					//"pattern" => pattern=Some(new_pattern(value,plugs)),
+					"traffics" => match value
+					{
+						//&ConfigurationValue::Array(ref a) => traffics=Some(a.iter().map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect()),
+						&ConfigurationValue::Array(ref a) => traffics_args=Some(a),
+						_ => panic!("bad value for traffics"),
+					}
+					"period_number" => match value
+					{
+						&ConfigurationValue::Number(f) => period_number=f as usize,
+						_ => panic!("bad value for period_number"),
+					}
+					_ => panic!("Nothing to do with field {} in Sequence",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Sequence from a non-Object");
+		}
+		let traffics_args=traffics_args.expect("There were no traffics");
+		let traffics = (0..period_number).flat_map(|_ip| traffics_args.iter().map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect::<Vec<_>>() ).collect();
+		Sequence{
+			traffics,
+			current_traffic:0,
+			//current_period:0,
 		}
 	}
 }

@@ -878,8 +878,8 @@ impl DOR
 }
 
 /// Valiant DOR. Proposed by Valiant for Multidimensional grids. Generally you should randomize n-1 dimensions, thereby employing shortest routes when the topology is just a path.
-/// routing_info.selections=Some([k,r]) indicates that the `next` call should go toward r at dimension randomized[k]. r having been selected randomly previously.
-/// routing_info.selections=None indicates to behave as DOR.
+/// `routing_info.selections=Some([k,r])` indicates that the `next` call should go toward `r` at dimension `randomized[k]`. `r` having been selected randomly previously.
+/// `routing_info.selections=None` indicates to behave as DOR.
 #[derive(Debug)]
 pub struct ValiantDOR
 {
@@ -1283,16 +1283,16 @@ impl ValiantDOR
 }
 
 
-///The O1TTURN routing uses DOR order [0,1] for some virtual channels and order [1,0] for others.
-///By default it reserves the channel 0 for [0,1] and the channel 1 for [1,0].
+///The O1TTURN routing uses DOR order `[0,1]` for some virtual channels and order `[1,0]` for others.
+///By default it reserves the channel 0 for `[0,1]` and the channel 1 for `[1,0]`.
 #[derive(Debug)]
 pub struct O1TURN
 {
 	/// Virtual channels reserved exclusively for the 0 before 1 DOR selection.
-	/// Defaults to [0]
+	/// Defaults to `[0]`
 	reserved_virtual_channels_order01: Vec<usize>,
 	/// Virtual channels reserved exclusively for the 1 before 0 DOR selection.
-	/// Defaults to [1]
+	/// Defaults to `[1]`
 	reserved_virtual_channels_order10: Vec<usize>,
 }
 
@@ -1480,7 +1480,7 @@ impl O1TURN
 
 
 /// Routing part of the Omni-dimensional Weighted Adaptive Routing of Nic McDonald et al.
-/// Stores RoutingInfo.selections=Some(vec![available_deroutes]).
+/// Stores `RoutingInfo.selections=Some(vec![available_deroutes])`.
 /// Only paths of currently unaligned dimensions are valid. Otherwise dimensions are ignored.
 #[derive(Debug)]
 pub struct OmniDimensionalDeroute

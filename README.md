@@ -16,6 +16,11 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 # Breaking changes
 
+## [0.3.0] to ?
+
+* Added `path` argument to `config::{evaluate,reevaluate}`.
+* File `create_output` and similar now receive in its `results` argument also the experiment indices.
+
 ## [0.2.0] to [0.3.0]
 
 * Added parameter `cycle` to `Traffic::should_generate`.
@@ -235,7 +240,7 @@ An example of output decription `main.od` is
 ]
 ```
 
-Fot the `tikz` backend to work it is necessary to have a working `LaTeX` installation that included the `pgfplots` package.
+Fot the `tikz` backend to work it is necessary to have a working `LaTeX` installation that included the `pgfplots` package. It is part of the `texlive-pictures` package in some linux distributions.
 
 # Plugging
 

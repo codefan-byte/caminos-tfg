@@ -17,6 +17,11 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 # Breaking changes
 
+## [0.3.0] to ?
+
+* Added `path` argument to `config::{evaluate,reevaluate}`.
+* File `create_output` and similar now receive in its `results` argument also the experiment indices.
+
 ## [0.1.0] to [0.2.0]
 
 * Added methods to `Routing` and `Router` traits to gather statistics.
@@ -232,7 +237,7 @@ An example of output decription `main.od` is
 ]
 ```
 
-Fot the `tikz` backend to work it is necessary to have a working `LaTeX` installation that included the `pgfplots` package.
+Fot the `tikz` backend to work it is necessary to have a working `LaTeX` installation that included the `pgfplots` package. It is part of the `texlive-pictures` package in some linux distributions.
 
 # Plugging
 
@@ -250,7 +255,7 @@ pub mod router;
 pub mod routing;
 pub mod event;
 pub mod matrix;
-mod output;
+pub mod output;
 pub mod quantify;
 pub mod policies;
 pub mod experiments;
@@ -260,7 +265,7 @@ use std::rc::Rc;
 use std::boxed::Box;
 use std::cell::{RefCell};
 use std::env;
-use std::fs::{File};
+use std::fs::{self,File};
 use std::io::prelude::*;
 use std::io::{stdout};
 use std::collections::{VecDeque,BTreeMap};
@@ -1825,6 +1830,11 @@ pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>)
 //pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, option_matches:&Matches)
 pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, options: ExperimentOptions)
 {
+	if !path.exists()
+	{
+		println!("Folder {:?} does not exists; creating it.",path);
+		fs::create_dir(&path).expect("Something went wrong when creating the main path.");
+	}
 	let binary_path=Path::new(binary);
 	//let mut experiment=Experiment::new(binary_path,path,plugs,option_matches);
 	let mut experiment=Experiment::new(binary_path,path,plugs,options);

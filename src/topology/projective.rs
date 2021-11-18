@@ -228,9 +228,9 @@ impl<G:Geometry + Debug + Quantifiable> FlatGeometry for G
 pub struct FlatGeometryCache
 {
 	pub geometry: Box<dyn FlatGeometry>,
-	///lines_by_point[point][point_index]=(line,line_index) satisfying points_by_line[line][line_index]=(point,point_index).
+	///`lines_by_point[point][point_index]=(line,line_index)` satisfying `points_by_line[line][line_index]=(point,point_index)`.
 	pub lines_by_point: Vec<Vec<(usize,usize)>>,
-	///points_by_line[line][line_index]=(point,point_index) satisfying lines_by_point[point][point_index]=(line,line_index).
+	///`points_by_line[line][line_index]=(point,point_index)` satisfying `lines_by_point[point][point_index]=(line,line_index)`.
 	pub points_by_line: Vec<Vec<(usize,usize)>>,
 }
 

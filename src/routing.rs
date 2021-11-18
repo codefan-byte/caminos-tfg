@@ -166,6 +166,8 @@ UpDown{
 }
 ```
 
+There is a `Mindless` routing without parameters that includes all neighbours as candidates until reaching destination. Can be though as a random walk, if additionally the router would make its decisions randomly.
+
 ## Operations
 
 ### Sum
@@ -843,6 +845,8 @@ pub enum SumRoutingPolicy
 	TryBoth,
 	Stubborn,
 	StubbornWhenSecond,
+	///Note that both routings are informed of the hops given, which could be illegal for one of them.
+	SecondWhenFirstEmpty,
 }
 
 pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
@@ -855,6 +859,7 @@ pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
 			"TryBoth" => SumRoutingPolicy::TryBoth,
 			"Stubborn" => SumRoutingPolicy::Stubborn,
 			"StubbornWhenSecond" => SumRoutingPolicy::StubbornWhenSecond,
+			"SecondWhenFirstEmpty" => SumRoutingPolicy::SecondWhenFirstEmpty,
 			//"Shortest" => SumRoutingPolicy::Shortest,
 			//"Hops" => SumRoutingPolicy::Hops,
 			_ => panic!("Unknown sum routing policy {}",cv_name),
@@ -938,7 +943,15 @@ impl Routing for SumRouting
 					let el1=self.extra_label[1];
 					//let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
 					let r1=self.routing[1].next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
-					r0.chain(r1).collect()
+					match self.policy
+					{
+						SumRoutingPolicy::SecondWhenFirstEmpty =>
+						{
+							let r : Vec<_> =r0.collect();
+							if r.is_empty() { r1.collect() } else { r }
+						}
+						_ => r0.chain(r1).collect()
+					}
 				}
 				else
 				{
@@ -963,7 +976,7 @@ impl Routing for SumRouting
 		let all:Vec<i32> = match self.policy
 		{
 			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0,2)],
-			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond => vec![0,1],
+			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond | SumRoutingPolicy::SecondWhenFirstEmpty => vec![0,1],
 		};
 		let mut bri=routing_info.borrow_mut();
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
@@ -979,22 +992,33 @@ impl Routing for SumRouting
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
 		let mut bri=routing_info.borrow_mut();
-		let s=match bri.selections
+		let cs = match bri.selections
 		{
 			None => unreachable!(),
-			Some(ref t) => if t.len()==1 {
-				t[0] as usize
-			} else {
-				let s=t[2];
-				bri.selections=Some(vec![s]);
-				s as usize
+			Some(ref t) =>
+			{
+				if t.len()==3 {
+					match self.policy
+					{
+						SumRoutingPolicy::SecondWhenFirstEmpty => t.clone(),
+						_ => vec![t[2]],
+						//let s=t[2];
+						//bri.selections=Some(vec![s]);
+						//s as usize
+					}
+				} else { t.clone() }
+
 			},
 		};
-		//let routing=if s==0 { &self.first_routing } else { &self.second_routing };
-		let routing = &self.routing[s];
-		let meta=bri.meta.as_mut().unwrap();
-		meta[s].borrow_mut().hops+=1;
-		routing.update_routing_info(&meta[s],topology,current_router,current_port,target_server,rng);
+		for &is in cs.iter()
+		{
+			let s = is as usize;
+			let routing = &self.routing[s];
+			let meta=bri.meta.as_mut().unwrap();
+			meta[s].borrow_mut().hops+=1;
+			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_server,rng);
+		}
+		bri.selections=Some(cs);
 	}
 	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
 	{
@@ -1786,7 +1810,7 @@ pub struct ChannelsPerHop
 {
 	///The base routing to use.
 	routing: Box<dyn Routing>,
-	///channels[k] is the list of available VCs to use in the k-th hop.
+	///`channels[k]` is the list of available VCs to use in the `k`-th hop.
 	///This includes the last hop towards the server.
 	channels: Vec<Vec<usize>>,
 }
@@ -1880,7 +1904,7 @@ pub struct ChannelsPerHopPerLinkClass
 {
 	///The base routing to use.
 	routing: Box<dyn Routing>,
-	///channels[class][k] is the list of available VCs to use in the k-th hop given in links of the given `class`.
+	///`channels[class][k]` is the list of available VCs to use in the k-th hop given in links of the given `class`.
 	channels: Vec<Vec<Vec<usize>>>,
 }
 

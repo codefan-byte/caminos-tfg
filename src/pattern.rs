@@ -817,10 +817,10 @@ pub struct CartesianTransform
 	///A shift to each coordinate, modulo the side.
 	shift: Option<Vec<usize>>,
 	///Optionally how dimensions are permuted.
-	///permute=[0,2,1] means to permute dimensions 1 and 2, keeping dimension 0 as is.
+	///`permute=[0,2,1]` means to permute dimensions 1 and 2, keeping dimension 0 as is.
 	permute: Option<Vec<usize>>,
 	///Optionally, which dimensions must be complemented.
-	///complement=[true,false,false] means target_coordinates[0]=side-1-coordinates[0].
+	///`complement=[true,false,false]` means `target_coordinates[0]=side-1-coordinates[0]`.
 	complement: Option<Vec<bool>>,
 }
 
@@ -934,7 +934,7 @@ impl CartesianTransform
 }
 
 ///The pattern resulting of composing a list of patterns.
-///destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) ).
+///`destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Composition
