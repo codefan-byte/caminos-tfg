@@ -100,13 +100,53 @@ impl CandidateEgress
 	}
 }
 
+///The candidates as provided by the routing together with related information.
+///This is, the return type of `Routing::next`.
+#[derive(Clone,Debug,Default)]
+pub struct RoutingNextCandidates
+{
+	///The vector of candidates.
+	pub candidates: Vec<CandidateEgress>,
+	///Whether sucessive calls to the routing algorithm will find the exact same set of candidates.
+	///If a call returns a `RoutingNextCandidates` with some value of `idempotent` then successive calls should also have that same value of `idempotent`.
+	///Returning `idempotent` to false allows to change the `candidates` in another call but this field should be kept to false.
+	///Setting this flag to true allows the [Router][crate::router::Router] to skip calls to the routing algorithm or even to skip some events of the router.
+	pub idempotent: bool,
+}
+
+impl From<RoutingNextCandidates> for Vec<CandidateEgress>
+{
+	fn from(candidates: RoutingNextCandidates) -> Self
+	{
+		candidates.candidates
+	}
+}
+
+impl IntoIterator for RoutingNextCandidates
+{
+	type Item = CandidateEgress;
+	type IntoIter = <Vec<CandidateEgress> as IntoIterator>::IntoIter;
+	fn into_iter(self) -> <Self as IntoIterator>::IntoIter
+	{
+		self.candidates.into_iter()
+	}
+}
+
+impl RoutingNextCandidates
+{
+	pub fn len(&self)->usize
+	{
+		self.candidates.len()
+	}
+}
+
 ///A routing algorithm to provide candidate routes when the `Router` requires.
 ///It may store/use information in the RoutingInfo.
 ///A `Routing` does not receive information about the state of buffers or similar. Such a mechanism should be given as a `VirtualChannelPolicy`.
 pub trait Routing : Debug
 {
 	///Compute the list of allowed exits.
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>;
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates;
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize);
 	///Initialize the routing info of the packet. Called when the first phit of the packet leaves the server and enters a router.
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>);
@@ -337,7 +377,7 @@ pub struct Shortest
 
 impl Routing for Shortest
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -356,7 +396,8 @@ impl Routing for Shortest
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
 					}
 				}
 			}
@@ -381,7 +422,7 @@ impl Routing for Shortest
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
@@ -457,7 +498,7 @@ pub struct Valiant
 
 impl Routing for Valiant
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -476,7 +517,8 @@ impl Routing for Valiant
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
 					}
 				}
 			}
@@ -488,7 +530,10 @@ impl Routing for Valiant
 			None =>
 			{
 				//self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
-				self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.first_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+				let base=self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+				let idempotent = base.idempotent;
+				let r=base.into_iter().filter(|egress|!self.first_reserved_virtual_channels.contains(&egress.virtual_channel)).collect();
+				RoutingNextCandidates{candidates:r,idempotent}
 			}
 			Some(ref s) =>
 			{
@@ -508,7 +553,9 @@ impl Routing for Valiant
 				};
 				let second_distance=topology.distance(middle,target_router);//Only exact if the base routing is shortest.
 				//self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
-				self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter_map(|mut egress|{
+				let base = self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng);
+				let idempotent = base.idempotent;
+				let r=base.into_iter().filter_map(|mut egress|{
 					if self.second_reserved_virtual_channels.contains(&egress.virtual_channel) { None } else {
 						if let Some(ref mut eh)=egress.estimated_remaining_hops
 						{
@@ -516,7 +563,8 @@ impl Routing for Valiant
 						}
 						Some(egress)
 					}
-				}).collect()
+				}).collect();
+				RoutingNextCandidates{candidates:r,idempotent}
 			}
 		}
 		// let num_ports=topology.ports(current_router);
@@ -742,7 +790,7 @@ impl<R:SourceRouting + Debug> InstantiableSourceRouting for R {}
 
 impl<R:SourceRouting+Debug> Routing for R
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -761,7 +809,8 @@ impl<R:SourceRouting+Debug> Routing for R
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
 					}
 				}
 			}
@@ -790,7 +839,7 @@ impl<R:SourceRouting+Debug> Routing for R
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -893,7 +942,7 @@ pub struct SumRouting
 //* [a,b,c] if a request by routing c has been made, but the two routing are still available.
 impl Routing for SumRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -912,14 +961,15 @@ impl Routing for SumRouting
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
 					}
 				}
 			}
 			unreachable!();
 		}
 		let meta=routing_info.meta.as_ref().unwrap();
-		match routing_info.selections
+		let r = match routing_info.selections
 		{
 			None =>
 			{
@@ -969,7 +1019,9 @@ impl Routing for SumRouting
 					.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],label:candidate.label+extra_label,..candidate} ).collect()
 				}
 			}
-		}
+		};
+		//FIXME: we can recover idempotence in some cases.
+		RoutingNextCandidates{candidates:r,idempotent:false}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -1153,7 +1205,7 @@ pub struct Mindless
 
 impl Routing for Mindless
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1171,7 +1223,8 @@ impl Routing for Mindless
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
 					}
 				}
 			}
@@ -1188,7 +1241,7 @@ impl Routing for Mindless
 				r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
 			}
 		}
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
@@ -1254,7 +1307,7 @@ pub struct WeighedShortest
 
 impl Routing for WeighedShortest
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1276,7 +1329,8 @@ impl Routing for WeighedShortest
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
 					}
 				}
 			}
@@ -1304,7 +1358,7 @@ impl Routing for WeighedShortest
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
 	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
@@ -1377,6 +1431,7 @@ impl WeighedShortest
 ///Wraps a routing so that only one request is made in every router.
 ///The first time the router make a port request, that request is stored and repeated in further calls to `next` until reaching a new router.
 ///Stores port, virtual_channel, label into routing_info.selections.
+///Note that has `idempotent=false` since the value may change if the request has not actually been made.
 #[derive(Debug)]
 pub struct Stubborn
 {
@@ -1385,7 +1440,7 @@ pub struct Stubborn
 
 impl Routing for Stubborn
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1403,7 +1458,8 @@ impl Routing for Stubborn
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
 					}
 				}
 			}
@@ -1411,10 +1467,12 @@ impl Routing for Stubborn
 		}
 		if let Some(ref sel)=routing_info.selections
 		{
-			return vec![CandidateEgress{port:sel[0] as usize,virtual_channel:sel[1] as usize,label:sel[2],..Default::default()}]
+			//return vec![CandidateEgress{port:sel[0] as usize,virtual_channel:sel[1] as usize,label:sel[2],..Default::default()}]
+			return RoutingNextCandidates{candidates:vec![CandidateEgress{port:sel[0] as usize,virtual_channel:sel[1] as usize,label:sel[2],..Default::default()}],idempotent:false};
 		}
 		//return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
-		return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect()
+		//return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect()
+		return RoutingNextCandidates{candidates:self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect(),idempotent:false}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -1503,7 +1561,7 @@ pub struct UpDown
 
 impl Routing for UpDown
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1522,7 +1580,8 @@ impl Routing for UpDown
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
 					}
 				}
 			}
@@ -1545,7 +1604,7 @@ impl Routing for UpDown
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
@@ -1622,7 +1681,7 @@ pub struct ExplicitUpDown
 
 impl Routing for ExplicitUpDown
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1641,7 +1700,8 @@ impl Routing for ExplicitUpDown
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
 					}
 				}
 			}
@@ -1664,7 +1724,7 @@ impl Routing for ExplicitUpDown
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
@@ -1817,12 +1877,14 @@ pub struct ChannelsPerHop
 
 impl Routing for ChannelsPerHop
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		//println!("{}",topology.diameter());
 		let vcs = &self.channels[routing_info.hops];
 		let candidates = self.routing.next(routing_info,topology,current_router,target_server,num_virtual_channels,rng);
-		candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect()
+		let idempotent = candidates.idempotent;
+		let r = candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect();
+		RoutingNextCandidates{candidates:r,idempotent}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -1910,12 +1972,13 @@ pub struct ChannelsPerHopPerLinkClass
 
 impl Routing for ChannelsPerHopPerLinkClass
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		//println!("{}",topology.diameter());
 		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+		let idempotent = candidates.idempotent;
 		let hops = &routing_info.selections.as_ref().unwrap();
-		candidates.into_iter().filter(|c|{
+		let r = candidates.into_iter().filter(|c|{
 			let (_next_location,link_class)=topology.neighbour(current_router,c.port);
 			let h = hops[link_class] as usize;
 			//println!("h={} link_class={} channels={:?}",h,link_class,self.channels[link_class]);
@@ -1925,7 +1988,8 @@ impl Routing for ChannelsPerHopPerLinkClass
 			}
 			//self.channels[link_class].len()>h && self.channels[link_class][h].contains(&c.virtual_channel)
 			self.channels[link_class][h].contains(&c.virtual_channel)
-		}).collect()
+		}).collect();
+		RoutingNextCandidates{candidates:r,idempotent}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -2029,19 +2093,21 @@ pub struct AscendantChannelsWithLinkClass
 
 impl Routing for AscendantChannelsWithLinkClass
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		//println!("{}",topology.diameter());
 		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+		let idempotent = candidates.idempotent;
 		let hops_since = &routing_info.selections.as_ref().unwrap();
-		candidates.into_iter().filter(|c|{
+		let r = candidates.into_iter().filter(|c|{
 			let (_next_location,link_class)=topology.neighbour(current_router,c.port);
 			if link_class>= self.bases.len() { return true; }
 			//let h = hops_since[link_class] as usize;
 			let vc = (link_class..self.bases.len()).rev().fold(0, |x,class| x*self.bases[class]+(hops_since[class] as usize) );
 			//if link_class==0 && vc!=hops_since[1] as usize{ println!("hops_since={:?} link_class={} vc={}",hops_since,link_class,vc); }
 			c.virtual_channel == vc
-		}).collect()
+		}).collect();
+		RoutingNextCandidates{candidates:r,idempotent}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -2144,11 +2210,12 @@ pub struct ChannelMap
 
 impl Routing for ChannelMap
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		//println!("{}",topology.diameter());
 		//let vcs = &self.channels[routing_info.hops];
 		let candidates = self.routing.next(routing_info,topology,current_router,target_server,self.map.len(),rng);
+		let idempotent = candidates.idempotent;
 		//candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect()
 		let mut r=Vec::with_capacity(candidates.len());
 		for can in candidates.into_iter()
@@ -2160,7 +2227,7 @@ impl Routing for ChannelMap
 				r.push(new);
 			}
 		}
-		r
+		RoutingNextCandidates{candidates:r,idempotent}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -2248,7 +2315,7 @@ pub struct SourceAdaptiveRouting
 
 impl Routing for SourceAdaptiveRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -2267,7 +2334,11 @@ impl Routing for SourceAdaptiveRouting
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{
+							candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),
+							idempotent:true
+						};
 					}
 				}
 			}
@@ -2302,7 +2373,7 @@ impl Routing for SourceAdaptiveRouting
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
@@ -2392,7 +2463,7 @@ pub struct EachLengthSourceAdaptiveRouting
 
 impl Routing for EachLengthSourceAdaptiveRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -2411,7 +2482,11 @@ impl Routing for EachLengthSourceAdaptiveRouting
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{
+							candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),
+							idempotent:true
+						};
 					}
 				}
 			}
@@ -2447,7 +2522,7 @@ impl Routing for EachLengthSourceAdaptiveRouting
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{

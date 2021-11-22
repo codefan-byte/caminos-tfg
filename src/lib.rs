@@ -21,6 +21,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 * Added `path` argument to `config::{evaluate,reevaluate}`.
 * File `create_output` and similar now receive in its `results` argument also the experiment indices.
+* routings now return `RoutingNextCandidates`. In addition to the vector of candidates it contains an `idempotent` field to allow some checks and optimizations.
 
 ## [0.1.0] to [0.2.0]
 

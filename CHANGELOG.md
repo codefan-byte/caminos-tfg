@@ -2,11 +2,16 @@
 
 ## next [0.3.2]
 
+### 2021-11-22
+git commit -m "return from routings changed to RoutingNextCandidates and added idempotence checks."
+
 ### 2021-11-18
 Refer to `texlive-pictures` in the README.md.
 Adding `Action::Shell`.
 Added documentation to `output.rs` and made it public to actually have docs to be generated.
 git commit -m "boxplots, preprocsessing output files, improvements on documentations, shell action, and more."
+Breaking change: routings now return `RoutingNextCandidates`. In addition to the vector of candidates it contains an `idempotent` field to allow some checks and optimizations.
+Basic router now check idempotence of the routing to panic when there are no candidates for some packet.
 
 ### 2021-11-17
 Added `Sequence` traffic.

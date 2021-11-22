@@ -667,7 +667,9 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 							Location::RouterPort{router_index,router_port:_} =>router_index,
 							_ => panic!("The server is not attached to a router"),
 						};
-						let mut good_ports=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng).into_iter().filter_map(|candidate|{
+						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+						let routing_idempotent = routing_candidates.idempotent;
+						let mut good_ports=routing_candidates.into_iter().filter_map(|candidate|{
 							let CandidateEgress{port:f_port,virtual_channel:f_virtual_channel,..} = candidate;
 							//We analyze each candidate output port, considering whether they are in use (port or virtual channel).
 							match self.selected_input[f_port][f_virtual_channel]
@@ -699,6 +701,10 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						}).collect::<Vec<_>>();
 						if good_ports.len()==0
 						{
+							if routing_idempotent
+							{
+								panic!("There are no choices for packet {:?} entry_port={} entry_vc={} in router {} towards server {}",phit.packet,entry_port,entry_vc,self.router_index,target_server);
+							}
 							//There are currently no good port choices, but there may be in the future.
 							continue;
 						}

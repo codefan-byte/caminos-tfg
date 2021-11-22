@@ -4,7 +4,7 @@ use ::rand::{Rng,StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology,Location};
-use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument};
+use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument,RoutingNextCandidates};
 
 ///A Cartesian ortahedral region of arbitrary dimension.
 #[derive(Quantifiable)]
@@ -650,7 +650,7 @@ pub struct DOR
 impl Routing for DOR
 {
 	//type info=CartesianRoutingRecord;
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		//let routing_record=&routing_info.routing_record.expect("DOR requires a routing record");
 		let routing_record=if let Some(ref rr)=routing_info.routing_record
@@ -679,7 +679,8 @@ impl Routing for DOR
 					{
 						//return vec![i];
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						let r= (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:r,idempotent:true};
 					}
 				}
 			}
@@ -752,7 +753,8 @@ impl Routing for DOR
 				panic!("No links improving {} dimension\n",i);
 			}
 			//return (0..num_virtual_channels).flat_map(|vc| best.iter().map(|p|(*p,vc)).collect::<Vec<(usize,usize)>>()).collect();
-			return (0..num_virtual_channels).flat_map(|vc| best.iter().map(|p|CandidateEgress::new(*p,vc)).collect::<Vec<_>>()).collect();
+			let r= (0..num_virtual_channels).flat_map(|vc| best.iter().map(|p|CandidateEgress::new(*p,vc)).collect::<Vec<_>>()).collect();
+			return RoutingNextCandidates{candidates:r,idempotent:true};
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
@@ -897,7 +899,7 @@ pub struct ValiantDOR
 
 impl Routing for ValiantDOR
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		//let routing_record=&routing_info.routing_record.expect("ValiantDOR requires a routing record");
 		let mut random_amount=0i32;
@@ -938,7 +940,8 @@ impl Routing for ValiantDOR
 					{
 						//return vec![i];
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						let r= (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:r,idempotent:true};
 					}
 				}
 			}
@@ -1040,13 +1043,15 @@ impl Routing for ValiantDOR
 				//XXX not worth to box the closure, right?
 				let vcs=(0..num_virtual_channels).filter(|vc|!self.shortest_reserved_virtual_channels.contains(vc));
 				//return vcs.flat_map(|vc| best.iter().map(|p|(*p,vc)).collect::<Vec<(usize,usize)>>()).collect();
-				return vcs.flat_map(|vc| best.iter().map(|p|CandidateEgress::new(*p,vc)).collect::<Vec<_>>()).collect();
+				let r= vcs.flat_map(|vc| best.iter().map(|p|CandidateEgress::new(*p,vc)).collect::<Vec<_>>()).collect();
+				return RoutingNextCandidates{candidates:r,idempotent:true}
 			}
 			else
 			{
 				let vcs=(0..num_virtual_channels).filter(|vc|!self.randomized_reserved_virtual_channels.contains(vc));
 				//return vcs.flat_map(|vc| best.iter().map(|p|(*p,vc)).collect::<Vec<(usize,usize)>>()).collect();
-				return vcs.flat_map(|vc| best.iter().map(|p|CandidateEgress::new(*p,vc)).collect::<Vec<_>>()).collect();
+				let r= vcs.flat_map(|vc| best.iter().map(|p|CandidateEgress::new(*p,vc)).collect::<Vec<_>>()).collect();
+				return RoutingNextCandidates{candidates:r,idempotent:true}
 			};
 		}
 	}
@@ -1298,7 +1303,7 @@ pub struct O1TURN
 
 impl Routing for O1TURN
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		//let routing_record=&routing_info.routing_record.expect("DOR requires a routing record");
 		let routing_record=if let Some(ref rr)=routing_info.routing_record
@@ -1343,7 +1348,8 @@ impl Routing for O1TURN
 					if server==target_server
 					{
 						//return vec![CandidateEgress::new(i,s)];
-						return available_virtual_channels.map(|vc| CandidateEgress::new(i,vc)).collect();
+						let r= available_virtual_channels.map(|vc| CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:r,idempotent:true};
 					}
 				}
 			}
@@ -1363,7 +1369,8 @@ impl Routing for O1TURN
 				2*i+1
 			};
 			//return vec![CandidateEgress::new(p,s)];
-			return available_virtual_channels.map(|vc| CandidateEgress::new(p,vc)).collect();
+			let r= available_virtual_channels.map(|vc| CandidateEgress::new(p,vc)).collect();
+			return RoutingNextCandidates{candidates:r,idempotent:true};
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
@@ -1493,7 +1500,7 @@ pub struct OmniDimensionalDeroute
 
 impl Routing for OmniDimensionalDeroute
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1512,7 +1519,8 @@ impl Routing for OmniDimensionalDeroute
 					if server==target_server
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
-						return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
 					}
 				}
 			}
@@ -1573,7 +1581,7 @@ impl Routing for OmniDimensionalDeroute
 				}
 			}
 		}
-		r
+		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
