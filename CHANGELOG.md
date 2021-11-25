@@ -2,6 +2,12 @@
 
 ## next [0.3.2]
 
+### 2021-11-25
+One point is enough is bar/boxplot graphs to consider them good plots.
+Added `VirtualChannelPolicy::{Identity,MapLabel,ShiftEntryVC}`.
+Breaking change: Added requirement `VirtualChannelPolicy: Debug`.
+git commit -m "Policies are now required to implement Debug. New policies Identity, MapLabel and ShiftEntryVC."
+
 ### 2021-11-22
 git commit -m "return from routings changed to RoutingNextCandidates and added idempotence checks."
 

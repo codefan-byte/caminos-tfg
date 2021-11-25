@@ -1114,7 +1114,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					raw_plots.push_str(&legend_tex_id);
 					raw_plots.push_str("text}\n");// '\addlegendentry{}' does not use a semicolon
 				}
-				if drawn_points>1
+				if ((boxplot || kd.bar) && drawn_points>=1) || drawn_points>1
 				{
 					good_plots+=1;
 				}

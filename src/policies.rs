@@ -4,7 +4,11 @@ use crate::routing::CandidateEgress;
 use crate::router::Router;
 use crate::topology::{Topology,Location};
 use crate::Plugs;
+
 use std::cell::{RefCell};
+use std::fmt::Debug;
+use std::convert::TryInto;
+
 use ::rand::{Rng,StdRng};
 
 ///Extra information to be used by the policies of virtual channels.
@@ -45,7 +49,7 @@ pub struct RequestInfo<'a>
 ///	rng, self.virtual_ports(credits and length), phit.packet.routing_info.borrow().hops, server_ports,
 /// topology.{distance,neighbour}, port_average_neighbour_queue_length, port_last_transmission
 ///We could also provide functions to declare which aspects must be computed. Thus allowing to both share when necessary and to not computing ti when unnecessary.
-pub trait VirtualChannelPolicy
+pub trait VirtualChannelPolicy : Debug
 {
 	///Apply the policy over a list of candidates and return the candidates that fulfil the policy requirements.
 	///candidates: the list to be filtered.
@@ -79,6 +83,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 		};
 		match cv_name.as_ref()
 		{
+			"Identity" => Box::new(Identity::new(arg)),
 			"Random" => Box::new(Random::new(arg)),
 			"Shortest" => Box::new(Shortest::new(arg)),
 			"Hops" => Box::new(Hops::new(arg)),
@@ -91,6 +96,8 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"OccupancyFunction" => Box::new(OccupancyFunction::new(arg)),
 			"NegateLabel" => Box::new(NegateLabel::new(arg)),
 			"VecLabel" => Box::new(VecLabel::new(arg)),
+			"MapLabel" => Box::new(MapLabel::new(arg)),
+			"ShiftEntryVC" => Box::new(MapLabel::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -99,6 +106,42 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 		panic!("Trying to create a traffic from a non-Object");
 	}
 }
+
+///Does not do anything. Just a placeholder for some operations.
+#[derive(Debug)]
+pub struct Identity{}
+
+impl VirtualChannelPolicy for Identity
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		candidates
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+}
+
+impl Identity
+{
+	pub fn new(_arg:VCPolicyBuilderArgument) -> Identity
+	{
+		Identity{}
+	}
+}
+
 
 ///Request a port+virtual channel at random from all available.
 #[derive(Debug)]
@@ -126,7 +169,6 @@ impl VirtualChannelPolicy for Random
 	{
 		false
 	}
-
 }
 
 impl Random
@@ -1286,3 +1328,201 @@ impl VecLabel
 	}
 }
 
+///Apply a different policy to candidates with each label.
+#[derive(Debug)]
+pub struct MapLabel
+{
+	label_to_policy: Vec<Box<dyn VirtualChannelPolicy>>,
+	below_policy: Box<dyn VirtualChannelPolicy>,
+	above_policy: Box<dyn VirtualChannelPolicy>,
+}
+
+impl VirtualChannelPolicy for MapLabel
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapLabel");
+		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
+		if dist==0
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let n = self.label_to_policy.len();
+			//above goes into candidate_map[ labels  ]
+			//below goes into candidate_map[ labels+1  ]
+			let mut candidate_map = vec![vec![];n+2];
+			for cand in candidates.into_iter()
+			{
+				let label : usize = if cand.label < 0
+				{
+					self.label_to_policy.len()+1
+				} else if cand.label > n.try_into().unwrap() {
+					n
+				} else {
+					cand.label.try_into().unwrap()
+				};
+				candidate_map[label].push(cand);
+			}
+			let mut policies = self.label_to_policy.iter().chain( vec![&self.below_policy].into_iter() ).chain( vec![&self.above_policy].into_iter() );
+			let mut r = vec![];
+			for candidate_list in candidate_map
+			{
+				let policy : &dyn VirtualChannelPolicy = policies.next().unwrap().as_ref();
+				r.extend( policy.filter(candidate_list,router,info,topology,rng)  );
+			}
+			r
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl MapLabel
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> MapLabel
+	{
+		let mut label_to_policy=None;
+		let mut below_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
+		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="MapLabel"
+			{
+				panic!("A MapLabel must be created from a `MapLabel` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+ 					"label_to_policy" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => label_to_policy=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
+							_ => panic!("bad value for label_to_policy"),
+						}).collect()),
+ 						_ => panic!("bad value for label_to_policy"),
+ 					}
+					"below_policy" => match value
+					{
+						&ConfigurationValue::Object(_,_) => below_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+ 						_ => panic!("bad value for below_policy"),
+					}
+					"above_policy" => match value
+					{
+						&ConfigurationValue::Object(_,_) => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+ 						_ => panic!("bad value for above_policy"),
+					}
+					_ => panic!("Nothing to do with field {} in MapLabel",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a MapLabel from a non-Object");
+		}
+		let label_to_policy=label_to_policy.expect("There were no label_to_policy");
+		MapLabel{
+			label_to_policy,
+			below_policy,
+			above_policy,
+		}
+	}
+}
+
+
+///Only allows those candidates whose vc equals their entry vc plus some `s` in `shifts`.
+#[derive(Debug)]
+pub struct ShiftEntryVC
+{
+	shifts: Vec<i32>,
+}
+
+impl VirtualChannelPolicy for ShiftEntryVC
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy ShiftEntryVC");
+		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
+		if dist==0
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let evc = info.entry_virtual_channel as i32;
+			candidates.into_iter().filter(|&CandidateEgress{virtual_channel,..}| self.shifts.contains(&(virtual_channel as i32-evc)) ).collect::<Vec<_>>()
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl ShiftEntryVC
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> ShiftEntryVC
+	{
+		let mut shifts=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="ShiftEntryVC"
+			{
+				panic!("A ShiftEntryVC must be created from a `ShiftEntryVC` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+ 					"shifts" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => shifts=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Number(x) => x as i32,
+							_ => panic!("bad value for shifts"),
+						}).collect()),
+ 						_ => panic!("bad value for shifts"),
+ 					}
+					_ => panic!("Nothing to do with field {} in ShiftEntryVC",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a ShiftEntryVC from a non-Object");
+		}
+		let shifts=shifts.expect("There were no shifts");
+		ShiftEntryVC{
+			shifts,
+		}
+	}
+}
