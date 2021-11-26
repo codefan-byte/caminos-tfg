@@ -2,6 +2,10 @@
 
 ## next [0.3.2]
 
+### 2021-11-26
+Fixed entry `ShiftEntryVC` on `new_virtual_channel_policy`.
+git commit -m "fixed entry on new_virtual_channel_policy"
+
 ### 2021-11-25
 One point is enough is bar/boxplot graphs to consider them good plots.
 Added `VirtualChannelPolicy::{Identity,MapLabel,ShiftEntryVC}`.

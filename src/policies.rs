@@ -97,13 +97,13 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"NegateLabel" => Box::new(NegateLabel::new(arg)),
 			"VecLabel" => Box::new(VecLabel::new(arg)),
 			"MapLabel" => Box::new(MapLabel::new(arg)),
-			"ShiftEntryVC" => Box::new(MapLabel::new(arg)),
+			"ShiftEntryVC" => Box::new(ShiftEntryVC::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
 	else
 	{
-		panic!("Trying to create a traffic from a non-Object");
+		panic!("Trying to create a policy from a non-Object");
 	}
 }
 
