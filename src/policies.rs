@@ -103,7 +103,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 	}
 	else
 	{
-		panic!("Trying to create a policy from a non-Object");
+		panic!("Trying to create a policy from a non-Object\narg={:?}",arg);
 	}
 }
 
