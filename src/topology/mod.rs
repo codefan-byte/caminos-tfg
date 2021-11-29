@@ -515,6 +515,8 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	{
 		let n=self.num_routers();
 		let mut max_link_class=0;
+		let min_deg= self.minimum_degree();
+		let max_deg= self.maximum_degree();
 		for router_index in 0..n
 		{
 			let deg = self.degree(router_index);
@@ -562,9 +564,9 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						{
 							panic!("port {} at router {} has non-matching link class {} vs {}",port_index,router_index,link_class,rev_link_class);
 						}
-						if port_index>=deg
+						if port_index>=max_deg
 						{
-							panic!("port {} at router {} connects to another router and it is >=degree={}",port_index,router_index,deg);
+							panic!("port {} at router {} connects to another router and it is >=maximum_degree={}>=degree={}",port_index,router_index,max_deg,deg);
 						}
 					},
 					Location::ServerPort(server_index) =>
@@ -588,9 +590,9 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						{
 							panic!("port {} at router {} has non-matching link class {} vs {}",port_index,router_index,link_class,rev_link_class);
 						}
-						if port_index<deg
+						if port_index<min_deg
 						{
-							panic!("port {} at router {} connects to a server and it is <degree={}",port_index,router_index,deg);
+							panic!("port {} at router {} connects to a server and it is <minimum_degree={}<=degree={}",port_index,router_index,min_deg,deg);
 						}
 					},
 					Location::None => println!("WARNING: disconnected port {} at router {}",port_index,router_index),
