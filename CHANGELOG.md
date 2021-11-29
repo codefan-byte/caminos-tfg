@@ -4,6 +4,7 @@
 
 ### 2021-11-29
 git commit -m "relaxed Topology::check_adjacency_consistency for non-regular topologies."
+git commit -m "Implemented distance method for Mesh topology."
 
 ### 2021-11-26
 Fixed entry `ShiftEntryVC` on `new_virtual_channel_policy`.

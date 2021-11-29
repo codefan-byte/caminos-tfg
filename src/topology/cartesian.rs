@@ -137,9 +137,12 @@ impl Topology for Mesh
 	{
 		self.cartesian_data.sides.iter().map(|s|s-1).sum()
 	}
-	fn distance(&self,_origin:usize,_destination:usize) -> usize
+	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
-		unimplemented!();
+		let coord_origin=self.cartesian_data.unpack(origin);
+		let coord_destination=self.cartesian_data.unpack(destination);
+		let rr=self.coordinated_routing_record(&coord_origin,&coord_destination,None);
+		rr.iter().map(|x|x.abs() as usize).sum()
 	}
 	fn amount_shortest_paths(&self,_origin:usize,_destination:usize) -> usize
 	{
