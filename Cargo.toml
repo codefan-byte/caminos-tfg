@@ -25,3 +25,4 @@ procfs = "0.9"
 lazy_static = "1.4.0" #somehow not automatically added by indicatif
 quantifiable-derive = "0.1.0"
 #quantifiable-derive = { path = "../quantifiable-derive" }
+diff = "0.1.12"

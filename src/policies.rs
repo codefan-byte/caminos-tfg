@@ -1366,7 +1366,7 @@ impl VirtualChannelPolicy for MapLabel
 				};
 				candidate_map[label].push(cand);
 			}
-			let mut policies = self.label_to_policy.iter().chain( vec![&self.below_policy].into_iter() ).chain( vec![&self.above_policy].into_iter() );
+			let mut policies = self.label_to_policy.iter().chain( vec![&self.above_policy].into_iter() ).chain( vec![&self.below_policy].into_iter() );
 			let mut r = vec![];
 			for candidate_list in candidate_map
 			{

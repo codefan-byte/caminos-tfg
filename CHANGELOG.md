@@ -2,6 +2,16 @@
 
 ## next [0.3.2]
 
+### 2021-12-01
+git commit -m "fixed MapLabel: above and below were swapped in filter."
+
+### 2021-12-01
+Added crate `diff` to the dependencies.
+Show differences on the configurations when there are any with the remote file.
+
+### 2021-11-30
+Added config functions `map` and `log`.
+
 ### 2021-11-29
 git commit -m "relaxed Topology::check_adjacency_consistency for non-regular topologies."
 git commit -m "Implemented distance method for Mesh topology."

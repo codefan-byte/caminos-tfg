@@ -421,12 +421,12 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let first=match first
 					{
 						ConfigurationValue::Number(x) => x,
-						_ => panic!("first argument of add evaluated to a non-number ({}:?)",first),
+						_ => panic!("first argument of {} evaluated to a non-number ({}:?)",function_name,first),
 					};
 					let second=match second
 					{
 						ConfigurationValue::Number(x) => x,
-						_ => panic!("second argument of add evaluated to a non-number ({}:?)",second),
+						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
 					ConfigurationValue::Number(first+second)
 				}
@@ -454,14 +454,47 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let first=match first
 					{
 						ConfigurationValue::Number(x) => x,
-						_ => panic!("first argument of mul evaluated to a non-number ({}:?)",first),
+						_ => panic!("first argument of {} evaluated to a non-number ({}:?)",function_name,first),
 					};
 					let second=match second
 					{
 						ConfigurationValue::Number(x) => x,
-						_ => panic!("second argument of mul evaluated to a non-number ({}:?)",second),
+						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
 					ConfigurationValue::Number(first*second)
+				}
+				"log" =>
+				{
+					let mut arg=None;
+					let mut base=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"arg" =>
+							{
+								arg=Some(evaluate(val,context,path));
+							},
+							"base" =>
+							{
+								base=Some(evaluate(val,context,path));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let arg=arg.expect("arg argument of and not given.");
+					let arg=match arg
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("arg argument of {} evaluated to a non-number ({}:?)",function_name,arg),
+					};
+					let base=match base
+					{
+						None => 1f64.exp(),
+						Some(ConfigurationValue::Number(x)) => x,
+						Some(other) => panic!("base argument of {} evaluated to a non-number ({}:?)",function_name,other),
+					};
+					ConfigurationValue::Number(arg.log(base))
 				}
 				"at" =>
 				{
@@ -627,6 +660,57 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						_ => panic!("wrong context"),
 					};
 					evaluate( expression, &context, path)
+				}
+				"map" =>
+				{
+					let mut container = None;
+					let mut binding = None;
+					let mut expression = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"container" =>
+							{
+								container=Some(evaluate(val,context,path));
+							},
+							"binding" =>
+							{
+								binding=Some(evaluate(val,context,path));
+							},
+							"expression" =>
+							{
+								expression = Some(val);
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let container=container.expect("container argument of at not given.");
+					let expression=expression.expect("expression argument of at not given.");
+					let binding=match binding
+					{
+						None => "x".to_string(),
+						Some(ConfigurationValue::Literal(s)) => s.to_string(),
+						Some(other) => panic!("{:?} cannot be used as binding variable",other),
+					};
+					let container=match container
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+					};
+					let container = container.into_iter().map(|item|{
+						let context = match context{
+							ConfigurationValue::Object(name, data) =>
+							{
+								let mut content = data.clone();
+								content.push( (String::from(binding.clone()), item ) );
+								ConfigurationValue::Object(name.to_string(),content)
+							},
+							_ => panic!("wrong context"),
+						};
+						evaluate( expression, &context, path)
+					}).collect();
+					ConfigurationValue::Array(container)
 				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
