@@ -2,6 +2,11 @@
 
 ## next [0.3.2]
 
+### 2021-12-03
+Removed an underflow when averaging consumption queues of the server in the Basic router.
+New policy `MapHop` that applies a different policy to each hop number.
+git commit -m "Added MapHop policy and diff"
+
 ### 2021-12-01
 git commit -m "fixed MapLabel: above and below were swapped in filter."
 

@@ -658,6 +658,58 @@ impl<'a> Experiment<'a>
 				}
 				else
 				{
+					let mut last_both=None;
+					let mut show_both=false;
+					let mut count_left=0;
+					let mut count_right=0;
+					let mut show_count=true;
+					for diff in diff::lines(&cfg_contents, &remote_main_cfg_contents)
+					{
+						match diff {
+							diff::Result::Left(x) =>
+							{
+								if show_count
+								{
+									println!("@left line {}, right line {}",count_left,count_right);
+									show_count=false;
+								}
+								if let Some(p)=last_both.take()
+								{
+									println!(" {}",p);
+								}
+								println!("-{}",x);
+								show_both=true;
+								count_left+=1;
+							},
+							diff::Result::Right(x) =>
+							{
+								if show_count
+								{
+									println!("@left line {}, right line {}",count_left,count_right);
+									show_count=false;
+								}
+								if let Some(p)=last_both.take()
+								{
+									println!(" {}",p);
+								}
+								println!("+{}",x);
+								show_both=true;
+								count_right+=1;
+							},
+							diff::Result::Both(x,_) =>
+							{
+								if show_both
+								{
+									println!(" {}",x);
+									show_both=false;
+								}
+								last_both = Some(x);
+								show_count=true;
+								count_left+=1;
+								count_right+=1;
+							},
+						}
+					}
 					panic!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path);
 				}
 			},

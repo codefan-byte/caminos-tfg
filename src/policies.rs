@@ -98,6 +98,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"VecLabel" => Box::new(VecLabel::new(arg)),
 			"MapLabel" => Box::new(MapLabel::new(arg)),
 			"ShiftEntryVC" => Box::new(ShiftEntryVC::new(arg)),
+			"MapHop" => Box::new(MapHop::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1526,3 +1527,93 @@ impl ShiftEntryVC
 		}
 	}
 }
+
+
+///Apply a different policy to each hop.
+#[derive(Debug)]
+pub struct MapHop
+{
+	hop_to_policy: Vec<Box<dyn VirtualChannelPolicy>>,
+	above_policy: Box<dyn VirtualChannelPolicy>,
+}
+
+impl VirtualChannelPolicy for MapHop
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapHop");
+		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
+		if dist==0
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let policy = if info.performed_hops>=self.hop_to_policy.len() { &self.above_policy } else { &self.hop_to_policy[info.performed_hops] };
+			policy.filter(candidates,router,info,topology,rng)
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl MapHop
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> MapHop
+	{
+		let mut hop_to_policy=None;
+		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="MapHop"
+			{
+				panic!("A MapHop must be created from a `MapHop` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+ 					"hop_to_policy" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => hop_to_policy=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
+							_ => panic!("bad value for hop_to_policy"),
+						}).collect()),
+ 						_ => panic!("bad value for hop_to_policy"),
+ 					}
+					"above_policy" => match value
+					{
+						&ConfigurationValue::Object(_,_) => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+ 						_ => panic!("bad value for above_policy"),
+					}
+					_ => panic!("Nothing to do with field {} in MapHop",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a MapHop from a non-Object");
+		}
+		let hop_to_policy=hop_to_policy.expect("There were no hop_to_policy");
+		MapHop{
+			hop_to_policy,
+			above_policy,
+		}
+	}
+}
+

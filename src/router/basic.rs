@@ -587,7 +587,20 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 			Some(self.transmission_port_status.iter().map(|ref p|{
 				//let total=p.iter().map(|ref vp|self.buffer_size - vp.neighbour_credits).sum::<usize>();
 				//(total as f32) / (p.len() as f32)
-				let total=(0..amount_virtual_channels).map(|vc|self.buffer_size-p.known_available_space_for_virtual_channel(vc).expect("needs to know available space")).sum::<usize>();
+				let total=(0..amount_virtual_channels).map(|vc|{
+					//self.buffer_size-p.known_available_space_for_virtual_channel(vc).expect("needs to know available space")
+					let available = p.known_available_space_for_virtual_channel(vc).expect("needs to know available space");
+					if available>self.buffer_size
+					{
+						//panic!("We should never have more available space than the buffer size.");
+						//Actually when the neighbour is a server it may have longer queue.
+						0
+					}
+					else
+					{
+						self.buffer_size - available
+					}
+				}).sum::<usize>();
 				(total as f32) / (amount_virtual_channels as f32)
 			}).collect())
 		}
