@@ -281,7 +281,7 @@ use std::cmp::Ordering;
 //use std::borrow::Cow;
 use rand::{StdRng,SeedableRng};
 
-use config_parser::{ConfigurationValue};
+use config_parser::{ConfigurationValue,Expr};
 use topology::{Topology,new_topology,TopologyBuilderArgument,Location,
 	multistage::{Stage,StageBuilderArgument}};
 use traffic::{Traffic,new_traffic,TrafficBuilderArgument,TrafficError};
@@ -507,6 +507,16 @@ pub struct Phit
 	pub virtual_channel: RefCell<Option<usize>>,
 }
 
+
+#[derive(Quantifiable)]
+#[derive(Debug,Default)]
+pub struct PacketExtraInfo
+{
+	link_classes: Vec<usize>,
+	entry_virtual_channels: Vec<usize>,
+	cycle_per_hop: Vec<usize>,
+}
+
 ///A portion of a message. They are divided into phits.
 ///All phits must go through the same queues without phits of other packets in between.
 #[derive(Quantifiable)]
@@ -524,6 +534,8 @@ pub struct Packet
 	///The cycle when the packet has touched the first router. This is, the packet leading phit has been inserted into a router.
 	///We set it to 0 if the packet has not entered the network yet.
 	pub cycle_into_network: RefCell<usize>,
+	///Extra info tracked for some special statistics.
+	pub extra: RefCell<Option<PacketExtraInfo>>,
 }
 
 ///An application message, broken into packets
@@ -701,6 +713,8 @@ struct StatisticPacketMeasurement
 #[derive(Debug)]
 pub struct Statistics
 {
+	//The stored path is used for some calls to `config::evaluate`.
+	//path: PathBuf,
 	///The measurement since the last reset.
 	current_measurement: StatisticMeasurement,
 	///Specific statistics of the links. Indexed by router and port.
@@ -721,12 +735,20 @@ pub struct Statistics
 	packet_statistics: Vec<StatisticPacketMeasurement>,
 	///The columns to print in the periodic reports.
 	columns: Vec<ReportColumn>,
+	///A list of statistic definitions for consumed packets.
+	///Each definition is a tuple `(keys,values)`, that are evaluated on each packet.
+	///Packets are classified via `keys` into their bin. The number of packets in each bin is counted and the associated `values` are averaged.
+	packet_defined_statistics_definitions: Vec< (Vec<Expr>,Vec<Expr>) >,
+	///For each definition of packet statistics, we have a vector with an element for each actual value of `keys`.
+	///Each of these elements have that value of `key`, together with the averages and the count.
+	packet_defined_statistics_measurement: Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>,
 }
 
 impl Statistics
 {
-	fn new(statistics_temporal_step:usize, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, topology: &dyn Topology)->Statistics
+	fn new(statistics_temporal_step:usize, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, statistics_packet_definitions:Vec<(Vec<Expr>,Vec<Expr>)>, topology: &dyn Topology)->Statistics
 	{
+		let packet_defined_statistics_measurement = vec![ vec![]; statistics_packet_definitions.len() ];
 		Statistics{
 			//begin_cycle:0,
 			//created_phits:0,
@@ -754,6 +776,8 @@ impl Statistics
 				ReportColumnKind::ServerGenerationJainIndex.into(),
 				//ReportColumnKind::ServerConsumptionJainIndex.into(),
 				],
+			packet_defined_statistics_definitions:statistics_packet_definitions,
+			packet_defined_statistics_measurement,
 		}
 	}
 	///Print in stdout a header showing the statistical columns to be periodically printed.
@@ -846,6 +870,49 @@ impl Statistics
 		if !self.packet_percentiles.is_empty()
 		{
 			self.packet_statistics.push(StatisticPacketMeasurement{consumed_cycle:cycle,hops,delay:network_delay});
+		}
+		if !self.packet_defined_statistics_definitions.is_empty()
+		{
+			let mut context_content = vec![];
+			context_content.push( (String::from("hops"), ConfigurationValue::Number(hops as f64)) );
+			context_content.push( (String::from("delay"), ConfigurationValue::Number(network_delay as f64)) );
+			context_content.push( (String::from("cycle_into_network"), ConfigurationValue::Number(*packet.cycle_into_network.borrow() as f64)) );
+			context_content.push( (String::from("size"), ConfigurationValue::Number(packet.size as f64)) );
+			let be = packet.extra.borrow();
+			let extra = be.as_ref().unwrap();
+			let link_classes = extra.link_classes.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
+			let entry_virtual_channels = extra.entry_virtual_channels.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
+			let cycle_per_hop = extra.cycle_per_hop.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
+			context_content.push( (String::from("link_classes"), ConfigurationValue::Array(link_classes)) );
+			context_content.push( (String::from("entry_virtual_channels"), ConfigurationValue::Array(entry_virtual_channels)) );
+			context_content.push( (String::from("cycle_per_hop"), ConfigurationValue::Array(cycle_per_hop)) );
+			let context = ConfigurationValue::Object( String::from("packet"), context_content );
+			let path = Path::new(".");
+			for (index,definition) in self.packet_defined_statistics_definitions.iter().enumerate()
+			{
+				let key : Vec<ConfigurationValue> = definition.0.iter().map(|key_expr|config::evaluate( key_expr, &context, path)).collect();
+				let value : Vec<f32> = definition.1.iter().map(|key_expr|
+					match config::evaluate( key_expr, &context, path){
+						ConfigurationValue::Number(x) => x as f32,
+						_ => 0f32,
+					}).collect();
+				//find the measurement
+				let measurement = self.packet_defined_statistics_measurement[index].iter_mut().find(|m|m.0==key);
+				match measurement
+				{
+					Some(m) =>
+					{
+						for (iv,v) in m.1.iter_mut().enumerate()
+						{
+							*v += value[iv];
+						}
+						m.2+=1;
+					}
+					None => {
+						self.packet_defined_statistics_measurement[index].push( (key,value,1) )
+					},
+				};
+			}
 		}
 	}
 	fn track_consumed_message(&mut self, cycle:usize)
@@ -1069,6 +1136,7 @@ impl<'a> Simulation<'a>
 		let mut launch_configurations: Vec<ConfigurationValue> = vec![];
 		let mut statistics_server_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_percentiles: Vec<u8> = vec![];
+		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="Configuration"
@@ -1138,6 +1206,36 @@ impl<'a> Simulation<'a>
 							x => panic!("{} is a bad value for statistics_packet_percentiles",x),
 						}).collect(),
 						_ => panic!("bad value for statistics_packet_percentiles"),
+					}
+					"statistics_packet_definitions" => match value
+					{
+						&ConfigurationValue::Array(ref l) => statistics_packet_definitions=l.iter().map(|definition|match definition {
+							&ConfigurationValue::Array(ref dl) => {
+								if dl.len()!=2
+								{
+									panic!("Each definition of statistics_packet_definitions must be composed of [keys,values]");
+								}
+								let keys = match dl[0]
+								{
+									ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+										ConfigurationValue::Expression(expr) => expr.clone(),
+										_ => panic!("bad value for statistics_packet_definitions"),
+										}).collect(),
+									_ => panic!("bad value for statistics_packet_definitions"),
+								};
+								let values = match dl[1]
+								{
+									ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+										ConfigurationValue::Expression(expr) => expr.clone(),
+										_ => panic!("bad value for statistics_packet_definitions"),
+										}).collect(),
+									_ => panic!("bad value for statistics_packet_definitions"),
+								};
+								(keys,values)
+							},
+							_ => panic!("bad value for statistics_packet_definitions"),
+						}).collect(),
+						_ => panic!("bad value for statistics_packet_definitions"),
 					}
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in Configuration",name),
@@ -1210,7 +1308,7 @@ impl<'a> Simulation<'a>
 			topology:&topology,
 			rng:&rng,
 		});
-		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,statistics_packet_percentiles,topology.as_ref());
+		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,statistics_packet_percentiles,statistics_packet_definitions,topology.as_ref());
 		Simulation{
 			configuration: cv.clone(),
 			seed,
@@ -1288,6 +1386,19 @@ impl<'a> Simulation<'a>
 						&Location::RouterPort{router_index:router,router_port:port} =>
 						{
 							self.statistics.link_statistics[router][port].phit_arrivals+=1;
+							if !self.statistics.packet_defined_statistics_definitions.is_empty()
+							{
+								let mut be = phit.packet.extra.borrow_mut();
+								if let None = *be
+								{
+									*be=Some(PacketExtraInfo::default());
+								}
+								let extra = be.as_mut().unwrap();
+								let (_,link_class) = self.network.topology.neighbour(router,port);
+								extra.link_classes.push(link_class);
+								extra.entry_virtual_channels.push(phit.virtual_channel.borrow().unwrap());
+								extra.cycle_per_hop.push(self.cycle);
+							}
 							let mut brouter=self.network.routers[router].borrow_mut();
 							brouter.insert(phit.clone(),port,&self.rng);
 							if brouter.pending_events()==0
@@ -1449,6 +1560,7 @@ impl<'a> Simulation<'a>
 							message:message.clone(),
 							index:0,
 							cycle_into_network:RefCell::new(0),
+							extra: RefCell::new(None),
 						}));
 						size-=ps;
 					}
@@ -1674,6 +1786,27 @@ impl<'a> Simulation<'a>
 				];
 				result_content.push((format!("packet_percentile{}",percentile),ConfigurationValue::Object(String::from("PacketStatistics"),packet_content)));
 			}
+		}
+		if !self.statistics.packet_defined_statistics_measurement.is_empty()
+		{
+			let mut pds_content=vec![];
+			for definition_measurement in self.statistics.packet_defined_statistics_measurement.iter()
+			{
+				let mut dm_list = vec![];
+				for (key,val,count) in definition_measurement
+				{
+					let fcount = *count as f32;
+					let averages = ConfigurationValue::Array( val.iter().map(|v|ConfigurationValue::Number(f64::from(v/fcount))).collect() );
+					let dm_content: Vec<(String,ConfigurationValue)> = vec![
+						(String::from("key"),ConfigurationValue::Array(key.to_vec())),
+						(String::from("average"),averages),
+						(String::from("count"),ConfigurationValue::Number(*count as f64)),
+					];
+					dm_list.push( ConfigurationValue::Object(String::from("PacketBin"),dm_content) );
+				}
+				pds_content.push(ConfigurationValue::Array(dm_list));
+			}
+			result_content.push( (String::from("packet_defined_statistics"),ConfigurationValue::Array(pds_content)) );
 		}
 		let result=ConfigurationValue::Object(String::from("Result"),result_content);
 		writeln!(output,"{}",result).unwrap();

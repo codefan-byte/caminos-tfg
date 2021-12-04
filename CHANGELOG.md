@@ -2,10 +2,15 @@
 
 ## next [0.3.2]
 
+### 2021-12-04
+Added `PacketExtraInfo` to `Packet` to store additional statistics for `statistics_packet_definitions`.
+git commit -m "Added to statistics_packet_definitions the members link_classes, entry_virtual_channels, and cycle_per_hop"
+
 ### 2021-12-03
 Removed an underflow when averaging consumption queues of the server in the Basic router.
 New policy `MapHop` that applies a different policy to each hop number.
 git commit -m "Added MapHop policy and diff"
+Added user definied statistics for consumed packets. Define with `configuration.statistics_packet_definitions` and receive into`result.packet_defined_statistics`.
 
 ### 2021-12-01
 git commit -m "fixed MapLabel: above and below were swapped in filter."
