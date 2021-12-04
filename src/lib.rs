@@ -513,7 +513,7 @@ pub struct Phit
 pub struct PacketExtraInfo
 {
 	link_classes: Vec<usize>,
-	entry_virtual_channels: Vec<usize>,
+	entry_virtual_channels: Vec<Option<usize>>,
 	cycle_per_hop: Vec<usize>,
 }
 
@@ -881,7 +881,10 @@ impl Statistics
 			let be = packet.extra.borrow();
 			let extra = be.as_ref().unwrap();
 			let link_classes = extra.link_classes.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
-			let entry_virtual_channels = extra.entry_virtual_channels.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
+			let entry_virtual_channels = extra.entry_virtual_channels.iter().map(|x|match x{
+				Some(v) => ConfigurationValue::Number(*v as f64),
+				None => ConfigurationValue::None,
+			}).collect();
 			let cycle_per_hop = extra.cycle_per_hop.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
 			context_content.push( (String::from("link_classes"), ConfigurationValue::Array(link_classes)) );
 			context_content.push( (String::from("entry_virtual_channels"), ConfigurationValue::Array(entry_virtual_channels)) );
@@ -1396,7 +1399,7 @@ impl<'a> Simulation<'a>
 								let extra = be.as_mut().unwrap();
 								let (_,link_class) = self.network.topology.neighbour(router,port);
 								extra.link_classes.push(link_class);
-								extra.entry_virtual_channels.push(phit.virtual_channel.borrow().unwrap());
+								extra.entry_virtual_channels.push(*phit.virtual_channel.borrow());
 								extra.cycle_per_hop.push(self.cycle);
 							}
 							let mut brouter=self.network.routers[router].borrow_mut();
