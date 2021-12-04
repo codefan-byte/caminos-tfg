@@ -6,6 +6,7 @@
 Added `PacketExtraInfo` to `Packet` to store additional statistics for `statistics_packet_definitions`.
 git commit -m "Added to statistics_packet_definitions the members link_classes, entry_virtual_channels, and cycle_per_hop"
 git commit -m "The stat entry_virtual_channels now sets None value when a VC was not forced, as from the server"
+git commit -m "Changed NONE VALUE to None"
 
 ### 2021-12-03
 Removed an underflow when averaging consumption queues of the server in the Basic router.

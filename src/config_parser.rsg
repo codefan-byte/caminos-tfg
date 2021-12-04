@@ -71,7 +71,7 @@ impl ConfigurationValue
 			&ConfigurationValue::False => write!(f,"false")?,
 			&ConfigurationValue::Where(ref cv, ref _expr) => write!(f,"{} where FIXME",cv)?,
 			&ConfigurationValue::Expression(ref e) => write!(f,"= {}",e)?,
-			&ConfigurationValue::None => write!(f,"NONE VALUE")?,
+			&ConfigurationValue::None => write!(f,"None")?,
 		};
 		Ok(())
 	}
