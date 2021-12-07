@@ -8,6 +8,7 @@ Added action `Pack`, to pack current results into binary.results and delete the 
 git commit -m "New action pack"
 git commit -m "moved a canonicalize out of the main path to avoid requiring the runx directories."
 git commit -m "Added a canonicalize to the parent runs path"
+git commit -m "bugfix on packet statistics: only track the leading phit of packets."
 
 ### 2021-12-04
 Added `PacketExtraInfo` to `Packet` to store additional statistics for `statistics_packet_definitions`.

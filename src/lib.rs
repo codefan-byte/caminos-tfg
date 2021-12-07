@@ -1389,7 +1389,7 @@ impl<'a> Simulation<'a>
 						&Location::RouterPort{router_index:router,router_port:port} =>
 						{
 							self.statistics.link_statistics[router][port].phit_arrivals+=1;
-							if !self.statistics.packet_defined_statistics_definitions.is_empty()
+							if phit.is_begin() && !self.statistics.packet_defined_statistics_definitions.is_empty()
 							{
 								let mut be = phit.packet.extra.borrow_mut();
 								if let None = *be
