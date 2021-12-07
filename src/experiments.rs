@@ -890,8 +890,6 @@ impl<'a> Experiment<'a>
 					_ => true,
 				}
 			} else {false};
-			let real_experiment_path=experiment_path.canonicalize().expect("This path cannot be resolved");
-			let experiment_path_string = real_experiment_path.to_str().expect("You should use paths representable with unicode");
 			let result_path=experiment_path.join("local.result");
 			//FIXME: check if the run is expected to be currently inside some slurm job.
 			let has_file = result_path.is_file();
@@ -1066,6 +1064,8 @@ impl<'a> Experiment<'a>
 					},
 					Action::Slurm => if !self.experiments_on_slurm.contains(&experiment_index)
 					{
+						let real_experiment_path=experiment_path.canonicalize().expect("This path cannot be resolved");
+						let experiment_path_string = real_experiment_path.to_str().expect("You should use paths representable with unicode");
 						let local_cfg=experiment_path.join("local.cfg");
 						let mut local_cfg_file=File::create(&local_cfg).expect("Could not create local.cfg file");
 						writeln!(local_cfg_file,"{}",experiment).unwrap();
