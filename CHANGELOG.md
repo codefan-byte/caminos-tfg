@@ -2,6 +2,11 @@
 
 ## next [0.3.2]
 
+### 2021-12-07
+Avoid making the runx dicretories when they are not required.
+Added action `Pack`, to pack current results into binary.results and delete the raw ones.
+git commit -m "New action pack"
+
 ### 2021-12-04
 Added `PacketExtraInfo` to `Packet` to store additional statistics for `statistics_packet_definitions`.
 git commit -m "Added to statistics_packet_definitions the members link_classes, entry_virtual_channels, and cycle_per_hop"

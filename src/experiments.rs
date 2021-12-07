@@ -41,6 +41,8 @@ pub enum Action
 	SlurmCancel,
 	///Create shell/skeleton/carcase files. This is, create a folder containing the files: main.cfg, main.od, remote. Use `--source` to copy them from a existing one.
 	Shell,
+	///Builds up a `binary.results` if it does not exists and erase all `runs/run*/`.
+	Pack,
 }
 
 impl FromStr for Action
@@ -61,6 +63,7 @@ impl FromStr for Action
 			"push" => Ok(Action::Push),
 			"slurm_cancel" => Ok(Action::SlurmCancel),
 			"shell" => Ok(Action::Shell),
+			"pack" => Ok(Action::Pack),
 			_ => Err(()),
 		}
 	}
@@ -788,6 +791,7 @@ impl<'a> Experiment<'a>
 				scancel.output().expect("scancel failed");
 			},
 			Action::Shell => (),
+			Action::Pack => (),
 		};
 
 		//Remove mutabiity to prevent mistakes.
@@ -870,7 +874,14 @@ impl<'a> Experiment<'a>
 			let experiment_path=runs_path.join(format!("run{}",experiment_index));
 			if !experiment_path.is_dir()
 			{
-				fs::create_dir(&experiment_path).expect("Something went wrong when creating the run directory.");
+				//Only some actions need to have the run folders.
+				//Perhaps we could define a method to made them on demand.
+				use Action::*;
+				match action
+				{
+					Local|LocalAndOutput|Slurm => fs::create_dir(&experiment_path).expect("Something went wrong when creating the run directory."),
+					_ => (),
+				}
 			}
 			let is_packed = if let ConfigurationValue::Experiments(ref a) = packed_results {
 				match a[experiment_index]
@@ -896,6 +907,7 @@ impl<'a> Experiment<'a>
 			let mut is_merged = false;
 			if !has_content && !is_packed
 			{
+				//In all actions bring up experiments from the external_source if given.
 				if let Some(ref external_experiment_list) = external_experiments
 				{
 					for (ext_index,ext_experiment) in external_experiment_list.iter().enumerate()
@@ -980,6 +992,56 @@ impl<'a> Experiment<'a>
 						}
 					}
 				}
+			}
+			if let (true,Action::Pack) =  (has_content,action)
+			{
+				let mut result_file=match File::open(&result_path)
+				{
+					Ok(rf) => rf,
+					Err(_error) =>
+					{
+						//println!("There are problems opening results (experiment {}).",experiment_index);
+						continue;
+					}
+				};
+				let mut result_contents=String::new();
+				result_file.read_to_string(&mut result_contents).expect("something went wrong reading the result file.");
+				let result = match config_parser::parse(&result_contents)
+				{
+					Ok(cv) =>
+					{
+						match cv
+						{
+							config_parser::Token::Value(value) => value,
+							_ => panic!("wrong token"),
+						}
+					}
+					Err(_error)=>
+					{
+						println!("There are missing results (experiment {}).",experiment_index);
+						ConfigurationValue::None
+					}
+				};
+				if let ConfigurationValue::Experiments(ref mut a) = packed_results
+				{
+					match a[experiment_index]
+					{
+						ConfigurationValue::None =>
+						{
+							//It is not currently packed, so we write it.
+							a[experiment_index] = result;
+							added_packed_results+=1;
+						},
+						_ =>
+						{
+							//There is a current packed version. We check it is the same.
+							if a[experiment_index] != result
+							{
+								panic!("Packed mistmatch at experiment index {}",experiment_index);
+							}
+						},
+					};
+				} else { panic!("broken pack"); }
 			}
 			//if !result_path.is_file() || result_path.metadata().unwrap().len()==0
 			if has_content || is_packed || is_merged
@@ -1087,7 +1149,7 @@ impl<'a> Experiment<'a>
 						//File::open(&result_path).expect("did not work even after pulling it.")
 						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged",pulled,empty,missing,before_amount_completed,merged));
 					}
-					Action::Output | Action::Check | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell =>
+					Action::Output | Action::Check | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell | Action::Pack =>
 					{
 					},
 				};
@@ -1196,6 +1258,30 @@ impl<'a> Experiment<'a>
 			let binary_results = config::config_to_binary(&packed_results).expect("error while serializing into binary");
 			binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
 			println!("Added {} results to binary.results.",added_packed_results);
+		}
+		if let (Action::Pack,ConfigurationValue::Experiments(ref a)) = (action,packed_results)
+		{
+			//Erase the raw results. After we have written correctly the binary file.
+			for (experiment_index,value) in a.iter().enumerate()
+			{
+				match value
+				{
+					//If we do not have the result do not erase anything.
+					ConfigurationValue::None => (),
+					_ =>
+					{
+						let experiment_path=runs_path.join(format!("run{}",experiment_index));
+						if experiment_path.exists()
+						{
+							if !experiment_path.is_dir()
+							{
+								panic!("Somehow {:?} exists but is not a directory",experiment_path);
+							}
+							fs::remove_dir_all(&experiment_path).unwrap_or_else(|e|panic!("Error {} when removing directory {:?} and its contents",e,experiment_path));
+						}
+					}
+				}
+			}
 		}
 		let fin = format!("Finished action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string());
 		self.write_journal_entry(&fin);
