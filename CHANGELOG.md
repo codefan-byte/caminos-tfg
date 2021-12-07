@@ -7,6 +7,7 @@ Avoid making the runx directories when they are not required.
 Added action `Pack`, to pack current results into binary.results and delete the raw ones.
 git commit -m "New action pack"
 git commit -m "moved a canonicalize out of the main path to avoid requiring the runx directories."
+git commit -m "Added a canonicalize to the parent runs path"
 
 ### 2021-12-04
 Added `PacketExtraInfo` to `Packet` to store additional statistics for `statistics_packet_definitions`.

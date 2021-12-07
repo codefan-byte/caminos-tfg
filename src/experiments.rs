@@ -827,6 +827,7 @@ impl<'a> Experiment<'a>
 				runs_path
 			}
 		};
+		let runs_path=runs_path.canonicalize().unwrap_or_else(|e|panic!("The runs path \"{:?}\" cannot be resolved (error {})",runs_path,e));
 
 		//Execute or launch jobs.
 		let start_index = self.options.start_index.unwrap_or(0);
