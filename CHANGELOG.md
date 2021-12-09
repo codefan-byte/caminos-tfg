@@ -2,6 +2,15 @@
 
 ## next [0.3.2]
 
+### 2021-12-09
+Read remote binary.results when initializing remote.
+Pull now try first to pull from binary.results.
+Added config functions `slice`, `sort`, `last`, `number_or`, and `filter`.
+Stop using tikz symbolic coordinates and use instead just natural coordinates with textual labels.
+Improved the code to manage the plots.
+Plots requiring symbols can now use absicssa limits.
+git commit -m "Added several config functions and latex output improvements."
+
 ### 2021-12-07
 Avoid making the runx directories when they are not required.
 Added action `Pack`, to pack current results into binary.results and delete the raw ones.
@@ -9,6 +18,8 @@ git commit -m "New action pack"
 git commit -m "moved a canonicalize out of the main path to avoid requiring the runx directories."
 git commit -m "Added a canonicalize to the parent runs path"
 git commit -m "bugfix on packet statistics: only track the leading phit of packets."
+Some fixes to detect non-numbers before averaging.
+Added `latex_make_symbol` to protect symbolic coordinates.
 
 ### 2021-12-04
 Added `PacketExtraInfo` to `Packet` to store additional statistics for `statistics_packet_definitions`.

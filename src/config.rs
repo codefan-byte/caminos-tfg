@@ -520,7 +520,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let container=match container
 					{
 						ConfigurationValue::Array(a) => a,
-						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+						_ => panic!("conatiner argument of at evaluated to a non-array ({}:?)",container),
 					};
 					let position=match position
 					{
@@ -712,6 +712,233 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					}).collect();
 					ConfigurationValue::Array(container)
 				}
+				"slice" =>
+				{
+					let mut container = None;
+					let mut start = None;
+					let mut end = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"container" =>
+							{
+								container=Some(evaluate(val,context,path));
+							},
+							"start" =>
+							{
+								start= match evaluate(val,context,path)
+								{
+									ConfigurationValue::Number(n) => Some(n as usize),
+									_ => panic!("the start argument of slice must be a number"),
+								};
+							},
+							"end" =>
+							{
+								end= match evaluate(val,context,path)
+								{
+									ConfigurationValue::Number(n) => Some(n as usize),
+									_ => panic!("the start argument of slice must be a number"),
+								};
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let container=container.expect("container argument of at not given.");
+					let container=match container
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+					};
+					let start=start.unwrap_or(0);
+					let end=match end
+					{
+						None => container.len(),
+						Some(n) => n.min(container.len()),
+					};
+					let container = container[start..end].to_vec();
+					ConfigurationValue::Array(container)
+				}
+				"sort" =>
+				{
+					let mut container = None;
+					let mut expression = None;
+					let mut binding = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"container" =>
+							{
+								container=Some(evaluate(val,context,path));
+							},
+							"expression" =>
+							{
+								expression=Some(val);
+							},
+							"binding" =>
+							{
+								binding=Some(evaluate(val, context, path));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let container=container.expect("container argument of at not given.");
+					let mut container=match container
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+					};
+					let f:Box< dyn Fn(&ConfigurationValue,&ConfigurationValue)->std::cmp::Ordering > = match expression
+					{
+						None => Box::new(|a:&ConfigurationValue,b:&ConfigurationValue|a.partial_cmp(b).unwrap()),
+						Some(expr) =>
+						{
+							let binding=match binding
+							{
+								None => "x".to_string(),
+								Some(ConfigurationValue::Literal(s)) => s.to_string(),
+								Some(other) => panic!("{:?} cannot be used as binding variable",other),
+							};
+							Box::new(move |a,b|{
+								let context = match context
+								{
+									ConfigurationValue::Object(name, data) =>
+									{
+										let mut content = data.clone();
+										content.push( (String::from(binding.clone()), a.clone() ) );
+										ConfigurationValue::Object(name.to_string(),content)
+									},
+									_ => panic!("wrong context"),
+								};
+								let a = evaluate(expr, &context, path);
+								let context = match context
+								{
+									ConfigurationValue::Object(name, data) =>
+									{
+										let mut content = data.clone();
+										content.push( (String::from(binding.clone()), b.clone() ) );
+										ConfigurationValue::Object(name.to_string(),content)
+									},
+									_ => panic!("wrong context"),
+								};
+								let b = evaluate(expr, &context, path);
+								a.partial_cmp(&b).unwrap()
+							})
+						},
+					};
+					//container.sort_by(|a,b|a.partial_cmp(b).unwrap());
+					container.sort_by(f);
+					ConfigurationValue::Array(container)
+				}
+				"last" =>
+				{
+					let mut container = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"container" =>
+							{
+								container=Some(evaluate(val,context,path));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let container=container.unwrap_or_else(||panic!("container argument of {} not given.",function_name));
+					let container=match container
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+					};
+					container.last().expect("there is not last element in the array").clone()
+				}
+				"number_or" =>
+				// Returns the argument unchanged if it is a number, otherwise return the default value.
+				{
+					let mut arg = None;
+					let mut default = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"arg" =>
+							{
+								arg=Some(evaluate(val,context,path));
+							},
+							"default" =>
+							{
+								default=Some(evaluate(val,context,path));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let arg=arg.expect("arg argument of number_or not given.");
+					let default=default.expect("default argument of number_or not given.");
+					match arg
+					{
+						ConfigurationValue::Number(n) => ConfigurationValue::Number(n),
+						_ => default,
+					}
+				}
+				"filter" =>
+				{
+					let mut container = None;
+					let mut expression = None;
+					let mut binding = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"container" =>
+							{
+								container=Some(evaluate(val,context,path));
+							},
+							"expression" =>
+							{
+								expression=Some(val);
+							},
+							"binding" =>
+							{
+								binding=Some(evaluate(val, context, path));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let container=container.expect("container argument of filter not given.");
+					let expression=expression.expect("expression argument of filter not given.");
+					let binding = match binding
+					{
+						None => String::from("x"),
+						Some(ConfigurationValue::Literal(s)) => s,
+						Some(b) => panic!("binding argument of filter evaluated to a non-literal ({}:?)",b),
+					};
+					let container=match container
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({:?})",container),
+					};
+					let container = container.into_iter().filter(|item|
+					{
+						let context = match context{
+							ConfigurationValue::Object(name, data) =>
+							{
+								let mut content = data.clone();
+								content.push( (String::from(binding.clone()), item.clone() ) );
+								ConfigurationValue::Object(name.to_string(),content)
+							},
+							_ => panic!("wrong context"),
+						};
+						let b = evaluate(expression,&context,path);
+						match b
+						{
+							ConfigurationValue::True => true,
+							ConfigurationValue::False => false,
+							b => panic!("filter expression evaluated to a non-Boolean ({:?})",b),
+						}
+					}).collect();
+					ConfigurationValue::Array(container)
+				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
 		}
@@ -744,6 +971,30 @@ pub fn values_to_f32(list:&Vec<ConfigurationValue>) -> Vec<f32>
 		&ConfigurationValue::Number(f) => Some(f as f32),
 		_ => None
 	}).collect()
+}
+
+///Get a vector of `f32` from a vector of `ConfigurationValue`s, skipping non-numeric values.
+///It also counts the number of good, `None`, and other values.
+pub fn values_to_f32_with_count(list:&Vec<ConfigurationValue>) -> (Vec<f32>,usize,usize,usize)
+{
+	let mut values = Vec::with_capacity(list.len());
+	let mut good_count=0;
+	let mut none_count=0;
+	let mut other_count=0;
+	for v in list
+	{
+		match v
+		{
+			&ConfigurationValue::Number(f) =>
+			{
+				values.push(f as f32);
+				good_count+=1;
+			},
+			&ConfigurationValue::None => none_count+=1,
+			_ => other_count+=1,
+		}
+	}
+	(values,good_count,none_count,other_count)
 }
 
 

@@ -1799,6 +1799,7 @@ impl<'a> Simulation<'a>
 				for (key,val,count) in definition_measurement
 				{
 					let fcount = *count as f32;
+					//One average for each value field
 					let averages = ConfigurationValue::Array( val.iter().map(|v|ConfigurationValue::Number(f64::from(v/fcount))).collect() );
 					let dm_content: Vec<(String,ConfigurationValue)> = vec![
 						(String::from("key"),ConfigurationValue::Array(key.to_vec())),

@@ -264,6 +264,7 @@ pub struct Experiment<'a>
 	remote_binary: Option<PathBuf>,
 	remote_root: Option<PathBuf>,
 	ssh2_session: Option<Session>,
+	remote_binary_results: Option<ConfigurationValue>,
 	#[allow(dead_code)]
 	visible_slurm_jobs: Vec<usize>,
 	owned_slurm_jobs: Vec<usize>,
@@ -342,6 +343,7 @@ impl<'a> Experiment<'a>
 			remote_binary: None,
 			remote_root: None,
 			ssh2_session: None,
+			remote_binary_results: None,
 			visible_slurm_jobs,
 			owned_slurm_jobs,
 			experiments_on_slurm,
@@ -1083,63 +1085,86 @@ impl<'a> Experiment<'a>
 					},
 					Action::Pull =>
 					{
-						//println!("Could not open results of experiment {}, trying to pull it.",experiment_index);
-						//println!("Trying to pull experiment {}.",experiment_index);
-						//let session = self.ssh2_session.as_ref().unwrap();
-						let remote_root=self.remote_root.clone().unwrap();
-						let remote_result_path = remote_root.join(format!("runs/run{}/local.result",experiment_index));
-						//let (mut remote_result_channel, stat) = match session.scp_recv(&remote_result_path)
-						//{
-						//	Ok( value ) => value,
-						//	Err( _ ) =>
-						//	{
-						//		println!("Could not pull {}, skipping it",experiment_index);
-						//		continue;
-						//	},
-						//};
-						let mut remote_result_file = match sftp.as_ref().unwrap().open(&remote_result_path)
+						let (remote_result,remote_result_contents) = 
 						{
-							Ok(file) => file,
-							Err(_err) =>
+							let binary_result = match self.remote_binary_results{
+								Some(ConfigurationValue::Experiments(ref a)) => if let ConfigurationValue::None = a[experiment_index] { None } else { Some(a[experiment_index].clone()) },
+								Some( _ ) => panic!("remote binary.results is corrupted"),
+								None => None,
+							};
+							match binary_result
 							{
-								//println!("could not read remote file ({}).",err);
-								missing+=1;
-								continue;
+								Some(x)=> (Some(x),None),
+								None => {
+									//println!("Could not open results of experiment {}, trying to pull it.",experiment_index);
+									//println!("Trying to pull experiment {}.",experiment_index);
+									//let session = self.ssh2_session.as_ref().unwrap();
+									let remote_root=self.remote_root.clone().unwrap();
+									let remote_result_path = remote_root.join(format!("runs/run{}/local.result",experiment_index));
+									//let (mut remote_result_channel, stat) = match session.scp_recv(&remote_result_path)
+									//{
+									//	Ok( value ) => value,
+									//	Err( _ ) =>
+									//	{
+									//		println!("Could not pull {}, skipping it",experiment_index);
+									//		continue;
+									//	},
+									//};
+									let mut remote_result_file = match sftp.as_ref().unwrap().open(&remote_result_path)
+									{
+										Ok(file) => file,
+										Err(_err) =>
+										{
+											//println!("could not read remote file ({}).",err);
+											missing+=1;
+											continue;
+										}
+									};
+									let mut remote_result_contents=String::new();
+									//remote_result_channel.read_to_string(&mut remote_result_contents);
+									remote_result_file.read_to_string(&mut remote_result_contents).expect("Could not read remote result file.");
+									if remote_result_contents.len()<5
+									{
+										//println!("Remote file does not have contents.");
+										empty+=1;
+										(None,Some(remote_result_contents))
+									} else {
+										match config_parser::parse(&remote_result_contents)
+										{
+											Ok(cv) =>
+											{
+												let result=match cv
+												{
+													config_parser::Token::Value(value) => value,
+													_ => panic!("wrong token"),
+												};
+												(Some(result),Some(remote_result_contents))
+											}
+											Err(_error)=>
+											{
+												println!("pulled invalid results (experiment {}).",experiment_index);
+												(None,None)
+											}
+										}
+									}
+								},
 							}
 						};
-						let mut remote_result_contents=String::new();
-						//remote_result_channel.read_to_string(&mut remote_result_contents);
-						remote_result_file.read_to_string(&mut remote_result_contents).expect("Could not read remote result file.");
-						if remote_result_contents.len()<5
-						{
-							//println!("Remote file does not have contents.");
-							empty+=1;
-						}
-						else
+						if let Some(result) = remote_result
 						{
 							if let ConfigurationValue::Experiments(ref mut a) = packed_results
 							{
-								match config_parser::parse(&remote_result_contents)
-								{
-									Ok(cv) =>
-									{
-										let result=match cv
-										{
-											config_parser::Token::Value(value) => value,
-											_ => panic!("wrong token"),
-										};
-										a[experiment_index] = result;
-										added_packed_results+=1;
-									}
-									Err(_error)=>
-									{
-										println!("pulled invalid results (experiment {}).",experiment_index);
-									}
-								}
+								a[experiment_index] = result;
+								added_packed_results+=1;
 							}
 							else
 							{
 								//create file
+								let remote_result_contents = match remote_result_contents
+								{
+									Some(x) => x,
+									None => format!("{}",result),
+								};
 								let mut new_result_file=File::create(&result_path).expect("Could not create result file.");
 								writeln!(new_result_file,"{}",remote_result_contents).unwrap();
 								//drop(new_result_file);//ensure it closes and syncs
@@ -1406,5 +1431,29 @@ impl<'a> Experiment<'a>
 		assert!(session.authenticated());
 		self.ssh2_session = Some(session);
 		println!("ssh2 session created with remote host");
+		self.remote_binary_results={
+			let remote_binary_results_path = self.remote_root.as_ref().unwrap().join("binary.results");
+			//let (mut remote_binary_results_channel, _stat) = self.ssh2_session.as_ref().unwrap().scp_recv(&remote_binary_results_path).unwrap();
+			match self.ssh2_session.as_ref().unwrap().scp_recv(&remote_binary_results_path)
+			{
+				Ok( (mut remote_binary_results_channel, _stat) ) => {
+					let mut remote_binary_results_contents= vec![];
+					remote_binary_results_channel.read_to_end(&mut remote_binary_results_contents).expect("Could not read remote binary.results");
+					let got = config::config_from_binary(&remote_binary_results_contents,0).expect("something went wrong while deserializing binary.results");
+					match got
+					{
+						ConfigurationValue::Experiments(ref _a) => {
+							//We do not have the `experiments` list in here.
+							//if a.len()!=n {
+							//	panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
+							//}
+						},
+						_ => panic!("A non-Experiments stored on binary.results"),
+					};
+					Some(got)
+				},
+				Err(_) => None,
+			}
+		};
 	}
 }

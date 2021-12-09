@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::config_parser::{ConfigurationValue,Expr};
-use crate::config::{self,combine,evaluate,reevaluate,values_to_f32};
+use crate::config::{self,combine,evaluate,reevaluate,values_to_f32_with_count};
 use crate::get_git_id;
 
 #[derive(Debug)]
@@ -536,6 +536,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 				let selector=reevaluate(&selector,&context,path);
 				let legend=reevaluate(&legend,&context,path);
 				let git_id = evaluate(&git_id_expr,&context,path);
+				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,path));
 				if let ConfigurationValue::Array(ref l)=histogram_values
 				{
 					//let total:f64 = l.iter().map(|cv|match cv{
@@ -565,13 +566,19 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 						}
 						else
 						{
-							panic!("A histogram count/array value should be a number");
+							panic!("A histogram count/array value should be a number (instead of {})",h_value);
+						};
+						let abscissa = match abscissa_array
+						{
+							None => ConfigurationValue::Number(h_index as f64),
+							Some(ConfigurationValue::Array(ref x)) => x[h_index].clone(),
+							_ => panic!("The abscissa is not an array when using array to build the ordinates"),
 						};
 						let record=RawRecord{
 							selector:selector.clone(),
 							legend:legend.clone(),
-							parameter: ConfigurationValue::Number(h_index as f64),
-							abscissa: ConfigurationValue::Number(h_index as f64),
+							parameter: abscissa.clone(),
+							abscissa,
 							//ordinate: h_value.clone(),
 							ordinate,
 							upper_whisker:None,
@@ -737,6 +744,19 @@ fn latex_make_command_name(text:&str) -> String
 	}).collect::<String>()
 }
 
+///Make text appropriate for tikz symbolic coordinates.
+fn latex_make_symbol(text:&str) -> String
+{
+	text.trim().chars().map(|c|match c{
+		'\n' => " ".to_string(),
+		'%' => "\\%".to_string(),
+		',' => "s".to_string(),
+		'[' | ']' => "b".to_string(),
+		'{' | '}' => "c".to_string(),
+		x => format!("{}",x),
+	}).collect::<String>()
+}
+
 ///Draw a plot using the tikz backend.
 ///`backend`: contains options to the backend
 ///`averages[kind_index][point_index]`: contains the data to be plotted. The data is ordered by selector, which is not an index.
@@ -872,7 +892,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			}
 			wrote+=1;
 			let mut pre_plots=String::new();
-			let mut raw_plots=String::new();
+			let mut raw_plots_data = vec![];
+			//let mut raw_plots=String::new();
 			let mut good_plots=0;
 			let mut symbols:Vec<String> = vec![];
 			let boxplot:bool = kd.upper_box_limit.is_some();
@@ -891,10 +912,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				let legend_index = all_legend_tex_id_vec.iter().enumerate().find_map(|(index,s)|if s==&legend_tex_id {Some(index)} else {None}).unwrap();
 				all_legend_tex_entry.insert(format!("\\def\\{}text{{{}}}\n",legend_tex_id,legend_tex_entry));
 				//all_legend_tex_entry.insert(format!("\\expandafter\\def\\csname {}text\\endcsname{{{}}}\n",legend_tex_id,legend_tex_entry));
-				//raw_plots.push_str(r"\addplot[");
-				//raw_plots.push_str(&legend_tex_id);
-				//raw_plots.push_str(r"] coordinates{");
-				let mut current_raw_plot=String::new();
+				//let mut current_raw_plot=String::new();
+				let mut current_raw_plot_data = Vec::new();
 				let mut drawn_points=0;
 				// to_draw elements are of the form (x value, y value, x deviation, y deviation)
 				let mut to_draw:Vec<(f32,f32,f32,f32)> = Vec::with_capacity(kaverages.len());
@@ -911,7 +930,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						let mut x : f32 = if let Some(xvalue) = abscissa_average { xvalue } else
 						{
 							let symbol = kaverages[*koffset].shared_abscissa.as_ref().expect("no abscissa found");
-							let str_symbol: String = format!("{}",symbol);
+							let str_symbol: String = latex_make_symbol(&format!("{}",symbol));
 							if let Some(symbol_index) = symbols.iter().enumerate().find_map(|(index,s)|if s==&str_symbol {Some(index)} else {None})
 							{
 								symbol_index as f32
@@ -935,20 +954,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						{
 							let abscissa_deviation=abscissa_deviation.unwrap_or(0f32);
 							let ordinate_deviation=ordinate_deviation.unwrap_or(0f32);
-							//if abscissa_deviation.abs()>0.01*x.abs() || ordinate_deviation.abs()>0.01*y.abs()
-							//{
-							//	current_raw_plot.push_str(&format!("({},{}) +- ({},{})",x,y,abscissa_deviation,ordinate_deviation));
-							//}
-							//else
-							//{
-							//	current_raw_plot.push_str(&format!("({},{})",x,y));
-							//}
 							to_draw.push( (x,y,abscissa_deviation,ordinate_deviation) );
 							drawn_points+=1;
 						} else if let (Some(symbol),Some(y)) = (kaverages[*koffset].shared_abscissa.as_ref(),ordinate_average)
 						{
 							let ordinate_deviation=ordinate_deviation.unwrap_or(0f32);
-							let str_symbol: String = format!("{}",symbol);
+							let str_symbol: String = latex_make_symbol(&format!("{}",symbol));
 							symbolic_to_draw.push( (str_symbol,y,ordinate_deviation) );
 							drawn_points+=1;
 						}
@@ -1014,11 +1025,13 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						//if dx.abs()*20f32 > x_range || dy.abs()*20f32 > y_range
 						if x_range.map_or(true, |xr|dx.abs()*20f32>xr) || dy.abs()*20f32 > y_range
 						{
-							current_raw_plot.push_str(&format!("({},{}) +- ({},{})",x,y,dx,dy));
+							//current_raw_plot.push_str(&format!("({},{}) +- ({},{})",x,y,dx,dy));
+							current_raw_plot_data.push(format!("({},{}) +- ({},{})",x,y,dx,dy));
 						}
 						else
 						{
-							current_raw_plot.push_str(&format!("({},{})",x,y));
+							//current_raw_plot.push_str(&format!("({},{})",x,y));
+							current_raw_plot_data.push(format!("({},{})",x,y));
 						}
 						if to_draw_x_min.unwrap()<=x && x<=to_draw_x_max.unwrap() && to_draw_y_min<=y && y<=to_draw_y_max
 						{
@@ -1027,17 +1040,40 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					}
 					for (symbol,y,dy) in symbolic_to_draw
 					{
+						//if !symbols.contains(&symbol)
+						//{
+						//	symbols.push(symbol);
+						//}
+						let symbol_index= if let Some(symbol_index) = symbols.iter().enumerate().find_map(|(index,s)|if *s==symbol {Some(index)} else {None})
+						{
+							symbol_index as f32
+						} else {
+							symbols.push(symbol);
+							(symbols.len()-1) as f32
+						};
+						if let Some(xlimit) = to_draw_x_min
+						{
+							if symbol_index < xlimit
+							{
+								continue;
+							}
+						}
+						if let Some(xlimit) = to_draw_x_max
+						{
+							if symbol_index >= xlimit
+							{
+								continue;
+							}
+						}
 						if dy.abs()*20f32 > y_range
 						{
-							current_raw_plot.push_str(&format!("({},{}) +- ({},{})",symbol,y,0,dy));
+							//current_raw_plot.push_str(&format!("({},{}) +- ({},{})",symbol_index,y,0,dy));
+							current_raw_plot_data.push(format!("({},{}) +- ({},{})",symbol_index,y,0,dy));
 						}
 						else
 						{
-							current_raw_plot.push_str(&format!("({},{})",symbol,y));
-						}
-						if !symbols.contains(&symbol)
-						{
-							symbols.push(symbol);
+							//current_raw_plot.push_str(&format!("({},{})",symbol_index,y));
+							current_raw_plot_data.push(format!("({},{})",symbol_index,y));
 						}
 						if to_draw_y_min<=y && y<=to_draw_y_max
 						{
@@ -1046,37 +1082,39 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					}
 					for (x,uw,bw,ub,bb,mb,mark) in to_box
 					{
-						current_raw_plot.push_str(&format!("\\addplot[{}boxplot,boxplot prepared={{draw position={},\n",&legend_tex_id,x));
+						//current_raw_plot.push_str(&format!("\\addplot[{}boxplot,boxplot prepared={{draw position={},\n",&legend_tex_id,x));
+						let mut data = format!("\\addplot[{}boxplot,boxplot prepared={{draw position={},\n",&legend_tex_id,x);
 						if let Some(value)=uw
 						{
-							current_raw_plot.push_str(&format!("\tupper whisker={},",value));
+							data.push_str(&format!("\tupper whisker={},",value));
 						}
 						if let Some(value)=bw
 						{
-							current_raw_plot.push_str(&format!("\tlower whisker={},",value));
+							data.push_str(&format!("\tlower whisker={},",value));
 						}
 						if let Some(value)=ub
 						{
-							current_raw_plot.push_str(&format!("\tupper quartile={},",value));
+							data.push_str(&format!("\tupper quartile={},",value));
 						}
 						if let Some(value)=bb
 						{
-							current_raw_plot.push_str(&format!("\tlower quartile={},",value));
+							data.push_str(&format!("\tlower quartile={},",value));
 						}
 						if let Some(value)=mb
 						{
-							current_raw_plot.push_str(&format!("\tmedian={},",value));
+							data.push_str(&format!("\tmedian={},",value));
 						}
 						if let Some(value)=mark
 						{
-							current_raw_plot.push_str(&format!("\taverage={},",value));
+							data.push_str(&format!("\taverage={},",value));
 						}
-						current_raw_plot.push_str("}] coordinates {};\n");
+						data.push_str("}] coordinates {};\n");
+						current_raw_plot_data.push(data);
 					}
 				}
 				if boxplot
 				{
-					raw_plots.push_str(&current_raw_plot);
+					//raw_plots.push_str(&current_raw_plot);
 					if kind_index==0
 					{
 						pre_plots.push_str(r"\addlegendimage{");
@@ -1085,40 +1123,43 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						pre_plots.push_str(&legend_tex_id);
 						pre_plots.push_str("text}\n");
 					}
+					raw_plots_data.push( (String::new(), current_raw_plot_data, String::new(),String::from("\n")) );
 				} else {
-					raw_plots.push_str(r"\addplot[");
-					raw_plots.push_str(&legend_tex_id);
+					let mut before = String::new();
+					let mut after = String::new();
+					before.push_str(r"\addplot[");
+					before.push_str(&legend_tex_id);
 					if kd.bar
 					{
-						raw_plots.push_str("bar");
+						before.push_str("bar");
 					}
 					if drawn_in_range > 20
 					{
 						let mark_period = drawn_in_range/10;
-						raw_plots.push_str(&format!(",mark repeat={}",mark_period));
+						before.push_str(&format!(",mark repeat={}",mark_period));
 					}
-					raw_plots.push_str(r"] coordinates{");
-					raw_plots.push_str(&current_raw_plot);
+					before.push_str(r"] coordinates{");
+					//raw_plots.push_str(&current_raw_plot);
 					if kind_index==0
 					{
-						//raw_plots.push_str(r"};\addlegendentry{\csname ");
-						//raw_plots.push_str(&legend_tex_id);
-						//raw_plots.push_str("text\\endcsname}");// '\addlegendentry{}' does not use a smicolon
-						raw_plots.push_str(r"};\addlegendentry{\");
+						after.push_str(r"};\addlegendentry{\");
 					}
 					else
 					{
-						//raw_plots.push_str(r"};");
-						raw_plots.push_str(r"};%\addlegendentry{\");
+						after.push_str(r"};%\addlegendentry{\");
 					}
-					raw_plots.push_str(&legend_tex_id);
-					raw_plots.push_str("text}\n");// '\addlegendentry{}' does not use a semicolon
+					after.push_str(&legend_tex_id);
+					after.push_str("text}\n");// '\addlegendentry{}' does not use a semicolon
+					raw_plots_data.push( (before, current_raw_plot_data, after, String::from(" ")) );
 				}
 				if ((boxplot || kd.bar) && drawn_points>=1) || drawn_points>1
 				{
 					good_plots+=1;
 				}
 			}
+			let raw_plots : String = raw_plots_data.into_iter().map(|(before_plot,raw_plot_data,after_plot,separator)|
+				format!("{}{}{}",before_plot,raw_plot_data.join(&separator),after_plot),
+			).collect();
 			if good_plots==0 { figure_tikz.push_str(&format!("skipped bad plot.\\\\")); continue; }
 			//\begin{{tikzpicture}}[baseline,trim left=(left trim point),trim axis right,remember picture]
 			//\path (yticklabel cs:0) ++(-1pt,0pt) coordinate (left trim point);
@@ -1128,15 +1169,25 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			let mut extra = "".to_string();
 			if symbols.len()>0
 			{
-				if boxplot
+				axis = "symbolic";
+				let first_tick = kd.min_abscissa.map(|x|x as usize).unwrap_or(0);
+				let last_tick = match kd.max_abscissa
 				{
-					let symbolic_coords = symbols.join(",");
-					extra += &format!("xtick={{0,...,{lastsymbol}}}, xticklabels = {{{symbolic_coords}}},",lastsymbol=symbols.len()-1,symbolic_coords=symbolic_coords);
-				} else {
-					axis="symbolic";
-					let symbolic_coords = symbols.join(",");
-					extra += &format!("symbolic x coords={{{symbolic_coords}}}, xtick = {{{symbolic_coords}}},",symbolic_coords=symbolic_coords);
-				}
+					Some(x) => (x as usize).min(symbols.len()) -1,
+					None => symbols.len()-1,
+				};
+				let symbolic_coords = symbols[first_tick..=last_tick].join(",");
+				extra += &format!("xtick={{{firsttick},...,{lasttick}}}, xticklabels = {{{symbolic_coords}}},",firsttick=first_tick,lasttick=last_tick,symbolic_coords=symbolic_coords);
+				//extra += &format!("xtick={{0,...,{lastsymbol}}}, xticklabels = {{{symbolic_coords}}},",lastsymbol=symbols.len()-1,symbolic_coords=symbolic_coords);
+				//if boxplot
+				//{
+				//	let symbolic_coords = symbols.join(",");
+				//	extra += &format!("xtick={{0,...,{lastsymbol}}}, xticklabels = {{{symbolic_coords}}},",lastsymbol=symbols.len()-1,symbolic_coords=symbolic_coords);
+				//} else {
+				//	axis="symbolic";
+				//	let symbolic_coords = symbols.join(",");
+				//	extra += &format!("symbolic x coords={{{symbolic_coords}}}, xtick = {{{symbolic_coords}}},",symbolic_coords=symbolic_coords);
+				//}
 			}
 			if kd.bar
 			{
@@ -1574,7 +1625,11 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(us
 /// Calculates the average and deviation of the values in a Vec.
 fn standard_deviation(list:&Vec<ConfigurationValue>) -> (Option<f32>,Option<f32>)
 {
-	let list=values_to_f32(list);
+	let (list,_good_count,_none_count,other_count)=values_to_f32_with_count(list);
+	if other_count > 0
+	{
+		return (None,None);
+	}
 	if list.len()==0
 	{
 		return (None,None);
