@@ -10,6 +10,7 @@ Stop using tikz symbolic coordinates and use instead just natural coordinates wi
 Improved the code to manage the plots.
 Plots requiring symbols can now use absicssa limits.
 git commit -m "Added several config functions and latex output improvements."
+git commit -m "Added Diplay for FunctionCall expressions."
 
 ### 2021-12-07
 Avoid making the runx directories when they are not required.

@@ -95,6 +95,7 @@ impl Display for Expr
 			&Expr::Ident(ref s) => write!(f,"{}",s),
 			&Expr::Member(ref expr,ref s) => write!(f,"{}.{}",expr,s),
 			&Expr::Name(ref expr) => write!(f,"@{}",expr),
+			&Expr::FunctionCall(ref s, ref args) => write!(f,"{}{{{}}}",s,args.iter().map(|(arg_name,arg_expr)|format!("{}:{}",arg_name,arg_expr)).collect::<Vec<String>>().join(",")),
 			_ => write!(f,"fix this expr <{:?}>",self),
 		}
 	}
