@@ -2,6 +2,11 @@
 
 ## next [0.3.2]
 
+### 2021-12-16
+New meta routing option `SumRoutingPolicy::EscapeToSecond`.
+New `VirtualChannelPolicy::ArgumentVC`.
+git commit -m "Added an escape policy"
+
 ### 2021-12-09
 Read remote binary.results when initializing remote.
 Pull now try first to pull from binary.results.

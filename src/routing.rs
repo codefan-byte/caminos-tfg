@@ -896,6 +896,9 @@ pub enum SumRoutingPolicy
 	StubbornWhenSecond,
 	///Note that both routings are informed of the hops given, which could be illegal for one of them.
 	SecondWhenFirstEmpty,
+	///At every hop of the first routing give the possibility to use the second routing from the current router towards the target router.
+	///once a hop exclussive to the second routing is given continues that way.
+	EscapeToSecond,
 }
 
 pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
@@ -909,8 +912,7 @@ pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
 			"Stubborn" => SumRoutingPolicy::Stubborn,
 			"StubbornWhenSecond" => SumRoutingPolicy::StubbornWhenSecond,
 			"SecondWhenFirstEmpty" => SumRoutingPolicy::SecondWhenFirstEmpty,
-			//"Shortest" => SumRoutingPolicy::Shortest,
-			//"Hops" => SumRoutingPolicy::Hops,
+			"EscapeToSecond" => SumRoutingPolicy::EscapeToSecond,
 			_ => panic!("Unknown sum routing policy {}",cv_name),
 		}
 	}
@@ -1028,7 +1030,8 @@ impl Routing for SumRouting
 		let all:Vec<i32> = match self.policy
 		{
 			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0,2)],
-			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond | SumRoutingPolicy::SecondWhenFirstEmpty => vec![0,1],
+			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond
+			| SumRoutingPolicy::SecondWhenFirstEmpty | SumRoutingPolicy::EscapeToSecond => vec![0,1],
 		};
 		let mut bri=routing_info.borrow_mut();
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
@@ -1044,7 +1047,7 @@ impl Routing for SumRouting
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
 		let mut bri=routing_info.borrow_mut();
-		let cs = match bri.selections
+		let mut cs = match bri.selections
 		{
 			None => unreachable!(),
 			Some(ref t) =>
@@ -1069,6 +1072,21 @@ impl Routing for SumRouting
 			let meta=bri.meta.as_mut().unwrap();
 			meta[s].borrow_mut().hops+=1;
 			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_server,rng);
+		}
+		if let SumRoutingPolicy::EscapeToSecond = self.policy
+		{
+			if cs[0]==0
+			{
+				//Readd the escape option
+				cs = vec![0,1];
+				let second_meta = RefCell::new(RoutingInfo::new());
+				self.routing[1].initialize_routing_info(&second_meta,topology,current_router,target_server,rng);
+				match bri.meta
+				{
+					Some(ref mut a) => a[1] = second_meta,
+					_ => panic!("No meta data for EscapeToSecond"),
+				};
+			}
 		}
 		bri.selections=Some(cs);
 	}

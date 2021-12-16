@@ -99,6 +99,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"MapLabel" => Box::new(MapLabel::new(arg)),
 			"ShiftEntryVC" => Box::new(ShiftEntryVC::new(arg)),
 			"MapHop" => Box::new(MapHop::new(arg)),
+			"ArgumentVC" => Box::new(ArgumentVC::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1613,6 +1614,84 @@ impl MapHop
 		MapHop{
 			hop_to_policy,
 			above_policy,
+		}
+	}
+}
+
+///Only allows those candidates whose vc is in the allowed list.
+#[derive(Debug)]
+pub struct ArgumentVC
+{
+	allowed: Vec<usize>,
+}
+
+impl VirtualChannelPolicy for ArgumentVC
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy ArgumentVC");
+		if router.get_index().expect("we need routers with index") == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			candidates.into_iter().filter(|&CandidateEgress{virtual_channel,..}| self.allowed.contains(&virtual_channel) ).collect::<Vec<_>>()
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl ArgumentVC
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> ArgumentVC
+	{
+		let mut allowed=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="ArgumentVC"
+			{
+				panic!("A ArgumentVC must be created from a `ArgumentVC` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+ 					"allowed" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => allowed=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Number(x) => x as usize,
+							_ => panic!("bad value for allowed"),
+						}).collect()),
+ 						_ => panic!("bad value for allowed"),
+ 					}
+					_ => panic!("Nothing to do with field {} in ArgumentVC",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a ArgumentVC from a non-Object");
+		}
+		let allowed=allowed.expect("There were no allowed");
+		ArgumentVC{
+			allowed,
 		}
 	}
 }

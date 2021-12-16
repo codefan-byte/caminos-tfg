@@ -682,6 +682,15 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						};
 						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
 						let routing_idempotent = routing_candidates.idempotent;
+						if routing_candidates.len()==0
+						{
+							if routing_idempotent
+							{
+								panic!("There are no choices for packet {:?} entry_port={} entry_vc={} in router {} towards server {}",phit.packet,entry_port,entry_vc,self.router_index,target_server);
+							}
+							//There are currently no good port choices, but there may be in the future.
+							continue;
+						}
 						let mut good_ports=routing_candidates.into_iter().filter_map(|candidate|{
 							let CandidateEgress{port:f_port,virtual_channel:f_virtual_channel,..} = candidate;
 							//We analyze each candidate output port, considering whether they are in use (port or virtual channel).
@@ -712,15 +721,6 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 								}
 							}
 						}).collect::<Vec<_>>();
-						if good_ports.len()==0
-						{
-							if routing_idempotent
-							{
-								panic!("There are no choices for packet {:?} entry_port={} entry_vc={} in router {} towards server {}",phit.packet,entry_port,entry_vc,self.router_index,target_server);
-							}
-							//There are currently no good port choices, but there may be in the future.
-							continue;
-						}
 						let performed_hops=phit.packet.routing_info.borrow().hops;
 						//Apply all the declared virtual channel policies in order.
 						let request_info=RequestInfo{
