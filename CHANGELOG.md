@@ -4,8 +4,9 @@
 
 ### 2021-12-16
 New meta routing option `SumRoutingPolicy::EscapeToSecond`.
-New `VirtualChannelPolicy::ArgumentVC`.
+New `VirtualChannelPolicy::{ArgumentVC,Either}`.
 git commit -m "Added an escape policy"
+git commit -m "Added the Either channel policy to keep candidates satisfying any of several policies."
 
 ### 2021-12-09
 Read remote binary.results when initializing remote.

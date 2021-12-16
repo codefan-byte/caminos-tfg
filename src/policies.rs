@@ -100,6 +100,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"ShiftEntryVC" => Box::new(ShiftEntryVC::new(arg)),
 			"MapHop" => Box::new(MapHop::new(arg)),
 			"ArgumentVC" => Box::new(ArgumentVC::new(arg)),
+			"Either" => Box::new(Either::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1692,6 +1693,89 @@ impl ArgumentVC
 		let allowed=allowed.expect("There were no allowed");
 		ArgumentVC{
 			allowed,
+		}
+	}
+}
+
+///Apply a different policy to each hop.
+#[derive(Debug)]
+pub struct Either
+{
+	policies: Vec<Box<dyn VirtualChannelPolicy>>,
+}
+
+impl VirtualChannelPolicy for Either
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy Either");
+		if router.get_index().expect("we need routers with index") == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let mut r = Vec::new();
+			for policy in self.policies.iter()
+			{
+				r.extend(policy.as_ref().filter(candidates.clone(),router,info,topology,rng));
+			}
+			r
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl Either
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> Either
+	{
+		let mut policies=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Either"
+			{
+				panic!("A Either must be created from a `Either` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+ 					"policies" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => policies=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
+							_ => panic!("bad value for policies"),
+						}).collect()),
+ 						_ => panic!("bad value for policies"),
+ 					}
+					_ => panic!("Nothing to do with field {} in Either",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Either from a non-Object");
+		}
+		let policies=policies.expect("There were no policies");
+		Either{
+			policies,
 		}
 	}
 }
