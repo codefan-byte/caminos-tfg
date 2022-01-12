@@ -2,6 +2,10 @@
 
 ## next [0.3.2]
 
+### 2022-01-12
+New pattern ConstantShuffle.
+git commit -m "New pattern ConstantShuffle."
+
 ### 2021-12-16
 New meta routing option `SumRoutingPolicy::EscapeToSecond`.
 New `VirtualChannelPolicy::{ArgumentVC,Either}`.

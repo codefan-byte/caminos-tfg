@@ -186,6 +186,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
 			"Hotspots" => Box::new(Hotspots::new(arg)),
 			"RandomMix" => Box::new(RandomMix::new(arg)),
+			"ConstantShuffle" => Box::new(ConstantShuffle::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1324,6 +1325,90 @@ impl RandomMix
 			patterns,
 			weights,
 			total_weight:0,//to be computed later
+		}
+	}
+}
+
+///Each source keeps a shuffled list of destinations to which send. Once all have sent it is rebuilt and shuffled again.
+///Independently of past requests, decisions or origin.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct ConstantShuffle
+{
+	///Number of servers, including self.
+	size: usize,
+	///Pending destinations.
+	pending: RefCell<Vec<usize>>,
+}
+
+impl Pattern for ConstantShuffle
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+		self.size=target_size;
+		self.pending=RefCell::new(Vec::with_capacity(self.size));
+		if source_size!=target_size
+		{
+			unimplemented!("Different sizes are not yet implemented for ConstantShuffle");
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	{
+		let mut pending = self.pending.borrow_mut();
+		if pending.is_empty()
+		{
+			for i in 0..self.size
+			{
+				if i!=origin
+				{
+					pending.push(i);
+				}
+			}
+			rng.borrow_mut().shuffle(&mut pending);
+		}
+		pending.pop().unwrap()
+	}
+}
+
+impl ConstantShuffle
+{
+	fn new(arg:PatternBuilderArgument) -> ConstantShuffle
+	{
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="ConstantShuffle"
+			{
+				panic!("A ConstantShuffle must be created from a `ConstantShuffle` object not `{}`",cv_name);
+			}
+			for &(ref name,ref _value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"legend_name" => (),
+					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+					//"servers" => match value
+					//{
+					//	&ConfigurationValue::Number(f) => servers=Some(f as usize),
+					//	_ => panic!("bad value for servers"),
+					//}
+					//"load" => match value
+					//{
+					//	&ConfigurationValue::Number(f) => load=Some(f as f32),
+					//	_ => panic!("bad value for load"),
+					//}
+					//"message_size" => (),
+					_ => panic!("Nothing to do with field {} in ConstantShuffle",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a ConstantShuffle from a non-Object");
+		}
+		ConstantShuffle{
+			size:0,
+			pending:RefCell::new(Vec::new()),
 		}
 	}
 }
