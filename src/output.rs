@@ -12,7 +12,7 @@ use std::fs::{self,File};
 use std::io::{self,Write,Read};
 use std::cmp::Ordering;
 use std::process::Command;
-use std::collections::HashSet;
+use std::collections::{HashSet,BTreeMap};
 use std::rc::Rc;
 
 use crate::config_parser::{ConfigurationValue,Expr};
@@ -251,9 +251,9 @@ struct AveragedRecord
 	selector: ConfigurationValue,
 	///The legend refers to the line inside a Figure
 	legend: ConfigurationValue,
-	//The parameter refers to some point in a line, for which the average is being made.
+	///The parameter refers to some point in a line, for which the average is being made.
 	//It does not seem to be needed at the present moment.
-	//parameter: ConfigurationValue,
+	parameter: ConfigurationValue,
 	///The average value and standard deviation in the abscissas (a.k.a., x-axis).
 	abscissa: (Option<f32>,Option<f32>),
 	///The average value and standard deviation in the ordinates (a.k.a., x-axis).
@@ -291,6 +291,10 @@ struct Plotkind<'a>
 	max_abscissa: Option<f32>,
 	///Whether to be a bar plot
 	bar: bool,
+	///Apply an expression after averaging.
+	///It can be used to normalize relative to another line.
+	///		ordinate_post_expression: =div{first:average,second:at{container:all,position:4}}
+	ordinate_post_expression: Option<Expr>,
 	//parameters used in box plots.
 	upper_whisker: Option<&'a ConfigurationValue>,
 	bottom_whisker: Option<&'a ConfigurationValue>,
@@ -380,6 +384,7 @@ impl<'a> Plotkind<'a>
 		let mut upper_box_limit=None;
 		let mut bottom_box_limit=None;
 		let mut box_middle=None;
+		let mut ordinate_post_expression=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
 		{
 			if cv_name!="Plotkind"
@@ -431,6 +436,11 @@ impl<'a> Plotkind<'a>
 						&ConfigurationValue::False => bar=false,
 						_ => panic!("bad value for bar"),
 					}
+					"ordinate_post_expression" => match &value
+					{
+						&ConfigurationValue::Expression(e) => ordinate_post_expression = Some(e.clone()),
+						_ => panic!("bad value for ordinate_post_expression"),
+					}
 					"upper_whisker" => upper_whisker=Some(value),
 					"bottom_whisker" => bottom_whisker=Some(value),
 					"upper_box_limit" => upper_box_limit=Some(value),
@@ -458,6 +468,7 @@ impl<'a> Plotkind<'a>
 			min_abscissa,
 			max_abscissa,
 			bar,
+			ordinate_post_expression,
 			upper_whisker,
 			bottom_whisker,
 			upper_box_limit,
@@ -665,7 +676,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 					git_set.insert(git_str.to_string());
 				}
 			}
-			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),shared_abscissa:shared_element(&mut current_abscissas.iter()).map(|x|x.clone()),
+			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),parameter:parameter_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),shared_abscissa:shared_element(&mut current_abscissas.iter()).map(|x|x.clone()),
 							upper_whisker:if boxplot {standard_deviation(&current_upper_whiskers).0} else {None},
 							bottom_whisker:if boxplot {standard_deviation(&current_bottom_whiskers).0} else {None},
 							upper_box_limit:if boxplot {standard_deviation(&current_upper_box_limits).0} else {None},
@@ -690,6 +701,71 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 				}
 			}
 			averaged.push(averaged_record);
+		}
+		if let Some(expression)=&pk.ordinate_post_expression
+		{
+			//If a post expression is required make another pass.
+			let mut selection_map : BTreeMap<String,Vec<usize>> = BTreeMap::new();
+			for (index,record) in averaged.iter().enumerate()
+			{
+				let &AveragedRecord{selector:ref selector_value,parameter:ref parameter_value,..}=record;
+				//ConfigurationValue cannot implement Ord...
+				let key = (selector_value,parameter_value);
+				let key = format!("{:?}",key);
+				match selection_map.get_mut(&key)
+				{
+					Some(ref mut values) =>
+					{
+						values.push(index);
+					}
+					None =>
+					{
+						selection_map.insert(key,vec![index]);
+					}
+				};
+			}
+			for (key,indices) in selection_map
+			{
+				//let collection : Vec<f64> = averaged[record_index..collection_end].iter().map(|r|r.ordinate.0.unwrap() as f64).collect();
+				let collection : Vec<f64> = indices.iter().map(|&index|averaged[index].ordinate.0.unwrap() as f64).collect();
+				println!("key is {} values are {:?}",key,&collection);
+				let collection_cv = ConfigurationValue::Array(collection.iter().map(|&x|ConfigurationValue::Number(x)).collect());
+				for index in indices
+				{
+					let record = &mut averaged[index];
+					let ordinate = record.ordinate.0.unwrap();
+					let context=ConfigurationValue::Object(String::from("Context"),vec![
+						(String::from("average"),ConfigurationValue::Number(ordinate as f64)),
+						(String::from("all"),collection_cv.clone()),
+					]);
+					match evaluate(&expression,&context,path)
+					{
+						ConfigurationValue::Number(new_ordinate) =>
+						{
+							dbg!(index,ordinate,new_ordinate);
+							record.ordinate.0 = Some(new_ordinate as f32);
+							//The variance is no longer valid.
+							record.ordinate.1 = None;
+						}
+						_ => panic!(),
+					}
+				}
+			}
+			//--
+			//let mut record_index=0;
+			//while record_index<averaged.len()
+			//{
+			//	let mut collection_end=record_index;
+			//	{
+			//		let &AveragedRecord{selector:ref selector_value,parameter:ref parameter_value,..}=&averaged[record_index];
+			//		while collection_end<averaged.len() && averaged[collection_end].selector==*selector_value && averaged[collection_end].parameter==*parameter_value
+			//		{
+			//			collection_end+=1;
+			//		}
+			//	}
+			//	println!("collection is {:?}",&averaged[record_index..collection_end]);
+			//	record_index=collection_end;
+			//}
 		}
 		//println!("averaged as");
 		//for average in averaged.iter()

@@ -172,7 +172,7 @@ impl Job
 		// #SBATCH --mem=1000 ?? In megabytes or suffix [K|M|G|T]. See sbatch man page for more info.
 		let mem_str = if let Some(s)=slurm_mem { format!("#SBATCH --mem={}\n",s) } else {"".to_string()};
 		writeln!(out,"#!/bin/bash
-#SBATCH --job-name=simulator
+#SBATCH --job-name=CAMINOS
 #SBATCH -D .
 #SBATCH --output={prefix}-%j.out
 #SBATCH --error={prefix}-%j.err

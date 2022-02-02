@@ -2,6 +2,15 @@
 
 ## next [0.3.2]
 
+### 2022-02-02
+Added the MapEntryVC meta-policy to build rules dependant on the virtual channel with which the packet entered the router.
+git commit -m "MapEntryVC policy, div config function, and ordinate_post_expression field."
+
+### 2022-01-31
+Added div config function.
+Added `ordinate_post_expression`to `Plotkind`.
+Changed sbatch job name to CAMINOS.
+
 ### 2022-01-12
 New pattern ConstantShuffle.
 git commit -m "New pattern ConstantShuffle."

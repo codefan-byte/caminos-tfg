@@ -101,6 +101,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"MapHop" => Box::new(MapHop::new(arg)),
 			"ArgumentVC" => Box::new(ArgumentVC::new(arg)),
 			"Either" => Box::new(Either::new(arg)),
+			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1779,4 +1780,102 @@ impl Either
 		}
 	}
 }
+
+///Apply a different policy to candidates from each entry virtual channel.
+#[derive(Debug)]
+pub struct MapEntryVC
+{
+	///Which policy to apply, index by the entry virtual channel.
+	vc_to_policy: Vec<Box<dyn VirtualChannelPolicy>>,
+	///Policy to apply if entry virtual channel is above the array range limit.
+	above_policy: Box<dyn VirtualChannelPolicy>,
+}
+
+impl VirtualChannelPolicy for MapEntryVC
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapEntryVC");
+		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
+		if dist==0
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let n = self.vc_to_policy.len();
+			let evc = info.entry_virtual_channel;
+			let policy = if evc<n
+			{
+				&self.vc_to_policy[evc]
+			} else {
+				&self.above_policy
+			};
+			policy.filter(candidates,router,info,topology,rng)
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl MapEntryVC
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> MapEntryVC
+	{
+		let mut vc_to_policy=None;
+		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="MapEntryVC"
+			{
+				panic!("A MapEntryVC must be created from a `MapEntryVC` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+ 					"vc_to_policy" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => vc_to_policy=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
+							_ => panic!("bad value for vc_to_policy"),
+						}).collect()),
+ 						_ => panic!("bad value for vc_to_policy"),
+ 					}
+					"above_policy" => match value
+					{
+						&ConfigurationValue::Object(_,_) => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+ 						_ => panic!("bad value for above_policy"),
+					}
+					_ => panic!("Nothing to do with field {} in MapEntryVC",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a MapEntryVC from a non-Object");
+		}
+		let vc_to_policy=vc_to_policy.expect("There were no vc_to_policy");
+		MapEntryVC{
+			vc_to_policy,
+			above_policy,
+		}
+	}
+}
+
 
