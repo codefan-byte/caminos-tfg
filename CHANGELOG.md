@@ -5,6 +5,7 @@
 ### 2022-02-02
 Added the MapEntryVC meta-policy to build rules dependant on the virtual channel with which the packet entered the router.
 git commit -m "MapEntryVC policy, div config function, and ordinate_post_expression field."
+git commit -m "Updated gitignore"
 
 ### 2022-01-31
 Added div config function.
