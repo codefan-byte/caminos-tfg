@@ -16,6 +16,8 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 # Breaking changes
 
+<details>
+
 ## [0.3.0] to [0.4.0]
 
 * Added `path` argument to `config::{evaluate,reevaluate}`.
@@ -37,6 +39,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Now `neighbour_router_iter` must always be used instead of `0..degree()` to check ports to other routers. Note that `degree`  does not give valid ranges when having non-connected ports, as in the case of some irregular topologies as the mesh.
 * `Plugs` now include a `stages` attribute.
 * Removed from the `Topology` interfaz the never used methods `num_arcs`, `average_distance`, `distance_distribution`.
+</details>
 
 # Public Interface
 

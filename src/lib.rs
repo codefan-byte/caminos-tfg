@@ -17,6 +17,8 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 # Breaking changes
 
+<details>
+
 ## [0.3.0] to [0.4.0]
 
 * Added `path` argument to `config::{evaluate,reevaluate}`.
@@ -24,6 +26,10 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * routings now return `RoutingNextCandidates`. In addition to the vector of candidates it contains an `idempotent` field to allow some checks and optimizations.
 * Added requirement `VirtualChannelPolicy: Debug`.
 * The `file_main` function now receives a `free_args` parameter. Free arguments of the form `path=value` are used to override the configuration.
+
+## [0.2.0] to [0.3.0]
+
+* Added parameter `cycle` to `Traffic::should_generate`.
 
 ## [0.1.0] to [0.2.0]
 
@@ -34,6 +40,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Now `neighbour_router_iter` must always be used instead of `0..degree()` to check ports to other routers. Note that `degree`  does not give valid ranges when having non-connected ports, as in the case of some irregular topologies as the mesh.
 * `Plugs` now include a `stages` attribute.
 * Removed from the `Topology` interfaz the never used methods `num_arcs`, `average_distance`, `distance_distribution`.
+</details>
 
 # Public Interface
 
