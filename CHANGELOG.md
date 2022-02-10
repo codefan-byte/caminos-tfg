@@ -1,10 +1,12 @@
 # Change Log
 
-## next [0.4.1 or greater]
+## next [0.4.1]
 
 ### 2022-02-10
 git commit -m "Removed spurious error when looking for launch_configurations"
 git commit -m "Expose consumed_cycle to percentile statistics."
+git tag 0.4.1 -m "v0.4.1"
+git commit -m "publish 0.4.1 because of the slurm launch error."
 
 ## [0.4]
 
