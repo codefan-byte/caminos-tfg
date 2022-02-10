@@ -66,6 +66,8 @@ The `directory_main` receives also an `Action`. In the crate `caminos` this is d
 * `remote_check` performs a `check` action in the remote host.
 * `push` compares the local main.cfg with the host remote.cfg. It reports discrepancies and create the remote path if missing.
 * `slurm_cancel` executes a `scancel` with the job ids found in the journal file.
+* `shell` creates the experiment folder with default configuration files. Alternatively, when receiving `--source=another_experiment` it copies the configuration of the other experiment into this one.
+* `pack` forces the creation of a binary.results file and erases the verbose raw results files. In some extreme cases it can reduce a decent amount of space and sped up computations.
 
 
 # Configuration Syntax
