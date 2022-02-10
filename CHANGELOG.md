@@ -1,5 +1,10 @@
 # Change Log
 
+## next [0.4.1 or greater]
+
+### 2022-02-10
+git commit -m "Removed spurious error when looking for launch_configurations"
+
 ## [0.4]
 
 ### 2022-02-10

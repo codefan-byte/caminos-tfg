@@ -436,7 +436,7 @@ impl ExperimentFiles
 							&ConfigurationValue::Array(ref l) => self.launch_configurations = l.clone(),
 							_ => panic!("bad value for launch_configurations"),
 						}
-						_ => panic!("bad value for launch_configurations"),
+						_ => (),
 					}
 				}
 			}
