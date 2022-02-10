@@ -4,6 +4,7 @@
 
 ### 2022-02-10
 git commit -m "Removed spurious error when looking for launch_configurations"
+git commit -m "Expose consumed_cycle to percentile statistics."
 
 ## [0.4]
 

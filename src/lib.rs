@@ -1781,8 +1781,10 @@ impl<'a> Simulation<'a>
 		{
 			let mut packets_delay : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.delay).collect();
 			let mut packets_hops : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.hops).collect();
+			let mut packets_consumed_cycle: Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.consumed_cycle).collect();
 			packets_delay.sort();
 			packets_hops.sort();
+			packets_consumed_cycle.sort();
 			let num_packets = packets_delay.len();
 			for &percentile in self.statistics.packet_percentiles.iter()
 			{
@@ -1796,6 +1798,7 @@ impl<'a> Simulation<'a>
 				let packet_content = vec![
 					(String::from("delay"),ConfigurationValue::Number(packets_delay[index] as f64)),
 					(String::from("hops"),ConfigurationValue::Number(packets_hops[index] as f64)),
+					(String::from("consumed_cycle"),ConfigurationValue::Number(packets_consumed_cycle[index] as f64)),
 				];
 				result_content.push((format!("packet_percentile{}",percentile),ConfigurationValue::Object(String::from("PacketStatistics"),packet_content)));
 			}
