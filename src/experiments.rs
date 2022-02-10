@@ -251,25 +251,331 @@ pub struct ExperimentOptions
 ///An `Experiment` object encapsulates the operations that are performed over a folder containing an experiment.
 pub struct Experiment<'a>
 {
-	//TODO: learn what happens when paths are not UNICODE.
-	//TODO: perhaps it should be possible a ssh:// location. Maybe an URL.
-	binary: PathBuf,
-	root: PathBuf,
+	files: ExperimentFiles,
 	//options: Matches,
 	options: ExperimentOptions,
 	journal: PathBuf,
 	journal_index: usize,
-	remote_host: Option<String>,
-	remote_username: Option<String>,
-	remote_binary: Option<PathBuf>,
-	remote_root: Option<PathBuf>,
-	ssh2_session: Option<Session>,
-	remote_binary_results: Option<ConfigurationValue>,
+	remote_files: Option<ExperimentFiles>,
+	//remote_host: Option<String>,
+	//remote_username: Option<String>,
+	//remote_binary: Option<PathBuf>,
+	//remote_root: Option<PathBuf>,
+	//ssh2_session: Option<Session>,
+	//remote_binary_results: Option<ConfigurationValue>,
 	#[allow(dead_code)]
 	visible_slurm_jobs: Vec<usize>,
 	owned_slurm_jobs: Vec<usize>,
 	experiments_on_slurm: Vec<usize>,
 	plugs:&'a Plugs,
+}
+
+///Each experiment owns some files:
+/// * main.cfg
+/// * main.od
+/// * remote
+/// * launch in the future, instead of being inside main.cfg
+/// * runs/{run#,job#}
+/// * binary.results
+/// This does not implement Debug because Session does not...
+pub struct ExperimentFiles
+{
+	///The host with the path of these files.
+	///None if it is the hosting where this instance of caminos is running.
+	host: Option<String>,
+	///Optional username to access the host.
+	username: Option<String>,
+	///Whether we have a ssh2 session openened with that host.
+	ssh2_session: Option<Session>,
+	//TODO: learn what happens when paths are not UNICODE.
+	//TODO: perhaps it should be possible a ssh:// location. Maybe an URL.
+	///The path where caminos binary file is located.
+	binary: Option<PathBuf>,
+	///The root path of the experiments
+	root: Option<PathBuf>,
+	///The raw contents of the main.cfg file
+	cfg_contents: Option<String>,
+	///
+	parsed_cfg: Option<config_parser::Token>,
+	runs_path: Option<PathBuf>,
+	///The experiments as extracted from the main.cfg.
+	experiments: Vec<ConfigurationValue>,
+	///The list of configurations for launch.
+	///Either extracted from main.cfg field `launch_configurations`
+	/// or from the launch file (TODO the latter).
+	launch_configurations: Vec<ConfigurationValue>,
+	///The results packeted (or to be packeted) in binary.results.
+	packed_results: ConfigurationValue,
+}
+
+impl ExperimentFiles
+{
+	pub fn build_cfg_contents(&mut self)
+	{
+		if let None = self.cfg_contents
+		{
+			let cfg=self.root.as_ref().unwrap().join("main.cfg");
+			if let Some(session) = &self.ssh2_session {
+				let sftp = session.sftp().expect("error starting sftp");
+				let mut remote_main_cfg =  sftp.open(&cfg).expect("Could not open remote main.cfg");
+				let mut remote_main_cfg_contents=String::new();
+				remote_main_cfg.read_to_string(&mut remote_main_cfg_contents).expect("Could not read remote main.cfg.");
+				self.cfg_contents = Some(remote_main_cfg_contents);
+			} else {
+				let cfg_contents={
+					let mut cfg_contents = String::new();
+					let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+					cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
+					cfg_contents
+				};
+				self.cfg_contents = Some(cfg_contents);
+				//println!("cfg_contents={:?}",cfg_contents);
+			}
+		}
+	}
+	pub fn cfg_contents_ref(&self) -> &String
+	{
+		self.cfg_contents.as_ref().unwrap()
+	}
+	pub fn build_parsed_cfg(&mut self)
+	{
+		if let None = self.parsed_cfg
+		{
+			self.build_cfg_contents();
+			let parsed_cfg=match config_parser::parse(self.cfg_contents_ref())
+			{
+				Err(x) => panic!("error parsing configuration file: {:?}",x),
+				Ok(x) => x,
+				//println!("parsed correctly: {:?}",x);
+			};
+			//println!("parsed_cfg={:?}",parsed_cfg);
+			self.parsed_cfg = Some(parsed_cfg);
+		}
+	}
+	pub fn build_runs_path(&mut self)
+	{
+		if let None = self.runs_path
+		{
+			let mut is_old=false;
+			//for experiment_index in 0..experiments.len()
+			//{
+			//	let experiment_path=self.files.root.join(format!("run{}",experiment_index));
+			//	if experiment_path.is_dir()
+			//	{
+			//		is_old=true;
+			//		break;
+			//	}
+			//}
+			if self.root.as_ref().unwrap().join("run0").is_dir()
+			{
+				is_old=true;
+			}
+			let runs_path = if is_old
+			{
+				self.root.as_ref().unwrap().join("")
+			}
+			else
+			{
+				let runs_path=self.root.as_ref().unwrap().join("runs");
+				if !runs_path.is_dir()
+				{
+					fs::create_dir(&runs_path).expect("Something went wrong when creating the runs directory.");
+				}
+				runs_path
+			};
+			let runs_path=runs_path.canonicalize().unwrap_or_else(|e|panic!("The runs path \"{:?}\" cannot be resolved (error {})",runs_path,e));
+			self.runs_path = Some( runs_path );
+		}
+	}
+	pub fn build_experiments(&mut self)
+	{
+		self.build_parsed_cfg();
+		self.experiments=match self.parsed_cfg
+		{
+			Some(config_parser::Token::Value(ref value)) =>
+			{
+				let flat=flatten_configuration_value(value);
+				if let ConfigurationValue::Experiments(experiments)=flat
+				{
+					experiments
+				}
+				else
+				{
+					panic!("there are not experiments");
+				}
+			},
+			_ => panic!("Not a value. Got {:?}",self.parsed_cfg),
+		};
+	}
+	pub fn build_launch_configurations(&mut self)
+	{
+		self.build_parsed_cfg();
+		if let config_parser::Token::Value(ref value)=self.parsed_cfg.as_ref().unwrap()
+		{
+			if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=value
+			{
+				// Configuration {
+				//  launch_configurations: [
+				//    Slurm {...}
+				//  ]
+				//}
+				if cv_name!="Configuration"
+				{
+					panic!("A simulation must be created from a `Configuration` object not `{}`",cv_name);
+				}
+				//let mut maximum_jobs=None;
+				//let mut time:Option<&str> =None;
+				//let mut mem =None;
+				//let mut option_job_pack_size=None;
+				for &(ref name,ref value) in cv_pairs
+				{
+					match name.as_ref()
+					{
+						"launch_configurations" => match value
+						{
+							&ConfigurationValue::Array(ref l) => self.launch_configurations = l.clone(),
+							_ => panic!("bad value for launch_configurations"),
+						}
+						_ => panic!("bad value for launch_configurations"),
+					}
+				}
+			}
+			else
+			{
+				panic!("Those are not experiments.");
+			}
+		}
+	}
+	///Returns true if their main.cfg content is the same
+	///Otherwise panics and prints a diff.
+	pub fn compare_cfg(&self, other:&ExperimentFiles) -> bool
+	{
+		let local_content = self.cfg_contents.as_ref().unwrap();
+		let other_content = other.cfg_contents.as_ref().unwrap();
+		if local_content == other_content {
+			println!("The configurations match");
+			return true;
+		} else {
+			let mut last_both=None;
+			let mut show_both=false;
+			let mut count_left=0;
+			let mut count_right=0;
+			let mut show_count=true;
+			for diff in diff::lines(local_content, other_content)
+			{
+				match diff {
+					diff::Result::Left(x) =>
+					{
+						if show_count
+						{
+							println!("@left line {}, right line {}",count_left,count_right);
+							show_count=false;
+						}
+						if let Some(p)=last_both.take()
+						{
+							println!(" {}",p);
+						}
+						println!("-{}",x);
+						show_both=true;
+						count_left+=1;
+					},
+					diff::Result::Right(x) =>
+					{
+						if show_count
+						{
+							println!("@left line {}, right line {}",count_left,count_right);
+							show_count=false;
+						}
+						if let Some(p)=last_both.take()
+						{
+							println!(" {}",p);
+						}
+						println!("+{}",x);
+						show_both=true;
+						count_right+=1;
+					},
+					diff::Result::Both(x,_) =>
+					{
+						if show_both
+						{
+							println!(" {}",x);
+							show_both=false;
+						}
+						last_both = Some(x);
+						show_count=true;
+						count_left+=1;
+						count_right+=1;
+					},
+				}
+			}
+			let cfg = self.root.as_ref().unwrap().join("main.cfg");
+			let remote_cfg_path = other.root.as_ref().unwrap().join("main.cfg");
+			let username = other.username.as_ref().unwrap();
+			let host = other.host.as_ref().unwrap();
+			panic!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path);
+		}
+	}
+	pub fn build_packed_results(&mut self)
+	{
+		let packed_results_path = self.root.as_ref().unwrap().join("binary.results");
+		self.packed_results = if let Some(session) = &self.ssh2_session {
+			match session.scp_recv(&packed_results_path)
+			{
+				Ok( (mut remote_binary_results_channel, _stat) ) => {
+					let mut remote_binary_results_contents= vec![];
+					remote_binary_results_channel.read_to_end(&mut remote_binary_results_contents).expect("Could not read remote binary.results");
+					let got = config::config_from_binary(&remote_binary_results_contents,0).expect("something went wrong while deserializing binary.results");
+					match got
+					{
+						ConfigurationValue::Experiments(ref _a) => {
+							//We do not have the `experiments` list in here.
+							//if a.len()!=n {
+							//	panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
+							//}
+						},
+						_ => panic!("A non-Experiments stored on binary.results"),
+					};
+					got
+				},
+				Err(_) => ConfigurationValue::None,
+			}
+		} else {
+			let n = self.experiments.len();
+			match File::open(&packed_results_path)
+			{
+				Err(_) => {
+					ConfigurationValue::Experiments( (0..n).map(|_|ConfigurationValue::None).collect() )
+				},
+				Ok(ref mut file) => {
+					let mut contents = Vec::with_capacity(n);
+					file.read_to_end(&mut contents).expect("something went wrong reading binary.results");
+					let got = config::config_from_binary(&contents,0).expect("something went wrong while deserializing binary.results");
+					match got
+					{
+						ConfigurationValue::Experiments(ref a) => {
+							if a.len()!=n {
+								panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
+							}
+						},
+						_ => panic!("A non-Experiments stored on binary.results"),
+					};
+					got
+				},
+			}
+		};
+	}
+	pub fn example_cfg() -> &'static str
+	{
+		include_str!("defaults/main.cfg")
+	}
+	pub fn example_od() -> &'static str
+	{
+		include_str!("defaults/main.od")
+	}
+	pub fn example_remote() -> &'static str
+	{
+		include_str!("defaults/remote")
+	}
 }
 
 impl<'a> Experiment<'a>
@@ -333,17 +639,29 @@ impl<'a> Experiment<'a>
 			}
 		}
 		Experiment{
-			binary: binary.to_path_buf(),
-			root: root.to_path_buf(),
+			files: ExperimentFiles{
+				host: None,
+				username: None,
+				ssh2_session: None,
+				binary: Some(binary.to_path_buf()),
+				root: Some(root.to_path_buf()),
+				cfg_contents: None,
+				parsed_cfg: None,
+				runs_path: None,
+				experiments: Vec::new(),
+				launch_configurations: Vec::new(),
+				packed_results: ConfigurationValue::None,
+			},
 			options,
 			journal,
 			journal_index,
-			remote_host: None,
-			remote_username: None,
-			remote_binary: None,
-			remote_root: None,
-			ssh2_session: None,
-			remote_binary_results: None,
+			remote_files: None,
+			//remote_host: None,
+			//remote_username: None,
+			//remote_binary: None,
+			//remote_root: None,
+			//ssh2_session: None,
+			//remote_binary_results: None,
 			visible_slurm_jobs,
 			owned_slurm_jobs,
 			experiments_on_slurm,
@@ -361,7 +679,7 @@ impl<'a> Experiment<'a>
 	{
 		let now = chrono::Utc::now();
 		self.write_journal_entry(&format!("Executing action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string()));
-		let cfg=self.root.join("main.cfg");
+		let cfg=self.files.root.as_ref().unwrap().join("main.cfg");
 		//TODO cfg checkum
 		//let mut cfg_contents = String::new();
 		//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
@@ -378,144 +696,117 @@ impl<'a> Experiment<'a>
 				{
 					//Copy files from the source path.
 					fs::copy(path.join("main.cfg"),&cfg).expect("error copying main.cfg");
-					fs::copy(path.join("main.od"),self.root.join("main.od")).expect("error copying main.od");
+					fs::copy(path.join("main.od"),self.files.root.as_ref().unwrap().join("main.od")).expect("error copying main.od");
 					//TODO: Try to update the paths in the remote file.
-					fs::copy(path.join("remote"),self.root.join("remote")).expect("error copying remote");
+					fs::copy(path.join("remote"),self.files.root.as_ref().unwrap().join("remote")).expect("error copying remote");
 				} else {
 					//Write some default files.
+					let mut new_cfg_file=File::create(&cfg).expect("Could not create main.cfg.");
+					writeln!(new_cfg_file,"{}",ExperimentFiles::example_cfg()).unwrap();
+					let mut new_od_file=File::create(self.files.root.as_ref().unwrap().join("main.od")).expect("Could not create main.od.");
+					writeln!(new_od_file,"{}",ExperimentFiles::example_od()).unwrap();
+					let mut new_remote_file=File::create(self.files.root.as_ref().unwrap().join("remote")).expect("Could not create remote.");
+					writeln!(new_remote_file,"{}",ExperimentFiles::example_remote()).unwrap();
 				};
 			},
 			_ => (),
 		}
-		let cfg_contents={
-			let mut cfg_contents = String::new();
-			let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
-			cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
-			cfg_contents
-		};
 		let mut results;
-		//println!("cfg_contents={:?}",cfg_contents);
-		let parsed_cfg=match config_parser::parse(&cfg_contents)
-		{
-			Err(x) => panic!("error parsing configuration file: {:?}",x),
-			Ok(x) => x,
-			//println!("parsed correctly: {:?}",x);
-		};
-		//println!("parsed_cfg={:?}",parsed_cfg);
-		let experiments=match parsed_cfg
-		{
-			config_parser::Token::Value(ref value) =>
-			{
-				let flat=flatten_configuration_value(value);
-				if let ConfigurationValue::Experiments(experiments)=flat
-				{
-					experiments
-				}
-				else
-				{
-					panic!("there are not experiments");
-				}
-			},
-			_ => panic!("Not a value. Got {:?}",parsed_cfg),
-		};
+		self.files.build_experiments();
 
-		let (external_experiments,external_binary_results) = if let (Some(ref path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  )
-		{
-			let cfg = path.join("main.cfg");
-			let mut cfg_file=File::open(&cfg).unwrap_or_else(|_|panic!("main.cfg from --source={:?} could not be opened",path));
-			let mut cfg_contents = String::new();
-			cfg_file.read_to_string(&mut cfg_contents).unwrap_or_else(|_|panic!("something went wrong reading main.cfg from --source={:?}",path));
-			let parsed_cfg=match config_parser::parse(&cfg_contents)
-			{
-				Err(x) => panic!("error parsing configuration file: {:?} from --source={:?}",x,path),
-				Ok(x) => x,
-				//println!("parsed correctly: {:?}",x);
+		let external_files = if let (Some(ref path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  ) {
+			let mut ef = ExperimentFiles{
+				host: None,
+				username: None,
+				ssh2_session: None,
+				binary: None,
+				root: Some(path.to_path_buf()),
+				cfg_contents: None,
+				parsed_cfg: None,
+				runs_path: None,
+				experiments: Vec::new(),
+				launch_configurations: Vec::new(),
+				packed_results: ConfigurationValue::None,
 			};
-			//Some(parsed_cfg)
-			let experiments = match parsed_cfg
-			{
-				config_parser::Token::Value(ref value) =>
-				{
-					let flat=flatten_configuration_value(value);
-					if let ConfigurationValue::Experiments(experiments)=flat
-					{
-						experiments
-					}
-					else
-					{
-						panic!("there are not experiments in --source={:?}",path);
-					}
-				},
-				_ => panic!("Not a value in --cource={:?}",path),
-			};
-			let packed_results_path = path.join("binary.results");
-			let packed_results = {
-				let n = experiments.len();
-				match File::open(&packed_results_path)
-				{
-					Err(_) => {
-						println!("Error opening external binary.results");
-						//ConfigurationValue::Experiments( (0..n).map(|_|ConfigurationValue::None).collect() )
-						None
-					},
-					Ok(ref mut file) => {
-						let mut contents = Vec::with_capacity(n);
-						file.read_to_end(&mut contents).expect("something went wrong reading binary.results");
-						let got = config::config_from_binary(&contents,0).expect("something went wrong while deserializing binary.results");
-						match got
-						{
-							ConfigurationValue::Experiments(ref a) => {
-								if a.len()!=n {
-									panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
-								}
-							},
-							_ => panic!("A non-Experiments stored on binary.results"),
-						};
-						Some(got)
-					},
-				}
-			};
-			(Some(experiments),packed_results)
-		} else {(None,None)};
+			ef.build_experiments();
+			ef.build_packed_results();
+			Some(ef)
+		} else {
+			None
+		};
+		//let (external_experiments,external_binary_results) = if let (Some(ref path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  )
+		//{
+		//	let cfg = path.join("main.cfg");
+		//	let mut cfg_file=File::open(&cfg).unwrap_or_else(|_|panic!("main.cfg from --source={:?} could not be opened",path));
+		//	let mut cfg_contents = String::new();
+		//	cfg_file.read_to_string(&mut cfg_contents).unwrap_or_else(|_|panic!("something went wrong reading main.cfg from --source={:?}",path));
+		//	let parsed_cfg=match config_parser::parse(&cfg_contents)
+		//	{
+		//		Err(x) => panic!("error parsing configuration file: {:?} from --source={:?}",x,path),
+		//		Ok(x) => x,
+		//		//println!("parsed correctly: {:?}",x);
+		//	};
+		//	//Some(parsed_cfg)
+		//	let experiments = match parsed_cfg
+		//	{
+		//		config_parser::Token::Value(ref value) =>
+		//		{
+		//			let flat=flatten_configuration_value(value);
+		//			if let ConfigurationValue::Experiments(experiments)=flat
+		//			{
+		//				experiments
+		//			}
+		//			else
+		//			{
+		//				panic!("there are not experiments in --source={:?}",path);
+		//			}
+		//		},
+		//		_ => panic!("Not a value in --cource={:?}",path),
+		//	};
+		//	let packed_results_path = path.join("binary.results");
+		//	let packed_results = {
+		//		let n = experiments.len();
+		//		match File::open(&packed_results_path)
+		//		{
+		//			Err(_) => {
+		//				println!("Error opening external binary.results");
+		//				//ConfigurationValue::Experiments( (0..n).map(|_|ConfigurationValue::None).collect() )
+		//				None
+		//			},
+		//			Ok(ref mut file) => {
+		//				let mut contents = Vec::with_capacity(n);
+		//				file.read_to_end(&mut contents).expect("something went wrong reading binary.results");
+		//				let got = config::config_from_binary(&contents,0).expect("something went wrong while deserializing binary.results");
+		//				match got
+		//				{
+		//					ConfigurationValue::Experiments(ref a) => {
+		//						if a.len()!=n {
+		//							panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
+		//						}
+		//					},
+		//					_ => panic!("A non-Experiments stored on binary.results"),
+		//				};
+		//				Some(got)
+		//			},
+		//		}
+		//	};
+		//	(Some(experiments),packed_results)
+		//} else {(None,None)};
 		
 		if let Some(message)=&self.options.message
 		{
 			self.write_journal_entry(&format!("message: {}",message));
 		}
 
-		let packed_results_path = self.root.join("binary.results");
-		let mut packed_results = {
-			let n = experiments.len();
-			match File::open(&packed_results_path)
-			{
-				Err(_) => {
-					ConfigurationValue::Experiments( (0..n).map(|_|ConfigurationValue::None).collect() )
-				},
-				Ok(ref mut file) => {
-					let mut contents = Vec::with_capacity(n);
-					file.read_to_end(&mut contents).expect("something went wrong reading binary.results");
-					let got = config::config_from_binary(&contents,0).expect("something went wrong while deserializing binary.results");
-					match got
-					{
-						ConfigurationValue::Experiments(ref a) => {
-							if a.len()!=n {
-								panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
-							}
-						},
-						_ => panic!("A non-Experiments stored on binary.results"),
-					};
-					got
-				},
-			}
-		};
+		self.files.build_packed_results();
 		let mut added_packed_results = 0usize;
 
 		let mut must_draw=false;
 		let mut job_pack_size=1;//how many binary runs per job.
 		//let mut pending_jobs=vec![];
 		let mut job=Job::new();
-		let mut slurm_time="0-24:00:00";
-		let mut slurm_mem=None;
+		let mut slurm_time : String = "0-24:00:00".to_string();
+		let mut slurm_mem: Option<String>=None;
 		let mut uses_jobs=false;
 		match action
 		{
@@ -534,110 +825,80 @@ impl<'a> Experiment<'a>
 			Action::Slurm =>
 			{
 				uses_jobs=true;
-				if let config_parser::Token::Value(ref value)=parsed_cfg
+				let n = self.files.experiments.len();
+						
+				let mut maximum_jobs=None;
+				let mut time:Option<&str> =None;
+				let mut mem =None;
+				let mut option_job_pack_size=None;
+				self.files.build_launch_configurations();
+				for lc in self.files.launch_configurations.iter()
 				{
-					if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=value
+					match lc
 					{
-						// Configuration {
-						//  launch_configurations: [
-						//    Slurm {...}
-						//  ]
-						//}
-						if cv_name!="Configuration"
+						&ConfigurationValue::Object(ref launch_name, ref launch_pairs) =>
 						{
-							panic!("A simulation must be created from a `Configuration` object not `{}`",cv_name);
-						}
-						let mut maximum_jobs=None;
-						let mut time =None;
-						let mut mem =None;
-						let mut option_job_pack_size=None;
-						for &(ref name,ref value) in cv_pairs
-						{
-							match name.as_ref()
+							if launch_name=="Slurm"
 							{
-								"launch_configurations" => match value
+								for &(ref slurm_name,ref slurm_value) in launch_pairs
 								{
-									&ConfigurationValue::Array(ref l) =>
+									match slurm_name.as_ref()
 									{
-										for lc in l.iter()
+										"maximum_jobs" => match slurm_value
 										{
-											match lc
-											{
-												&ConfigurationValue::Object(ref launch_name, ref launch_pairs) =>
-												{
-													if launch_name=="Slurm"
-													{
-														for &(ref slurm_name,ref slurm_value) in launch_pairs
-														{
-															match slurm_name.as_ref()
-															{
-																"maximum_jobs" => match slurm_value
-																{
-																	&ConfigurationValue::Number(f) => maximum_jobs=Some(f as usize),
-																	_ => panic!("bad value for maximum_jobs"),
-																}
-																"job_pack_size" => match slurm_value
-																{
-																	&ConfigurationValue::Number(f) => option_job_pack_size=Some(f as usize),
-																	_ => panic!("bad value for option_job_pack_size"),
-																}
-																"time" => match slurm_value
-																{
-																	//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
-																	&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
-																	_ => panic!("bad value for time"),
-																}
-																"mem" => match slurm_value
-																{
-																	//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
-																	&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
-																	_ => panic!("bad value for mem"),
-																}
-																_ => (),
-															}
-														}
-													}
-												}
-												_ => (),//XXX perhaps error on unknown launch configuration?
-											}
+											&ConfigurationValue::Number(f) => maximum_jobs=Some(f as usize),
+											_ => panic!("bad value for maximum_jobs"),
 										}
-									},
-									_ => panic!("bad value for launch_configurations"),
+										"job_pack_size" => match slurm_value
+										{
+											&ConfigurationValue::Number(f) => option_job_pack_size=Some(f as usize),
+											_ => panic!("bad value for option_job_pack_size"),
+										}
+										"time" => match slurm_value
+										{
+											//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
+											&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
+											_ => panic!("bad value for time"),
+										}
+										"mem" => match slurm_value
+										{
+											//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
+											&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
+											_ => panic!("bad value for mem"),
+										}
+										_ => (),
+									}
 								}
-								_ => (),//the other simulation options
 							}
 						}
-						if let Some(value)=maximum_jobs
-						{
-							let new_job_pack_size=(experiments.len() + value-1 ) / value;//rounding up of experiments/maximum
-							if new_job_pack_size>=job_pack_size
-							{
-								job_pack_size=new_job_pack_size;
-							}
-							else
-							{
-								panic!("Trying to reduce job_pack_size from {} to {}.",job_pack_size,new_job_pack_size);
-							}
-						}
-						if let Some(value)=option_job_pack_size
-						{
-							if job_pack_size!=1 && value!=1
-							{
-								panic!("Trying to change job_pack_size unexpectedly");
-							}
-							job_pack_size = value;
-						}
-						if let Some(value)=time
-						{
-							slurm_time=value;
-						}
-						slurm_mem=mem;
+						_ => (),//XXX perhaps error on unknown launch configuration?
+					}
+				}
+				if let Some(value)=maximum_jobs
+				{
+					let new_job_pack_size=(n + value-1 ) / value;//rounding up of experiments/maximum
+					if new_job_pack_size>=job_pack_size
+					{
+						job_pack_size=new_job_pack_size;
 					}
 					else
 					{
-						panic!("Those are not experiments.");
+						panic!("Trying to reduce job_pack_size from {} to {}.",job_pack_size,new_job_pack_size);
 					}
 				}
+				if let Some(value)=option_job_pack_size
+				{
+					if job_pack_size!=1 && value!=1
+					{
+						panic!("Trying to change job_pack_size unexpectedly");
+					}
+					job_pack_size = value;
+				}
+				if let Some(value)=time
+				{
+					slurm_time=value.to_string();
+				}
+				slurm_mem=mem.map(|x:&str|x.to_string());
 			},
 			Action::Check =>
 			{
@@ -646,84 +907,15 @@ impl<'a> Experiment<'a>
 			Action::Pull =>
 			{
 				self.initialize_remote();
-				//Bring the remote files to this machine
-				let remote_root=self.remote_root.clone().unwrap();
-				//Download remote main.cfg
-				let remote_cfg_path = remote_root.join("main.cfg");
-				let (mut remote_main_cfg_channel, _stat) = self.ssh2_session.as_ref().unwrap().scp_recv(&remote_cfg_path).unwrap();
-				let mut remote_main_cfg_contents=String::new();
-				remote_main_cfg_channel.read_to_string(&mut remote_main_cfg_contents).expect("Could not read remote main.cfg");
-				println!("local path: {:?}",cfg);
-				let host=self.remote_host.as_ref().unwrap();
-				let username=self.remote_username.as_ref().unwrap();
-				println!("remote ({}@{}) path: {:?}",username,host,remote_cfg_path);
-				if cfg_contents == remote_main_cfg_contents
-				{
-					println!("The configurations match");
-				}
-				else
-				{
-					let mut last_both=None;
-					let mut show_both=false;
-					let mut count_left=0;
-					let mut count_right=0;
-					let mut show_count=true;
-					for diff in diff::lines(&cfg_contents, &remote_main_cfg_contents)
-					{
-						match diff {
-							diff::Result::Left(x) =>
-							{
-								if show_count
-								{
-									println!("@left line {}, right line {}",count_left,count_right);
-									show_count=false;
-								}
-								if let Some(p)=last_both.take()
-								{
-									println!(" {}",p);
-								}
-								println!("-{}",x);
-								show_both=true;
-								count_left+=1;
-							},
-							diff::Result::Right(x) =>
-							{
-								if show_count
-								{
-									println!("@left line {}, right line {}",count_left,count_right);
-									show_count=false;
-								}
-								if let Some(p)=last_both.take()
-								{
-									println!(" {}",p);
-								}
-								println!("+{}",x);
-								show_both=true;
-								count_right+=1;
-							},
-							diff::Result::Both(x,_) =>
-							{
-								if show_both
-								{
-									println!(" {}",x);
-									show_both=false;
-								}
-								last_both = Some(x);
-								show_count=true;
-								count_left+=1;
-								count_right+=1;
-							},
-						}
-					}
-					panic!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path);
-				}
+				self.remote_files.as_mut().unwrap().build_cfg_contents();
+				self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
 			},
 			Action::RemoteCheck =>
 			{
 				self.initialize_remote();
-				let remote_root=self.remote_root.clone().unwrap();
-				let remote_binary=self.remote_binary.clone().unwrap();
-				let mut channel = self.ssh2_session.as_ref().unwrap().channel_session().unwrap();
+				let remote_root=self.remote_files.as_ref().unwrap().root.clone();
+				let remote_binary=self.remote_files.as_ref().unwrap().binary.clone();
+				let mut channel = self.remote_files.as_ref().unwrap().ssh2_session.as_ref().unwrap().channel_session().unwrap();
 				let remote_command = format!("{:?} {:?} --action=check",remote_binary,remote_root);
 				channel.exec(&remote_command).unwrap();
 				let mut remote_command_output = String::new();
@@ -739,10 +931,10 @@ impl<'a> Experiment<'a>
 			{
 				self.initialize_remote();
 				//Bring the remote files to this machine
-				let remote_root=self.remote_root.clone().unwrap();
+				let remote_root=self.remote_files.as_ref().unwrap().root.clone().unwrap();
 				//Download remote main.cfg
 				let remote_cfg_path = remote_root.join("main.cfg");
-				let sftp = self.ssh2_session.as_ref().unwrap().sftp().unwrap();
+				let sftp = self.remote_files.as_ref().unwrap().ssh2_session.as_ref().unwrap().sftp().unwrap();
 				match sftp.stat(&remote_root)
 				{
 					Ok(remote_stat) =>
@@ -751,31 +943,17 @@ impl<'a> Experiment<'a>
 						{
 							panic!("remote {:?} exists, but is not a directory",&remote_stat);
 						}
-						//let (mut remote_main_cfg_channel, stat) = self.ssh2_session.as_ref().unwrap().scp_recv(&remote_cfg_path).unwrap();
-						let mut remote_main_cfg =  sftp.open(&remote_cfg_path).expect("Could not open remote main.cfg");
-						let mut remote_main_cfg_contents=String::new();
-						remote_main_cfg.read_to_string(&mut remote_main_cfg_contents).expect("Could not read remote main.cfg.");
-						println!("local path: {:?}",cfg);
-						let host=self.remote_host.as_ref().unwrap();
-						let username=self.remote_username.as_ref().unwrap();
-						println!("remote ({}@{}) path: {:?}",username,host,remote_cfg_path);
-						if cfg_contents == remote_main_cfg_contents
-						{
-							println!("The configurations match");
-						}
-						else
-						{
-							panic!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path);
-						}
+						self.remote_files.as_mut().unwrap().build_cfg_contents();
+						self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
 					},
 					Err(_err) =>
 					{
 						println!("Could not open remote '{:?}', creating it",remote_root);
 						sftp.mkdir(&remote_root,0o755).expect("Could not create remote directory");
 						let mut remote_cfg = sftp.create(&remote_cfg_path).expect("Could not create remote main.cfg");
-						write!(remote_cfg,"{}",cfg_contents).expect("Could not write into remote main.cfg");
+						write!(remote_cfg,"{}",self.files.cfg_contents_ref()).expect("Could not write into remote main.cfg");
 						let mut remote_od = sftp.create(&remote_root.join("main.od")).expect("Could not create remote main.od");
-						let mut local_od = File::open(self.root.join("main.od")).expect("Could not open local main.od");
+						let mut local_od = File::open(self.files.root.as_ref().unwrap().join("main.od")).expect("Could not open local main.od");
 						let mut od_contents = String::new();
 						local_od.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
 						write!(remote_od,"{}",od_contents).expect("Could not write into remote main.od");
@@ -803,41 +981,16 @@ impl<'a> Experiment<'a>
 		let slurm_mem=slurm_mem;
 		let uses_jobs=uses_jobs;
 
-		let runs_path=
-		{
-			let mut is_old=false;
-			for experiment_index in 0..experiments.len()
-			{
-				let experiment_path=self.root.join(format!("run{}",experiment_index));
-				if experiment_path.is_dir()
-				{
-					is_old=true;
-					break;
-				}
-			}
-			if is_old
-			{
-				self.root.join("")
-			}
-			else
-			{
-				let runs_path=self.root.join("runs");
-				if !runs_path.is_dir()
-				{
-					fs::create_dir(&runs_path).expect("Something went wrong when creating the runs directory.");
-				}
-				runs_path
-			}
-		};
-		let runs_path=runs_path.canonicalize().unwrap_or_else(|e|panic!("The runs path \"{:?}\" cannot be resolved (error {})",runs_path,e));
+		self.files.build_runs_path();
+		let runs_path : PathBuf = self.files.runs_path.as_ref().unwrap().to_path_buf();
 
 		//Execute or launch jobs.
 		let start_index = self.options.start_index.unwrap_or(0);
 		//if start_index<0 {panic!("start_index={} < 0",start_index);}
-		if start_index>experiments.len() {panic!("start_index={} > experiments.len()={}",start_index,experiments.len());}
-		let end_index = self.options.end_index.unwrap_or(experiments.len());
+		if start_index>self.files.experiments.len() {panic!("start_index={} > experiments.len()={}",start_index,self.files.experiments.len());}
+		let end_index = self.options.end_index.unwrap_or(self.files.experiments.len());
 		//if end_index<0 {panic!("end_index={} < 0",end_index);}
-		if end_index>experiments.len() {panic!("end_index={} > experiments.len()={}",end_index,experiments.len());}
+		if end_index>self.files.experiments.len() {panic!("end_index={} > experiments.len()={}",end_index,self.files.experiments.len());}
 		let jobs_path=runs_path.join(format!("jobs{}",self.journal_index));
 		let mut launch_entry="".to_string();
 		if uses_jobs && !jobs_path.is_dir()
@@ -850,7 +1003,7 @@ impl<'a> Experiment<'a>
 		let mut before_amount_active=0;//We have a local.result with size 0, so we have done something. Perhaps some execution error.
 		let mut delta_amount_slurm=0;
 		let mut delta_completed=0;
-		let sftp = self.ssh2_session.as_ref().map(|session|session.sftp().unwrap());
+		let sftp = self.remote_files.as_ref().map(|f|f.ssh2_session.as_ref().unwrap().sftp().unwrap());
 		let progress_bar = ProgressBar::new((end_index-start_index) as u64);
 		progress_bar.set_style(ProgressStyle::default_bar().template("{prefix} [{elapsed_precise}] {bar:30.blue/white.dim} {pos:5}/{len:5} {msg}"));
 		let mut pulled=0;
@@ -860,14 +1013,16 @@ impl<'a> Experiment<'a>
 		match action
 		{
 			Action::Pull => progress_bar.set_prefix("pulling files"),
-			_ => progress_bar.set_prefix("??"),
+			Action::Local | Action::LocalAndOutput => progress_bar.set_prefix("running locally"),
+			Action::Slurm => progress_bar.set_prefix("preparing slurm scripts"),
+			_ => progress_bar.set_prefix("checking result files"),
 		};
-		for (experiment_index,experiment) in experiments.iter().enumerate().skip(start_index).take(end_index-start_index)
+		for (experiment_index,experiment) in self.files.experiments.iter().enumerate().skip(start_index).take(end_index-start_index)
 		{
 			progress_bar.inc(1);
 			if let Some(ref expr) = self.options.where_clause
 			{
-				match evaluate(&expr,experiment,&self.root)
+				match evaluate(&expr,experiment,&self.files.root.as_ref().unwrap())
 				{
 					ConfigurationValue::True => (),//good
 					ConfigurationValue::False => continue,//discard this index
@@ -886,7 +1041,7 @@ impl<'a> Experiment<'a>
 					_ => (),
 				}
 			}
-			let is_packed = if let ConfigurationValue::Experiments(ref a) = packed_results {
+			let is_packed = if let ConfigurationValue::Experiments(ref a) = self.files.packed_results {
 				match a[experiment_index]
 				{
 					ConfigurationValue::None => false,
@@ -909,22 +1064,20 @@ impl<'a> Experiment<'a>
 			if !has_content && !is_packed
 			{
 				//In all actions bring up experiments from the external_source if given.
-				if let Some(ref external_experiment_list) = external_experiments
+				//if let Some(ref external_experiment_list) = external_experiments
+				if let Some(ref external_files) = external_files
 				{
-					for (ext_index,ext_experiment) in external_experiment_list.iter().enumerate()
+					for (ext_index,ext_experiment) in external_files.experiments.iter().enumerate()
 					{
 						if experiment==ext_experiment
 						{
 							//println!("matching local experiment {} with external experiment {}",experiment_index,ext_index);
 							let mut ext_result_contents=None;
 							let mut ext_result_value:Option<ConfigurationValue> = None;
-							if let Some(ref results) = external_binary_results
+							if let ConfigurationValue::Experiments(ref a) = external_files.packed_results
 							{
-								if let ConfigurationValue::Experiments(ref a) = results
-								{
-									//println!("got {:?}", a[ext_index]);
-									ext_result_value = Some( a[ext_index].clone() );
-								}
+								//println!("got {:?}", a[ext_index]);
+								ext_result_value = Some( a[ext_index].clone() );
 								//println!("external data in binary");
 							} else {
 								let ext_path=self.options.external_source.as_ref().unwrap().join(format!("runs/run{}/local.result",ext_index));
@@ -949,7 +1102,7 @@ impl<'a> Experiment<'a>
 							if ext_result_contents.is_some() || ext_result_value.is_some()
 							{
 								//create file
-								if let ConfigurationValue::Experiments(ref mut a) = packed_results
+								if let ConfigurationValue::Experiments(ref mut a) = self.files.packed_results
 								{
 									if ext_result_value.is_none()
 									{
@@ -1023,7 +1176,7 @@ impl<'a> Experiment<'a>
 						ConfigurationValue::None
 					}
 				};
-				if let ConfigurationValue::Experiments(ref mut a) = packed_results
+				if let ConfigurationValue::Experiments(ref mut a) = self.files.packed_results
 				{
 					match a[experiment_index]
 					{
@@ -1060,7 +1213,7 @@ impl<'a> Experiment<'a>
 				{
 					Action::Local | Action::LocalAndOutput =>
 					{
-						println!("experiment {} of {} is {:?}",experiment_index,experiments.len(),experiment);
+						println!("experiment {} of {} is {:?}",experiment_index,self.files.experiments.len(),experiment);
 						let mut simulation=Simulation::new(&experiment,self.plugs);
 						simulation.run();
 						simulation.write_result(&mut File::create(&result_path).expect("Could not create the result file."));
@@ -1074,12 +1227,13 @@ impl<'a> Experiment<'a>
 						writeln!(local_cfg_file,"{}",experiment).unwrap();
 						//let job_line=format!("echo experiment {}\n/bin/date\n{} {}/local.cfg --results={}/local.result",experiment_index,self.binary.display(),experiment_path_string,experiment_path_string);
 						//pending_jobs.push(job_line);
-						job.add_execution(experiment_index,&self.binary,&experiment_path_string);
+						job.add_execution(experiment_index,&self.files.binary.as_ref().unwrap(),&experiment_path_string);
 						if job.len()>=job_pack_size
 						{
 							delta_amount_slurm+=job.len();
 							let job_id=experiment_index;
-							launch_entry += &job.slurm(job_id,&jobs_path,slurm_time,slurm_mem);
+							let slurm_mem : Option<&str> = match slurm_mem { Some(ref x) => Some(x), None=>None };
+							launch_entry += &job.slurm(job_id,&jobs_path,slurm_time.as_ref(),slurm_mem);
 							job=Job::new();
 						}
 					},
@@ -1087,10 +1241,11 @@ impl<'a> Experiment<'a>
 					{
 						let (remote_result,remote_result_contents) = 
 						{
-							let binary_result = match self.remote_binary_results{
-								Some(ConfigurationValue::Experiments(ref a)) => if let ConfigurationValue::None = a[experiment_index] { None } else { Some(a[experiment_index].clone()) },
-								Some( _ ) => panic!("remote binary.results is corrupted"),
-								None => None,
+							self.remote_files.as_mut().unwrap().build_packed_results();
+							let binary_result = match self.remote_files.as_ref().unwrap().packed_results{
+								ConfigurationValue::Experiments(ref a) => if let ConfigurationValue::None = a[experiment_index] { None } else { Some(a[experiment_index].clone()) },
+								ConfigurationValue::None => None,
+								 _  => panic!("remote binary.results is corrupted"),
 							};
 							match binary_result
 							{
@@ -1099,7 +1254,7 @@ impl<'a> Experiment<'a>
 									//println!("Could not open results of experiment {}, trying to pull it.",experiment_index);
 									//println!("Trying to pull experiment {}.",experiment_index);
 									//let session = self.ssh2_session.as_ref().unwrap();
-									let remote_root=self.remote_root.clone().unwrap();
+									let remote_root=self.remote_files.as_ref().unwrap().root.clone().unwrap();
 									let remote_result_path = remote_root.join(format!("runs/run{}/local.result",experiment_index));
 									//let (mut remote_result_channel, stat) = match session.scp_recv(&remote_result_path)
 									//{
@@ -1152,7 +1307,7 @@ impl<'a> Experiment<'a>
 						};
 						if let Some(result) = remote_result
 						{
-							if let ConfigurationValue::Experiments(ref mut a) = packed_results
+							if let ConfigurationValue::Experiments(ref mut a) = self.files.packed_results
 							{
 								a[experiment_index] = result;
 								added_packed_results+=1;
@@ -1184,8 +1339,9 @@ impl<'a> Experiment<'a>
 		progress_bar.finish();
 		if job.len()>0
 		{
-			let job_id=experiments.len();
-			launch_entry += &job.slurm(job_id,&jobs_path,slurm_time,slurm_mem);
+			let job_id=self.files.experiments.len();
+			let slurm_mem : Option<&str> = match slurm_mem { Some(ref x) => Some(x), None=>None };
+			launch_entry += &job.slurm(job_id,&jobs_path,slurm_time.as_ref(),slurm_mem);
 			drop(job);
 		}
 
@@ -1194,17 +1350,17 @@ impl<'a> Experiment<'a>
 			self.write_journal_entry(&format!("Launched jobs {}",launch_entry));
 		}
 
-		let status_string = format!("Before: completed={} of {} slurm={} inactive={} active={} Changed: slurm=+{} completed=+{}",before_amount_completed,experiments.len(),before_amount_slurm,before_amount_inactive,before_amount_active,delta_amount_slurm,delta_completed);
+		let status_string = format!("Before: completed={} of {} slurm={} inactive={} active={} Changed: slurm=+{} completed=+{}",before_amount_completed,self.files.experiments.len(),before_amount_slurm,before_amount_inactive,before_amount_active,delta_amount_slurm,delta_completed);
 		self.write_journal_entry(&status_string);
 		println!("{}",status_string);
 		
 		if must_draw
 		{
-			results=Vec::with_capacity(experiments.len());
+			results=Vec::with_capacity(self.files.experiments.len());
 			//for (experiment_index,experiment) in experiments.iter().enumerate()
-			for (experiment_index,experiment) in experiments.iter().enumerate().skip(start_index).take(end_index-start_index)
+			for (experiment_index,experiment) in self.files.experiments.iter().enumerate().skip(start_index).take(end_index-start_index)
 			{
-				if let ConfigurationValue::Experiments(ref a) = packed_results
+				if let ConfigurationValue::Experiments(ref a) = self.files.packed_results
 				{
 					match &a[experiment_index]
 					{
@@ -1238,7 +1394,7 @@ impl<'a> Experiment<'a>
 							config_parser::Token::Value(value) => value,
 							_ => panic!("wrong token"),
 						};
-						if let ConfigurationValue::Experiments(ref mut a) = packed_results
+						if let ConfigurationValue::Experiments(ref mut a) = self.files.packed_results
 						{
 							a[experiment_index] = result.clone();
 							added_packed_results+=1;
@@ -1252,14 +1408,14 @@ impl<'a> Experiment<'a>
 				}
 				//println!("result file processed.");
 			}
-			//let binary_results_path = self.root.join("binary.results");
+			//let binary_results_path = self.files.root.join("binary.results");
 			//let mut binary_results_file=File::create(&binary_results_path).expect("Could not create binary results file.");
 			//let full_results = ConfigurationValue::Experiments(results.iter().map(|(_cfg,res)|res.clone()).collect());
 			//let binary_results = config::config_to_binary(&full_results).expect("error while serializing into binary");
 			//binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
 
 			//println!("results={:?}",results);
-			let od=self.root.join("main.od");
+			let od=self.files.root.as_ref().unwrap().join("main.od");
 			let mut od_file=File::open(&od).expect("main.od could not be opened");
 			let mut od_contents = String::new();
 			od_file.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
@@ -1269,7 +1425,7 @@ impl<'a> Experiment<'a>
 				Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
 				{
 					println!("description={}",description);
-					match create_output(&description,&results,experiments.len(),&self.root)
+					match create_output(&description,&results,self.files.experiments.len(),&self.files.root.as_ref().unwrap())
 					{
 						Ok(_) => (),
 						Err(err) => println!("ERROR: could not create output {:?}",err),
@@ -1280,12 +1436,13 @@ impl<'a> Experiment<'a>
 		}
 		if added_packed_results>=1
 		{
+			let packed_results_path = self.files.root.as_ref().unwrap().join("binary.results");
 			let mut binary_results_file=File::create(&packed_results_path).expect("Could not create binary results file.");
-			let binary_results = config::config_to_binary(&packed_results).expect("error while serializing into binary");
+			let binary_results = config::config_to_binary(&self.files.packed_results).expect("error while serializing into binary");
 			binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
 			println!("Added {} results to binary.results.",added_packed_results);
 		}
-		if let (Action::Pack,ConfigurationValue::Experiments(ref a)) = (action,packed_results)
+		if let (Action::Pack,ConfigurationValue::Experiments(ref a)) = (action,&self.files.packed_results)
 		{
 			//Erase the raw results. After we have written correctly the binary file.
 			for (experiment_index,value) in a.iter().enumerate()
@@ -1317,7 +1474,7 @@ impl<'a> Experiment<'a>
 	///Will ask a pasword via keyboard.
 	fn initialize_remote(&mut self)
 	{
-		let remote_path = self.root.join("remote");
+		let remote_path = self.files.root.as_ref().unwrap().join("remote");
 		let mut remote_file = File::open(&remote_path).expect("remote could not be opened");
 		let mut remote_contents = String::new();
 		remote_file.read_to_string(&mut remote_contents).expect("something went wrong reading remote.");
@@ -1385,16 +1542,19 @@ impl<'a> Experiment<'a>
 						}
 						if name==Some("default".to_string())
 						{
-							self.remote_host = host;
-							self.remote_username = username;
-							if let Some(value)=root
-							{
-								self.remote_root = Some(Path::new(&value).to_path_buf());
-							}
-							if let Some(value)=binary
-							{
-								self.remote_binary = Some(Path::new(&value).to_path_buf());
-							}
+							self.remote_files = Some(ExperimentFiles {
+								host,
+								username,
+								ssh2_session: None,
+								binary: binary.map(|value|Path::new(&value).to_path_buf()),
+								root: root.map(|value|Path::new(&value).to_path_buf()),
+								cfg_contents: None,
+								parsed_cfg: None,
+								runs_path: None,
+								experiments: vec![],
+								launch_configurations: Vec::new(),
+								packed_results: ConfigurationValue::None,
+							});
 						}
 					}
 				}
@@ -1406,7 +1566,7 @@ impl<'a> Experiment<'a>
 			_ => panic!("Not a value"),
 		};
 		//remote values are initialized
-		let host=self.remote_host.as_ref().expect("there is no host").to_owned();
+		let host=self.remote_files.as_ref().unwrap().host.as_ref().expect("there is no host").to_owned();
 		//See ssh2 documentation https://docs.rs/ssh2/0.8.2/ssh2/index.html
 		let tcp = TcpStream::connect(format!("{}:22",host)).unwrap();
 		let mut session = Session::new().unwrap();
@@ -1417,7 +1577,7 @@ impl<'a> Experiment<'a>
 		//session.userauth_password("cristobal","").unwrap();//This also fails, without asking
 		let prompt = KeyboardInteration;
 		//session.userauth_keyboard_interactive("cristobal",&mut prompt).unwrap();
-		let username = self.remote_username.as_ref().expect("there is no username").to_owned();
+		let username = self.remote_files.as_ref().unwrap().username.as_ref().expect("there is no username").to_owned();
 		let raw_methods = session.auth_methods(&username).unwrap();
 		let methods: HashSet<&str> = raw_methods.split(',').collect();
 		println!("{} available authentication methods ({})",methods.len(),raw_methods);
@@ -1429,31 +1589,8 @@ impl<'a> Experiment<'a>
 		}
 		//if !session.authenticated() && methods.contains("publickey")
 		assert!(session.authenticated());
-		self.ssh2_session = Some(session);
+		self.remote_files.as_mut().unwrap().ssh2_session = Some(session);
 		println!("ssh2 session created with remote host");
-		self.remote_binary_results={
-			let remote_binary_results_path = self.remote_root.as_ref().unwrap().join("binary.results");
-			//let (mut remote_binary_results_channel, _stat) = self.ssh2_session.as_ref().unwrap().scp_recv(&remote_binary_results_path).unwrap();
-			match self.ssh2_session.as_ref().unwrap().scp_recv(&remote_binary_results_path)
-			{
-				Ok( (mut remote_binary_results_channel, _stat) ) => {
-					let mut remote_binary_results_contents= vec![];
-					remote_binary_results_channel.read_to_end(&mut remote_binary_results_contents).expect("Could not read remote binary.results");
-					let got = config::config_from_binary(&remote_binary_results_contents,0).expect("something went wrong while deserializing binary.results");
-					match got
-					{
-						ConfigurationValue::Experiments(ref _a) => {
-							//We do not have the `experiments` list in here.
-							//if a.len()!=n {
-							//	panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
-							//}
-						},
-						_ => panic!("A non-Experiments stored on binary.results"),
-					};
-					Some(got)
-				},
-				Err(_) => None,
-			}
-		};
+		self.remote_files.as_mut().unwrap().build_packed_results();
 	}
 }

@@ -1,0 +1,379 @@
+[
+	CSV
+	{
+		fields: [=configuration.traffic.pattern.legend_name, =configuration.traffic.load, =result.accepted_load, =result.average_message_delay, =configuration.routing.legend_name, =result.server_consumption_jain_index, =result.server_generation_jain_index, =result.average_packet_hops, =result.average_link_utilization, =result.maximum_link_utilization],
+		filename: "results.csv",
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [
+			Plotkind{
+				parameter: =configuration.traffic.load,
+				abscissas: =configuration.traffic.load,
+				label_abscissas: "offered load",
+				ordinates: =result.accepted_load,
+				label_ordinates: "accepted load",
+				min_ordinate: 0.0,
+				//max_ordinate: 1.0,
+			},
+			Plotkind{
+				parameter: =configuration.traffic.load,
+				abscissas: =result.accepted_load,
+				label_abscissas: "accepted load",
+				ordinates: =result.average_message_delay,
+				label_ordinates: "average message delay",
+				min_ordinate: 0.0,
+				max_ordinate: 2000.0,
+			},
+			Plotkind{
+				parameter: =configuration.traffic.load,
+				abscissas: =configuration.traffic.load,
+				label_abscissas: "offered load",
+				ordinates: =result.server_generation_jain_index,
+				label_ordinates: "Jain index of server generated load",
+				min_ordinate: 0.9,
+				max_ordinate: 1.0,
+			},
+			Plotkind{
+				label_abscissas: "path length",
+				label_ordinates: "amount fo packets",
+				histogram: =result.total_packet_per_hop_count,
+				min_ordinate: 0.0,
+				//max_ordinate: 1.0,
+			}
+		],
+		legend: =configuration.routing.legend_name,
+		prefix: "common",
+		backend: Tikz
+		{
+			tex_filename: "common.tex",
+			pdf_filename: "common.pdf",
+		},
+	},
+	Plots
+	{
+		//selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		//selector: [=configuration.traffic.pattern.legend_name,=if{
+		//	condition:lt{first:configuration.traffic.load,second:add{first:result.accepted_load,second:0.05}},
+		//	true_expression:"$\mathrm{offered load}<\mathrm{accepted load}+0.05$",
+		//	false_expression:"$\mathrm{offered load}\ge\mathrm{accepted load}+0.05$",
+		//}],//Make a plot for each value of the selector
+		selector: [=if{
+			condition: eq{ first:configuration.traffic.load, second:1.0 },
+			true_expression: "offered 1.0",
+			false_expression: "average below 1.0",
+		}],
+		kind: [Plotkind{
+			bar: true,
+			parameter: =configuration.traffic.pattern.legend_name,
+			abscissas: =configuration.traffic.pattern.legend_name,
+			label_abscissas: "traffic pattern",
+			ordinates: =result.accepted_load,
+			label_ordinates: "throughput",
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "barthroughput",
+		backend: Tikz
+		{
+			tex_filename: "bar_throughput.tex",
+			pdf_filename: "bar_throughput.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.linux_high_water_mark,
+			label_ordinates: "peak memory",
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "memory",
+		backend: Tikz
+		{
+			tex_filename: "peak_memory.tex",
+			pdf_filename: "peak_memory.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.user_time,
+			label_ordinates: "user time",
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "utime",
+		backend: Tikz
+		{
+			tex_filename: "user_time.tex",
+			pdf_filename: "user_time.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.system_time,
+			label_ordinates: "system time",
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "stime",
+		backend: Tikz
+		{
+			tex_filename: "system_time.tex",
+			pdf_filename: "system_time.pdf",
+		},
+	},
+	Plots
+	{
+		selector: [=configuration.traffic.pattern.legend_name,=if{
+			condition:lt{first:configuration.traffic.load,second:add{first:result.accepted_load,second:0.05}},
+			true_expression:"$\mathrm{offered load}<\mathrm{accepted load}+0.05$",
+			false_expression:"$\mathrm{offered load}\ge\mathrm{accepted load}+0.05$",
+		}],//Make a plot for each value of the selector
+		kind: [Plotkind{
+			//parameter: =configuration.traffic.load,
+			//abscissas: =configuration.traffic.load,
+			label_abscissas: "path length",
+			//ordinates: =result.average_packet_hops,
+			label_ordinates: "amount fo packets",
+			histogram: =result.total_packet_per_hop_count,
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "hophistogram",
+		backend: Tikz
+		{
+			tex_filename: "hop_histogram.tex",
+			pdf_filename: "hop_histogram.pdf",
+		},
+	},
+	Plots
+	{
+		selector: [=configuration.traffic.pattern.legend_name,=if{
+			condition:lt{first:configuration.traffic.load,second:add{first:result.accepted_load,second:0.05}},
+			true_expression:"$\mathrm{offered load}<\mathrm{accepted load}+0.05$",
+			false_expression:"$\mathrm{offered load}\ge\mathrm{accepted load}+0.05$",
+		}],//Make a plot for each value of the selector
+		kind: [Plotkind{
+			//parameter: =configuration.traffic.load,
+			//abscissas: =configuration.traffic.load,
+			label_abscissas: "path length",
+			//ordinates: =result.average_packet_hops,
+			label_ordinates: "log amount fo packets",
+			histogram: =map{container:result.total_packet_per_hop_count, binding:"x", expression: log{arg:add{first:x,second:1.0},base:10}},
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "loghophistogram",
+		backend: Tikz
+		{
+			tex_filename: "log_hop_histogram.tex",
+			pdf_filename: "log_hop_histogram.pdf",
+		},
+	},
+	Plots
+	{
+		selector: [=configuration.traffic.pattern.legend_name,=if{
+			condition:lt{first:configuration.traffic.load,second:add{first:result.accepted_load,second:0.05}},
+			true_expression:"$\mathrm{offered load}<\mathrm{accepted load}+0.05$",
+			false_expression:"$\mathrm{offered load}\ge\mathrm{accepted load}+0.05$",
+		}],//Make a plot for each value of the selector
+		kind: [Plotkind{
+			label_abscissas: "virtual channel",
+			label_ordinates: "occupation",
+			array: =result.router_aggregated_statistics.average_reception_space_occupation_per_vc,
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "inputocc",
+		backend: Tikz
+		{
+			tex_filename: "input_occupation.tex",
+			pdf_filename: "input_occupation.pdf",
+		},
+	},
+	Plots
+	{
+		selector: [=configuration.traffic.pattern.legend_name,=if{
+			condition:lt{first:configuration.traffic.load,second:add{first:result.accepted_load,second:0.05}},
+			true_expression:"$\mathrm{offered load}<\mathrm{accepted load}+0.05$",
+			false_expression:"$\mathrm{offered load}\ge\mathrm{accepted load}+0.05$",
+		}],//Make a plot for each value of the selector
+		kind: [Plotkind{
+			label_abscissas: "virtual channel",
+			label_ordinates: "occupation",
+			array: =result.router_aggregated_statistics.average_output_buffer_occupation_per_vc,
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "outputocc",
+		backend: Tikz
+		{
+			tex_filename: "output_occupation.tex",
+			pdf_filename: "output_occupation.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.accepted_load,
+			label_ordinates: "accepted load",
+			min_ordinate: 0.0,
+			//max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "throughput",
+		backend: Tikz
+		{
+			tex_filename: "throughput.tex",
+			pdf_filename: "throughput.pdf",
+		},
+	},
+	Plots
+	{
+		//selector: true,//Make a plot for each value of the selector
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =result.accepted_load,
+			label_abscissas: "accepted load",
+			ordinates: =result.average_message_delay,
+			label_ordinates: "average message delay",
+			min_ordinate: 0.0,
+			max_ordinate: 2000.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "delay",
+		backend: Tikz
+		{
+			tex_filename: "delay.tex",
+			pdf_filename: "delay.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.server_consumption_jain_index,
+			label_ordinates: "Jain index of server accepted load",
+			min_ordinate: 0.9,
+			max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "jainconsumption",
+		backend: Tikz
+		{
+			tex_filename: "jain_consumption.tex",
+			pdf_filename: "jain_consumption.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.server_generation_jain_index,
+			label_ordinates: "Jain index of server generated load",
+			min_ordinate: 0.9,
+			max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "jaingeneration",
+		backend: Tikz
+		{
+			tex_filename: "jain_generation.tex",
+			pdf_filename: "jain_generation.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.average_packet_hops,
+			label_ordinates: "average hops made by packets",
+			min_ordinate: 0.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "hops",
+		backend: Tikz
+		{
+			tex_filename: "average_hops.tex",
+			pdf_filename: "average_hops.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.average_link_utilization,
+			label_ordinates: "average utilization of links between routers",
+			min_ordinate: 0.0,
+			max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "utilization",
+		backend: Tikz
+		{
+			tex_filename: "average_utilization.tex",
+			pdf_filename: "average_utilization.pdf",
+		},
+	},
+	Plots
+	{
+		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
+		kind: [Plotkind{
+			parameter: =configuration.traffic.load,
+			abscissas: =configuration.traffic.load,
+			label_abscissas: "offered load",
+			ordinates: =result.maximum_link_utilization,
+			label_ordinates: "maximum utilization of links between routers",
+			min_ordinate: 0.0,
+			max_ordinate: 1.0,
+		}],
+		legend: =configuration.routing.legend_name,
+		prefix: "maxu",
+		backend: Tikz
+		{
+			tex_filename: "maximum_utilization.tex",
+			pdf_filename: "maximum_utilization.pdf",
+		},
+	},
+]

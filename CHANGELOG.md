@@ -1,6 +1,20 @@
 # Change Log
 
-## next [0.3.2]
+## [0.4]
+
+### 2022-02-10
+git tag 0.4.0 -m "v0.4.0"
+git commit -m "into 0.4.0. Added command line overrides and generation of default files. A statistics bugfix."
+
+### 2022-02-09
+Moving more things into struct ExperimentFiles.
+BUGFIX: Some delays were added into `total_message_delay` instead of into `total_packet_network_delay`.
+Added default experiments files main.cfg, main.od, remote that are generated with --action=shell and no --source.
+A couple more progress bar display prefixes.
+
+### 2022-02-08
+Added `rewrite_eq` and `rewrite_pair` to allow writing into a ConfigurationValue. With the idea of using the free arguments in command line.
+New struct ExperimentFiles to encapsulate better the files in different places.
 
 ### 2022-02-02
 Added the MapEntryVC meta-policy to build rules dependant on the virtual channel with which the packet entered the router.

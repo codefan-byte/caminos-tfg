@@ -10,19 +10,20 @@ This crate is `caminos-lib`. To use it add `caminos-lib` to your dependencies in
 
 ```toml
 [dependencies]
-caminos-lib = "0.3"
+caminos-lib = "0.4"
 ```
 
 Alternatively, consider whether the binary crate `caminos` fits your intended use.
 
 # Breaking changes
 
-## [0.3.0] to ?
+## [0.3.0] to [0.4.0]
 
 * Added `path` argument to `config::{evaluate,reevaluate}`.
 * File `create_output` and similar now receive in its `results` argument also the experiment indices.
 * routings now return `RoutingNextCandidates`. In addition to the vector of candidates it contains an `idempotent` field to allow some checks and optimizations.
 * Added requirement `VirtualChannelPolicy: Debug`.
+* The `file_main` function now receives a `free_args` parameter. Free arguments of the form `path=value` are used to override the configuration.
 
 ## [0.1.0] to [0.2.0]
 
@@ -846,7 +847,7 @@ impl Statistics
 	{
 		self.current_measurement.consumed_packets+=1;
 		let network_delay = cycle-*packet.cycle_into_network.borrow();
-		self.current_measurement.total_message_delay += network_delay;
+		self.current_measurement.total_packet_network_delay += network_delay;
 		let hops=packet.routing_info.borrow().hops;
 		self.current_measurement.total_packet_hops+=hops;
 		if self.current_measurement.total_packet_per_hop_count.len() <= hops
@@ -863,7 +864,7 @@ impl Statistics
 				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
 			}
 			self.temporal_statistics[index].consumed_packets+=1;
-			self.temporal_statistics[index].total_message_delay+=network_delay;
+			self.temporal_statistics[index].total_packet_network_delay+=network_delay;
 			self.temporal_statistics[index].total_packet_hops+=hops;
 			//Is total_packet_per_hop_count too much here?
 		}
@@ -1917,23 +1918,56 @@ impl Debug for Plugs
 /// `file` must be a configuration file with the experiment to simulate.
 /// `plugs` constains the plugged builder functions.
 /// `result_file` indicates where to write the results.
-//pub fn file_main(file:&mut File, plugs:&Plugs, option_matches:&Matches)
-pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>)
+/// `free_args` are free arguments. Those of the form `path=value` are used to override configurations.
+pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,free_args:&[String])
 {
 	let mut contents = String::new();
 	file.read_to_string(&mut contents).expect("something went wrong reading the file");
+
+	let mut rewrites: Vec< (Expr,ConfigurationValue) > = vec![];
+	for arg in free_args
+	{
+		if let Some( (left,right) ) = arg.split_once('=')
+		{
+			let left_expr = match config_parser::parse_expression(left).expect("error parsing a free argument")
+			{
+				config_parser::Token::Expression(expr) => expr,
+				x => panic!("the left of free argument is not an expression ({:?}), which it should be.",x),
+			};
+			//let right_expr = match config_parser::parse_expression(right).expect("error parsing a free argument")
+			//{
+			//	config_parser::Token::Expression(expr) => expr,
+			//	x => panic!("the right of free argument is not an expression ({:?}), which it should be.",x),
+			//};
+			let right_value = match config_parser::parse(right).expect("error parsing a free argument")
+			{
+				config_parser::Token::Value(value) => value,
+				x => panic!("the right of free argument is not a value ({:?}), which it should be.",x),
+			};
+			rewrites.push( (left_expr,right_value) );
+		} else {
+			println!("WARNING: ignoring argument {}",arg);
+		}
+	}
+
+	//let working_directory=std::env::current_dir().expect("Could not get working directory.");
 
 	//println!("With text:\n{}", contents);
 	match config_parser::parse(&contents)
 	{
 		Err(x) => println!("error parsing configuration file: {:?}",x),
-		Ok(x) =>
+		Ok(mut x) =>
 		{
 			println!("parsed correctly: {:?}",x);
 			match x
 			{
-				config_parser::Token::Value(ref value) =>
+				config_parser::Token::Value(ref mut value) =>
 				{
+					for (path_expr,new_value) in rewrites
+					{
+						//config::rewrite_pair(value,&path_expr,&new_value,&working_directory);
+						config::rewrite_pair_value(value,&path_expr,new_value);
+					}
 					let flat=flatten_configuration_value(value);
 					if let ConfigurationValue::Experiments(ref experiments)=flat
 					{

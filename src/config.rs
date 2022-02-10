@@ -1321,17 +1321,96 @@ pub fn config_from_binary(data:&[u8], offset:usize) -> Result<ConfigurationValue
 }
 
 
-//#[derive(Debug,Default)]
-//pub struct BinaryConfigReader
-//{
-//}
-//
-//impl BinaryConfigReader
-//{
-//	pub fn new() -> BinaryConfigReader
-//	{
-//		Self::default()
-//	}
-//	pub fn 
-//}
+///Rewrites the value in-place.
+///If `edition` is `term=new_value` where `term` can be interpreted as a left-value then replace its content with `new_value`.
+///returns `true` is something in `value` has been changed.
+pub fn rewrite_eq(value:&mut ConfigurationValue, edition:&Expr, path:&Path) -> bool
+{
+	match edition
+	{
+		Expr::Equality(left,right) =>
+		{
+			let new_value = evaluate(right,&value,path);
+			//rewrite_pair(value,left,new_value)
+			if let Some(ptr) = config_mut_into(value,left)
+			{
+				*ptr = new_value;
+				true
+			} else {
+				false
+			}
+		}
+		_ => false,
+	}
+}
+
+///Rewrites the value in-place.
+///If `path_expr` can be interpreted as a left-value then replace its content with `new_value`.
+///returns `true` is something in `value` has been changed.
+pub fn rewrite_pair(value:&mut ConfigurationValue, path_expr:&Expr, new_value:&Expr, path:&Path) -> bool
+{
+	let new_value = evaluate(new_value,&value,path);
+	if let Some(ptr) = config_mut_into(value,path_expr)
+	{
+		*ptr = new_value;
+		true
+	} else {
+		false
+	}
+}
+
+///Rewrites the value in-place.
+///If `path_expr` can be interpreted as a left-value then replace its content with `new_value`.
+///returns `true` is something in `value` has been changed.
+pub fn rewrite_pair_value(value:&mut ConfigurationValue, path_expr:&Expr, new_value:ConfigurationValue) -> bool
+{
+	if let Some(ptr) = config_mut_into(value,path_expr)
+	{
+		*ptr = new_value;
+		true
+	} else {
+		false
+	}
+}
+
+///Tries to access to a given path inside a ConfigurationValue
+///Returns `None` if the path is not found.
+pub fn config_mut_into<'a>(value:&'a mut ConfigurationValue, expr_path:&Expr) -> Option<&'a mut ConfigurationValue>
+{
+	match expr_path
+	{
+		Expr::Ident(ref name) =>
+		{
+			match value
+			{
+				ConfigurationValue::Object(ref _object_name,ref mut arr) =>
+				{
+					for (key,val) in arr.iter_mut()
+					{
+						if key==name
+						{
+							return Some(val);
+						}
+					}
+					None
+				}
+				_ => None,
+			}
+		}
+		Expr::Member(ref parent, ref field_name) =>
+		{
+			match config_mut_into(value,parent)
+			{
+				Some(into_parent) => config_mut_into(into_parent,&Expr::Ident(field_name.clone())),
+				None => None,
+			}
+		}
+		_ =>
+		{
+			None
+		}
+	}
+}
+
+
 

@@ -1,3 +1,12 @@
+/*!
+
+A policy defined to what output queue/port to request among the ones returned as possible by the routing function. Policies are designed to be applied in sequence so that there remains at most a single candidate.
+
+One should include always the policy `EnforceFlowControl` or equivalent at some point. To ensure at most one candidate you may use the `Random` policy.
+
+see [`new_virtual_channel_policy`](fn.new_virtual_channel_policy.html) for documentation on the configuration syntax of predefined policies.
+
+*/
 
 use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
@@ -71,7 +80,192 @@ pub struct VCPolicyBuilderArgument<'a>
 	pub plugs: &'a Plugs,
 }
 
-//pub fn new_virtual_channel_policy(cv: &ConfigurationValue, plugs:&Plugs) -> Box<dyn VirtualChannelPolicy>
+/** Build a new virtual channel policy. These policies are successive refinements over the available ones as returned by the routing function, to determine to which exit a request is done.
+
+## Basic policies
+
+### Identity
+
+No operation. To be used inside meta-policies that can switch among several others.
+
+### EnforceFlowControl
+
+Filter out those candidates that have not enough credits or the equivalent depending on buffer structure. It should appear at least once in the list of policies.
+
+### Random
+
+Selects one candidate randomly among the available.
+
+### Shortest
+
+Selects the port+virtual channel with more available credits. Do not resolve ties.
+
+
+### Hops
+
+A policy to avoid deadlock. Use the virtual channel `i` in the `i`-th hop of the packet.
+
+### WideHops
+
+A variant of Hops that allow `width` VCs in each hop.
+
+```ignore
+WideHops{ width:2 }
+```
+
+## Policies measuring queues
+
+### LowestSinghWeight
+
+Select the lowest value of the product of the queue length (that is, consumed credits) times the estimated hop count (usually 1 plus the distance from next router to target router)
+This was initially proposed for the UGAL routing.
+
+```ignore
+LowestSinghWeight
+{
+	//We may add a small constant so the distance is always relevant, even for low loads
+	extra_congestion: 1,
+	//For distances is less important to add anything.
+	extra_distance: 0,
+	//Whether to aggregate all buffers in that port or to use just the space of the candidate.
+	aggregate: false,
+	///Whether to include in the computation the space of the output queue.
+	use_internal_space: true
+	///Whether to include in the computation the space in the neighbour router. It uses a credit counter as proxy.
+	use_neighbour_space: true,
+	///Whether to use the estimation of remaining hops given by the routing algorithm.
+	///Some non-minimal routing may provide that estimation, check their documentation.
+	use_estimation: true,
+}
+```
+
+### OccupancyFunction
+
+## Label manipulation
+
+Some routings can label their candidates. For example into minimal/non-minimal routes. We may use that classification to make decisions on them.
+
+### LowestLabel
+
+Select the candidate with least label (possible signifying minimal routing).
+
+### LabelSaturate
+
+Apply the transformation `New label = min{old_label,value} or max{old_label,value}`
+
+```ignore
+LabelSaturate
+{
+	value: 1,
+	bottom: true,
+}
+```
+
+### LabelTransform
+
+More advanced transformations. Lineal operation with optional saturation (reducing/raising the value) and limits (filtering out).
+
+```ignore
+LabelTransform
+{
+	multiplier: 1,
+	summand: 1,
+	saturate_bottom: 0,
+	//saturate_top
+	//minimum
+	maximum: 2,
+}
+```
+
+### NegateLabel
+
+Negate the label. Alternatively use `LabelTransform` with `multiplier:-1`.
+
+### VecLabel
+
+Apply a map to the label, i.e., `new_label = vector[old_label]`.
+
+```ignore
+VecLabel
+{
+	label_vector: [1, 0],
+}
+```
+
+### MapLabel
+
+A meta-policy applying a different policy to candidates with each label.
+
+```ignore
+MapLabel
+{
+	//Apply Identity to label 0.
+	//Apply Random to label 1.
+	label_to_policy: [Identity, Random],
+	//We may apply a policy to negative labels
+	//below_policy: Identity,
+	//We may apply a policy to label values over the range
+	//above_policy: Identity,
+}
+```
+
+## Purely VC transformations
+
+### ShiftEntryVC
+
+Only allows those candidates whose vc equals their entry vc plus some `s` in `shifts`. This is very similar to the `Hops` policy, but can be combined with other policies. For example, to increase VC only in a escape sub-network.
+
+```ignore
+ShiftEntryVC
+{
+	shifts: [1],
+}
+```
+
+### ArgumentVC
+
+Only allows those candidates whose vc is in the allowed list. To be used inside meta-policies.
+
+```ignore
+AgumentVC
+{
+	allowed: [0, 1]
+}
+```
+
+### MapEntryVC
+
+A meta-policy applying a different policy to candidates from each entry virtual channel.
+
+```ignore
+MapEntryVC
+{
+	//Do nothing over the two first VCs
+	vc_to_policy: [Identity, Identity]
+	//In the other VCs the packet must increase each hop.
+	above_policy: ShiftEntryVC{shifts:[1]},
+}
+```
+
+## Hop based
+
+Policies that use the number of hops given by the packet. We have already commented on `Hops` and `WideHops`.
+
+### MapHop
+
+Meta-policy applying a different policy to each hop.
+
+```ignore
+MapHop
+{
+	//First hop from a router to another must be in VC 0 or 1.
+	hop_to_policy: [ArgumentVC{allowed:[0,1]}],
+	//Further hops increase the VC number by 1.
+	above_policy: ShiftEntryVC{shifts:[1]},
+}
+```
+
+*/
 pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn VirtualChannelPolicy>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv

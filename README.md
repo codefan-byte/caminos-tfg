@@ -9,19 +9,20 @@ This crate is `caminos-lib`. To use it add `caminos-lib` to your dependencies in
 
 ```toml
 [dependencies]
-caminos-lib = "0.3"
+caminos-lib = "0.4"
 ```
 
 Alternatively, consider whether the binary crate `caminos` fits your intended use.
 
 # Breaking changes
 
-## [0.3.0] to ?
+## [0.3.0] to [0.4.0]
 
 * Added `path` argument to `config::{evaluate,reevaluate}`.
 * File `create_output` and similar now receive in its `results` argument also the experiment indices.
 * routings now return `RoutingNextCandidates`. In addition to the vector of candidates it contains an `idempotent` field to allow some checks and optimizations.
 * Added requirement `VirtualChannelPolicy: Debug`.
+* The `file_main` function now receives a `free_args` parameter. Free arguments of the form `path=value` are used to override the configuration.
 
 ## [0.2.0] to [0.3.0]
 

@@ -1,0 +1,13 @@
+[
+	Remote{
+		//One host must be called "default"
+		name: "default",
+		//Host and username as used by ssh username@host
+		host: "myhost.org",
+		username: "myusername",
+		//The remote folder inside that host containing (or where it will be contained) main.cfg
+		root: "/sample/path/to/experiment/root/folder",
+		//The executable binary in the remote host. Only required for a few specialized actions.
+		binary: "/path/to/invoke/binary/caminos",
+	},
+]
