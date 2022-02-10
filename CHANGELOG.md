@@ -5,6 +5,7 @@
 ### 2022-02-10
 git tag 0.4.0 -m "v0.4.0"
 git commit -m "into 0.4.0. Added command line overrides and generation of default files. A statistics bugfix."
+git commit -m "Have Cargo.toml also on 0.4.0"
 
 ### 2022-02-09
 Moving more things into struct ExperimentFiles.
