@@ -1,6 +1,17 @@
 # Change Log
 
-## next [0.4.1]
+## next [0.4.2 or greater]
+
+### 2022-02-11
+Writing also average values from `cycle_last_created_phit` and `cycle_last_consumed_message`.
+git commit -m "Couple minor bugfixes plus some time of last phit statistics."
+
+### 2022-02-10
+Added the function `server_state` to the `Traffic` trait.
+BUGFIX in Shifted,Product traffic probability.
+Added `ServerStatistics::{cycle_last_created_phit: usize,cycle_last_consumed_message: usize}`.
+
+## [0.4.1]
 
 ### 2022-02-10
 git commit -m "Removed spurious error when looking for launch_configurations"

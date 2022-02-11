@@ -19,6 +19,10 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 <details>
 
+## [0.4.0] to
+
+* Added the function `server_state` to the `Traffic` trait.
+
 ## [0.3.0] to [0.4.0]
 
 * Added `path` argument to `config::{evaluate,reevaluate}`.
@@ -311,6 +315,10 @@ struct ServerStatistics
 	consumed_phits: usize,
 	consumed_messages: usize,
 	total_message_delay: usize,
+	///The last cycle in which this server created a phit and sent it to a router. Or 0
+	cycle_last_created_phit: usize,
+	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
+	cycle_last_consumed_message: usize,
 }
 
 impl ServerStatistics
@@ -322,6 +330,8 @@ impl ServerStatistics
 			consumed_phits:0,
 			consumed_messages:0,
 			total_message_delay:0,
+			cycle_last_created_phit: 0,
+			cycle_last_consumed_message: 0,
 		}
 	}
 	fn reset(&mut self)
@@ -378,6 +388,7 @@ impl Server
 			//statistics.consumed_messages+=1;
 			statistics.track_consumed_message(cycle);
 			self.statistics.total_message_delay+=cycle-message.creation_cycle;
+			self.statistics.cycle_last_consumed_message = cycle;
 			//statistics.total_message_delay+=cycle-message.creation_cycle;
 			statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			self.consumed_phits.remove(&message_ptr);
@@ -1618,6 +1629,7 @@ impl<'a> Simulation<'a>
 						//self.statistics.created_phits+=1;
 						self.statistics.track_created_phit(self.cycle);
 						server.statistics.created_phits+=1;
+						server.statistics.cycle_last_created_phit = self.cycle;
 						self.event_queue.enqueue_begin(event,self.link_classes[link_class].delay);
 						server.router_status.notify_outcoming_phit(0,self.cycle);
 					}
@@ -1670,6 +1682,8 @@ impl<'a> Simulation<'a>
 		let average_link_utilization = total_arrivals as f64 / cycles as f64 / total_links as f64;
 		let maximum_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).max().unwrap()).max().unwrap();
 		let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
+		let server_average_cycle_last_created_phit : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<usize>() as f64)/(self.network.servers.len() as f64);
+		let server_average_cycle_last_consumed_message : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.network.servers.len() as f64);
 		let git_id=get_git_id();
 		let mut result_content = vec![
 			(String::from("cycle"),ConfigurationValue::Number(self.cycle as f64)),
@@ -1683,6 +1697,8 @@ impl<'a> Simulation<'a>
 			(String::from("total_packet_per_hop_count"),ConfigurationValue::Array(total_packet_per_hop_count)),
 			(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
 			(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
+			(String::from("server_average_cycle_last_created_phit"),ConfigurationValue::Number(server_average_cycle_last_created_phit)),
+			(String::from("server_average_cycle_last_consumed_message"),ConfigurationValue::Number(server_average_cycle_last_consumed_message)),
 			//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
 			(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
 		];
@@ -1756,10 +1772,14 @@ impl<'a> Simulation<'a>
 			let mut servers_injected_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.created_phits as f64/cycles as f64).collect();
 			let mut servers_accepted_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.consumed_phits as f64/cycles as f64).collect();
 			let mut servers_average_message_delay : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.total_message_delay as f64/s.statistics.consumed_messages as f64).collect();
+			let mut servers_cycle_last_created_phit : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
+			let mut servers_cycle_last_consumed_message : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
 			//XXX There are more efficient ways to find percentiles than to sort them, but should not be notable in any case. See https://en.wikipedia.org/wiki/Selection_algorithm
 			servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_accepted_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_average_message_delay.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
+			servers_cycle_last_created_phit.sort();
+			servers_cycle_last_consumed_message.sort();
 			for &percentile in self.statistics.server_percentiles.iter()
 			{
 				let mut index:usize = num_servers * usize::from(percentile) /100;
@@ -1773,6 +1793,8 @@ impl<'a> Simulation<'a>
 					(String::from("injected_load"),ConfigurationValue::Number(servers_injected_load[index])),
 					(String::from("accepted_load"),ConfigurationValue::Number(servers_accepted_load[index])),
 					(String::from("average_message_delay"),ConfigurationValue::Number(servers_average_message_delay[index])),
+					(String::from("cycle_last_created_phit"),ConfigurationValue::Number(servers_cycle_last_created_phit[index] as f64)),
+					(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(servers_cycle_last_consumed_message[index] as f64)),
 				];
 				result_content.push((format!("server_percentile{}",percentile),ConfigurationValue::Object(String::from("ServerStatistics"),server_content)));
 			}
