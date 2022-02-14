@@ -1685,6 +1685,7 @@ impl<'a> Simulation<'a>
 		let server_average_cycle_last_created_phit : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<usize>() as f64)/(self.network.servers.len() as f64);
 		let server_average_cycle_last_consumed_message : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.network.servers.len() as f64);
 		let git_id=get_git_id();
+		let version_number = get_version_number();
 		let mut result_content = vec![
 			(String::from("cycle"),ConfigurationValue::Number(self.cycle as f64)),
 			(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
@@ -1701,6 +1702,7 @@ impl<'a> Simulation<'a>
 			(String::from("server_average_cycle_last_consumed_message"),ConfigurationValue::Number(server_average_cycle_last_consumed_message)),
 			//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
 			(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
+			(String::from("version_number"),ConfigurationValue::Literal(format!("{}",version_number))),
 		];
 		if let Some(content)=self.routing.statistics(self.cycle)
 		{
@@ -2057,11 +2059,18 @@ pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, opti
 	//println!("{:?} is a path",path);
 }
 
-/// Get a identifier of the git commit. It is of little use to someone using a forzen public version.
+/// Get an identifier of the git commit. It is of little use to someone using a forzen public version.
 /// The value is fixed in the build script.
 pub fn get_git_id() -> &'static str
 {
 	include_str!(concat!(env!("OUT_DIR"), "/generated_git_id"))
+}
+
+/// Get the number currently written in the Cargo.toml field `version`.
+/// In public version this is more useful than `get_git_id`.
+pub fn get_version_number() -> &'static str
+{
+	include_str!(concat!(env!("OUT_DIR"), "/generated_version_number"))
 }
 
 

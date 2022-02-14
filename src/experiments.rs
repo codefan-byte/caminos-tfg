@@ -337,6 +337,16 @@ impl ExperimentFiles
 	{
 		self.cfg_contents.as_ref().unwrap()
 	}
+	///If main.cfg has enough content to be considered correct.
+	///For a quick check without parsing it.
+	pub fn cfg_enough_content(&self) -> bool
+	{
+		match self.cfg_contents
+		{
+			None => false,
+			Some(ref content) => content.len()>=2,
+		}
+	}
 	pub fn build_parsed_cfg(&mut self)
 	{
 		if let None = self.parsed_cfg
@@ -913,13 +923,14 @@ impl<'a> Experiment<'a>
 			Action::RemoteCheck =>
 			{
 				self.initialize_remote();
-				let remote_root=self.remote_files.as_ref().unwrap().root.clone();
-				let remote_binary=self.remote_files.as_ref().unwrap().binary.clone();
+				let remote_root=self.remote_files.as_ref().unwrap().root.clone().unwrap();
+				let remote_binary=self.remote_files.as_ref().unwrap().binary.clone().unwrap();
 				let mut channel = self.remote_files.as_ref().unwrap().ssh2_session.as_ref().unwrap().channel_session().unwrap();
 				let remote_command = format!("{:?} {:?} --action=check",remote_binary,remote_root);
 				channel.exec(&remote_command).unwrap();
 				let mut remote_command_output = String::new();
 				channel.read_to_string(&mut remote_command_output).unwrap();
+				channel.stderr().read_to_string(&mut remote_command_output).unwrap();
 				channel.wait_close().expect("Could not close the channel of remote executions.");
 				channel.exit_status().unwrap();
 				for line in remote_command_output.lines()
@@ -933,8 +944,8 @@ impl<'a> Experiment<'a>
 				//Bring the remote files to this machine
 				let remote_root=self.remote_files.as_ref().unwrap().root.clone().unwrap();
 				//Download remote main.cfg
-				let remote_cfg_path = remote_root.join("main.cfg");
 				let sftp = self.remote_files.as_ref().unwrap().ssh2_session.as_ref().unwrap().sftp().unwrap();
+				//check remote folder
 				match sftp.stat(&remote_root)
 				{
 					Ok(remote_stat) =>
@@ -943,22 +954,27 @@ impl<'a> Experiment<'a>
 						{
 							panic!("remote {:?} exists, but is not a directory",&remote_stat);
 						}
-						self.remote_files.as_mut().unwrap().build_cfg_contents();
-						self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
 					},
 					Err(_err) =>
 					{
 						println!("Could not open remote '{:?}', creating it",remote_root);
 						sftp.mkdir(&remote_root,0o755).expect("Could not create remote directory");
-						let mut remote_cfg = sftp.create(&remote_cfg_path).expect("Could not create remote main.cfg");
-						write!(remote_cfg,"{}",self.files.cfg_contents_ref()).expect("Could not write into remote main.cfg");
-						let mut remote_od = sftp.create(&remote_root.join("main.od")).expect("Could not create remote main.od");
-						let mut local_od = File::open(self.files.root.as_ref().unwrap().join("main.od")).expect("Could not open local main.od");
-						let mut od_contents = String::new();
-						local_od.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
-						write!(remote_od,"{}",od_contents).expect("Could not write into remote main.od");
 					},
 				};
+				//check remote config
+				self.remote_files.as_mut().unwrap().build_cfg_contents();
+				if self.remote_files.as_ref().unwrap().cfg_enough_content() {
+					self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
+				} else {
+					let remote_cfg_path = remote_root.join("main.cfg");
+					let mut remote_cfg = sftp.create(&remote_cfg_path).expect("Could not create remote main.cfg");
+					write!(remote_cfg,"{}",self.files.cfg_contents_ref()).expect("Could not write into remote main.cfg");
+					let mut remote_od = sftp.create(&remote_root.join("main.od")).expect("Could not create remote main.od");
+					let mut local_od = File::open(self.files.root.as_ref().unwrap().join("main.od")).expect("Could not open local main.od");
+					let mut od_contents = String::new();
+					local_od.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
+					write!(remote_od,"{}",od_contents).expect("Could not write into remote main.od");
+				}
 			},
 			Action::SlurmCancel =>
 			{

@@ -820,18 +820,19 @@ fn latex_make_command_name(text:&str) -> String
 	}).collect::<String>()
 }
 
-///Make text appropriate for tikz symbolic coordinates.
-fn latex_make_symbol(text:&str) -> String
-{
-	text.trim().chars().map(|c|match c{
-		'\n' => " ".to_string(),
-		'%' => "\\%".to_string(),
-		',' => "s".to_string(),
-		'[' | ']' => "b".to_string(),
-		'{' | '}' => "c".to_string(),
-		x => format!("{}",x),
-	}).collect::<String>()
-}
+// ///Make text appropriate for tikz symbolic coordinates.
+// ///Because reasons like boxplots, I have moved to use numerical coordinates with textual tick labels, so this becomes obsolete.
+// fn latex_make_symbol(text:&str) -> String
+// {
+// 	text.trim().chars().map(|c|match c{
+// 		'\n' => " ".to_string(),
+// 		'%' => "\\%".to_string(),
+// 		',' => "s".to_string(),
+// 		'[' | ']' => "b".to_string(),
+// 		'{' | '}' => "c".to_string(),
+// 		x => format!("{}",x),
+// 	}).collect::<String>()
+// }
 
 ///Draw a plot using the tikz backend.
 ///`backend`: contains options to the backend
@@ -1006,7 +1007,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						let mut x : f32 = if let Some(xvalue) = abscissa_average { xvalue } else
 						{
 							let symbol = kaverages[*koffset].shared_abscissa.as_ref().expect("no abscissa found");
-							let str_symbol: String = latex_make_symbol(&format!("{}",symbol));
+							let str_symbol: String = latex_protect_text(&format!("{}",symbol));
 							if let Some(symbol_index) = symbols.iter().enumerate().find_map(|(index,s)|if s==&str_symbol {Some(index)} else {None})
 							{
 								symbol_index as f32
@@ -1035,7 +1036,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 						} else if let (Some(symbol),Some(y)) = (kaverages[*koffset].shared_abscissa.as_ref(),ordinate_average)
 						{
 							let ordinate_deviation=ordinate_deviation.unwrap_or(0f32);
-							let str_symbol: String = latex_make_symbol(&format!("{}",symbol));
+							let str_symbol: String = latex_protect_text(&format!("{}",symbol));
 							symbolic_to_draw.push( (str_symbol,y,ordinate_deviation) );
 							drawn_points+=1;
 						}
@@ -1252,7 +1253,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 					Some(x) => (x as usize).min(symbols.len()) -1,
 					None => symbols.len()-1,
 				};
-				let symbolic_coords = symbols[first_tick..=last_tick].join(",");
+				//let symbolic_coords = symbols[first_tick..=last_tick].join(",");
+				let symbolic_coords = symbols[first_tick..=last_tick].iter().map(|tick|format!("{{{}}}",tick)).collect::<Vec<_>>().join(",");
 				extra += &format!("xtick={{{firsttick},...,{lasttick}}}, xticklabels = {{{symbolic_coords}}},",firsttick=first_tick,lasttick=last_tick,symbolic_coords=symbolic_coords);
 				//extra += &format!("xtick={{0,...,{lastsymbol}}}, xticklabels = {{{symbolic_coords}}},",lastsymbol=symbols.len()-1,symbolic_coords=symbolic_coords);
 				//if boxplot
@@ -1342,8 +1344,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		height=105pt,%may fit 3figures with 2 line caption
 		width=174pt,
 		scaled ticks=false,
-		xticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
-		yticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
+		xticklabel style={{font=\tiny,/pgf/number format/.cd, fixed,/tikz/.cd}},% formattin ticks' labels
+		yticklabel style={{font=\tiny,/pgf/number format/.cd, fixed,/tikz/.cd}},% formattin ticks' labels
 		x label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{x label}},anchor=north,font=\scriptsize}},
 		y label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{y label}},anchor=south,font=\scriptsize}},
 	}},
@@ -1351,7 +1353,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		height=105pt,
 		width=500pt,
 		xticklabel style={{font=\tiny,rotate=90}},
-		yticklabel style={{font=\tiny,/pgf/number format/.cd, fixed}},% formattin ticks' labels
+		yticklabel style={{font=\tiny,/pgf/number format/.cd, fixed,/tikz/.cd}},% formattin ticks' labels
 		x label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{x label}},anchor=north,font=\scriptsize}},
 		y label style={{at={{(ticklabel cs:0.5, -5pt)}},name={{y label}},anchor=south,font=\scriptsize}},
 	}},

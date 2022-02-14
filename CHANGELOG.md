@@ -2,6 +2,17 @@
 
 ## next [0.4.2 or greater]
 
+### 2022-02-14
+Use `latex_protect_text` instead of `latex_make_symbol` for labels from non-numerical values.
+BUGFIX: made `--action=remote_check` to work again. Also added display for the remote stderr.
+BUGFIX: allow push action to work if remote directory exists but main.cfg does not.
+Declaration of Module `router::Basic` made public, so that its documentation is generated.
+Added `get_version_number`, in parallel to `get_git_id`.
+git commit -m "Get version number. Fixes with latex and actions on remote."
+
+### 2022-02-12
+Fix on the tikz backend `/tikz/.cd`.
+
 ### 2022-02-11
 Writing also average values from `cycle_last_created_phit` and `cycle_last_consumed_message`.
 git commit -m "Couple minor bugfixes plus some time of last phit statistics."

@@ -1,5 +1,5 @@
 
-mod basic;
+pub mod basic;
 
 use std::rc::{Rc};
 use std::cell::RefCell;
