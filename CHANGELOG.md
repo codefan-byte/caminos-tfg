@@ -1,6 +1,8 @@
 # Change Log
 
-## next [0.4.2 or greater]
+## next [0.4.3 or greater]
+
+## [0.4.2]
 
 ### 2022-02-14
 Use `latex_protect_text` instead of `latex_make_symbol` for labels from non-numerical values.
@@ -14,6 +16,8 @@ Generated outputs moved into their own directory.
 Added field `Experiment::experiment_to_slurm` to tie experiment numbers to launcher scripts.
 Added capability to check errors in the launch script standard error output.
 git commit -m "Outputs moved to their own directory. Check error files."
+git tag 0.4.2 -m "v0.4.2"
+git commit -m "publish 0.4.2"
 
 ### 2022-02-12
 Fix on the tikz backend `/tikz/.cd`.
