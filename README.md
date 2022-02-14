@@ -18,6 +18,11 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 <details>
 
+## [0.4.0] to
+
+* Added the function `server_state` to the `Traffic` trait.
+* Functions on the output module now use ExperimentFiles instead of Path.
+
 ## [0.3.0] to [0.4.0]
 
 * Added `path` argument to `config::{evaluate,reevaluate}`.

@@ -267,6 +267,9 @@ pub struct Experiment<'a>
 	visible_slurm_jobs: Vec<usize>,
 	owned_slurm_jobs: Vec<usize>,
 	experiments_on_slurm: Vec<usize>,
+	/// For each experiment track in which slurm job was contained. So that their error files can be located if needed.
+	/// The triplets are `( journal_entry, batch, slurm_id )`. Thus `(1,98,988316)` would correspond with the file `jobs1/launch98-988316.err`.
+	experiment_to_slurm: Vec<Option<(usize,usize,usize)>>,
 	plugs:&'a Plugs,
 }
 
@@ -282,30 +285,30 @@ pub struct ExperimentFiles
 {
 	///The host with the path of these files.
 	///None if it is the hosting where this instance of caminos is running.
-	host: Option<String>,
+	pub host: Option<String>,
 	///Optional username to access the host.
-	username: Option<String>,
+	pub username: Option<String>,
 	///Whether we have a ssh2 session openened with that host.
 	ssh2_session: Option<Session>,
 	//TODO: learn what happens when paths are not UNICODE.
 	//TODO: perhaps it should be possible a ssh:// location. Maybe an URL.
 	///The path where caminos binary file is located.
-	binary: Option<PathBuf>,
+	pub binary: Option<PathBuf>,
 	///The root path of the experiments
-	root: Option<PathBuf>,
+	pub root: Option<PathBuf>,
 	///The raw contents of the main.cfg file
-	cfg_contents: Option<String>,
+	pub cfg_contents: Option<String>,
 	///
-	parsed_cfg: Option<config_parser::Token>,
-	runs_path: Option<PathBuf>,
+	pub parsed_cfg: Option<config_parser::Token>,
+	pub runs_path: Option<PathBuf>,
 	///The experiments as extracted from the main.cfg.
-	experiments: Vec<ConfigurationValue>,
+	pub experiments: Vec<ConfigurationValue>,
 	///The list of configurations for launch.
 	///Either extracted from main.cfg field `launch_configurations`
 	/// or from the launch file (TODO the latter).
-	launch_configurations: Vec<ConfigurationValue>,
+	pub launch_configurations: Vec<ConfigurationValue>,
 	///The results packeted (or to be packeted) in binary.results.
-	packed_results: ConfigurationValue,
+	pub packed_results: ConfigurationValue,
 }
 
 impl ExperimentFiles
@@ -574,6 +577,20 @@ impl ExperimentFiles
 			}
 		};
 	}
+	/// The directory where to store the generated output files from the Output action.
+	pub fn get_outputs_path(&self) -> PathBuf
+	{
+		let path = self.root.as_ref().unwrap().join("outputs");
+		if !path.is_dir()
+		{
+			if path.exists()
+			{
+				panic!("There exists \"outputs\", but it is not a directory.");
+			}
+			fs::create_dir(&path).expect("Something went wrong when creating the outputs folder.");
+		}
+		path.to_path_buf()
+	}
 	pub fn example_cfg() -> &'static str
 	{
 		include_str!("defaults/main.cfg")
@@ -604,6 +621,7 @@ impl<'a> Experiment<'a>
 		let reader = BufReader::new(journal_file);
 		let mut owned_slurm_jobs=vec![];
 		let mut experiments_on_slurm=vec![];
+		let mut experiment_to_slurm = vec![];
 		for rline in reader.lines()
 		{
 			//journal_index= rline.expect("bad line read from journal").split(":").next().expect("Not found the expected journal index").parse().expect("The journal index must be a non-negative integer");
@@ -631,13 +649,23 @@ impl<'a> Experiment<'a>
 						}
 						let mut slurm_pair = slurm_item.split("=");
 						let slurm_job_id = slurm_pair.next().unwrap().parse::<usize>().unwrap_or_else(|_|panic!("left term on '{}' should be an integer",slurm_item));
+						let slurm_job_content = slurm_pair.next().unwrap();
+						let left_bracket_index = slurm_job_content.find("[").unwrap();
+						let right_bracket_index = slurm_job_content.find("]").unwrap();
+						let experiments:Vec<usize> =slurm_job_content[left_bracket_index+1 .. right_bracket_index].split(",").map(|item|item.parse::<usize>().unwrap_or_else(|_|panic!("failed with content={} for item {}",slurm_job_content,slurm_item))).collect();
+						let batch = slurm_job_content[..left_bracket_index].parse::<usize>().unwrap_or_else(|_|panic!("failed to get batch for item {}",slurm_item));
+						let track = Some( (journal_index-1, batch, slurm_job_id) );
+						for &experiment_index in experiments.iter()
+						{
+							if experiment_index>=experiment_to_slurm.len()
+							{
+								experiment_to_slurm.resize(experiment_index+1,None);
+							}
+							experiment_to_slurm[experiment_index]= track;
+						}
 						if visible_slurm_jobs.contains(&slurm_job_id)
 						{
 							owned_slurm_jobs.push(slurm_job_id);
-							let slurm_job_content = slurm_pair.next().unwrap();
-							let left_bracket_index = slurm_job_content.find("[").unwrap();
-							let right_bracket_index = slurm_job_content.find("]").unwrap();
-							let experiments=slurm_job_content[left_bracket_index+1 .. right_bracket_index].split(",").map(|item|item.parse::<usize>().unwrap_or_else(|_|panic!("failed with content={} for item {}",slurm_job_content,slurm_item)));
 							experiments_on_slurm.extend(experiments);
 						}
 					}
@@ -675,6 +703,7 @@ impl<'a> Experiment<'a>
 			visible_slurm_jobs,
 			owned_slurm_jobs,
 			experiments_on_slurm,
+			experiment_to_slurm,
 			plugs,
 		}
 	}
@@ -1026,6 +1055,7 @@ impl<'a> Experiment<'a>
 		let mut empty=0;
 		let mut missing=0;
 		let mut merged=0;
+		let mut errors=0;
 		match action
 		{
 			Action::Pull => progress_bar.set_prefix("pulling files"),
@@ -1217,7 +1247,7 @@ impl<'a> Experiment<'a>
 			if has_content || is_packed || is_merged
 			{
 				before_amount_completed+=1;
-				progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged",pulled,empty,missing,before_amount_completed,merged));
+				progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 			}
 			else
 			{
@@ -1288,6 +1318,7 @@ impl<'a> Experiment<'a>
 										{
 											//println!("could not read remote file ({}).",err);
 											missing+=1;
+											progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 											continue;
 										}
 									};
@@ -1344,9 +1375,29 @@ impl<'a> Experiment<'a>
 							pulled+=1;
 						}
 						//File::open(&result_path).expect("did not work even after pulling it.")
-						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged",pulled,empty,missing,before_amount_completed,merged));
+						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 					}
-					Action::Output | Action::Check | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell | Action::Pack =>
+					Action::Check =>
+					{
+						if experiment_index < self.experiment_to_slurm.len()
+						{
+							if let Some( (journal_entry,batch,slurm_id) ) = self.experiment_to_slurm[experiment_index]
+							{
+								let slurm_stderr_path = runs_path.join(format!("jobs{}/launch{}-{}.err",journal_entry,batch,slurm_id));
+								let mut stderr_contents = String::new();
+								let mut stderr_file=File::open(&slurm_stderr_path).unwrap_or_else(|_|panic!("{:?} could not be opened",slurm_stderr_path));
+								stderr_file.read_to_string(&mut stderr_contents).unwrap_or_else(|_|panic!("something went wrong reading {:?}",slurm_stderr_path));
+								if stderr_contents.len()>=2
+								{
+									println!("Experiment {} contains errors in {:?}: {} bytes",experiment_index,slurm_stderr_path,stderr_contents.len());
+									println!("First error line: {}",stderr_contents.lines().next().expect("Unable to read first line from errors."));
+									errors+=1;
+									progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+								}
+							}
+						}
+					}
+					Action::Output | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell | Action::Pack =>
 					{
 					},
 				};
@@ -1441,7 +1492,7 @@ impl<'a> Experiment<'a>
 				Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
 				{
 					println!("description={}",description);
-					match create_output(&description,&results,self.files.experiments.len(),&self.files.root.as_ref().unwrap())
+					match create_output(&description,&results,self.files.experiments.len(),&self.files)
 					{
 						Ok(_) => (),
 						Err(err) => println!("ERROR: could not create output {:?}",err),

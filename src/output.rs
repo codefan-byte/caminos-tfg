@@ -7,9 +7,9 @@ see [`create_output`][create_output] for documentation on the configuration synt
 
 */
 
-use std::path::{Path,PathBuf};
+use std::path::{PathBuf};
 use std::fs::{self,File};
-use std::io::{self,Write,Read};
+use std::io::{self,Write};
 use std::cmp::Ordering;
 use std::process::Command;
 use std::collections::{HashSet,BTreeMap};
@@ -17,6 +17,7 @@ use std::rc::Rc;
 
 use crate::config_parser::{ConfigurationValue,Expr};
 use crate::config::{self,combine,evaluate,reevaluate,values_to_f32_with_count};
+use crate::experiments::ExperimentFiles;
 use crate::get_git_id;
 
 #[derive(Debug)]
@@ -131,7 +132,7 @@ Plots
 ```
 
 **/
-pub fn create_output(description: &ConfigurationValue, results: &Vec<(usize,ConfigurationValue,ConfigurationValue)>, total_experiments:usize, path:&Path)
+pub fn create_output(description: &ConfigurationValue, results: &Vec<(usize,ConfigurationValue,ConfigurationValue)>, total_experiments:usize, files:&ExperimentFiles)
 	-> Result<(),BackendError>
 {
 	if let &ConfigurationValue::Object(ref name, ref _attributes) = description
@@ -141,17 +142,17 @@ pub fn create_output(description: &ConfigurationValue, results: &Vec<(usize,Conf
 			"CSV" =>
 			{
 				println!("Creating a CSV...");
-				return create_csv(description,results,path);
+				return create_csv(description,results,files);
 			},
 			"Plots" =>
 			{
 				println!("Creating a plot...");
-				return create_plots(description,results,total_experiments,path);
+				return create_plots(description,results,total_experiments,files);
 			},
 			"PreprocessArgMax" =>
 			{
 				println!("Creating a file with ArgMax preprocessing...");
-				return create_preprocess_arg_max(description,results,total_experiments,path);
+				return create_preprocess_arg_max(description,results,total_experiments,files);
 			},
 			_ => panic!("unrecognized output description object {}",name),
 		};
@@ -163,7 +164,7 @@ pub fn create_output(description: &ConfigurationValue, results: &Vec<(usize,Conf
 }
 
 ///Creates a csv file using filename and field given in `description`.
-fn create_csv(description: &ConfigurationValue, results: &Vec<(usize,ConfigurationValue,ConfigurationValue)>, path:&Path)
+fn create_csv(description: &ConfigurationValue, results: &Vec<(usize,ConfigurationValue,ConfigurationValue)>, files:&ExperimentFiles)
 	-> Result<(),BackendError>
 {
 	let mut fields=None;
@@ -202,6 +203,7 @@ fn create_csv(description: &ConfigurationValue, results: &Vec<(usize,Configurati
 	let fields=fields.expect("There were no fields");
 	let filename=filename.expect("There were no filename");
 	println!("Creating CSV with name \"{}\"",filename);
+	let path = files.get_outputs_path();
 	let output_path=path.join(filename);
 	let mut output_file=File::create(&output_path).expect("Could not create output file.");
 	let header=fields.iter().map(|e|format!("{}",e)).collect::<Vec<String>>().join(", ");
@@ -209,7 +211,7 @@ fn create_csv(description: &ConfigurationValue, results: &Vec<(usize,Configurati
 	for &(experiment_index,ref configuration,ref result) in results.iter()
 	{
 		let context=combine(experiment_index,configuration,result);
-		let row=fields.iter().map(|e| format!("{}",evaluate(e,&context,path)) ).collect::<Vec<String>>().join(", ");
+		let row=fields.iter().map(|e| format!("{}",evaluate(e,&context,&path)) ).collect::<Vec<String>>().join(", ");
 		writeln!(output_file,"{}",row).unwrap();
 	}
 	Ok(())
@@ -479,7 +481,7 @@ impl<'a> Plotkind<'a>
 }
 
 ///Create plots according to a `Plots` object.
-fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, ConfigurationValue,ConfigurationValue)>, total_experiments:usize, path:&Path)
+fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, ConfigurationValue,ConfigurationValue)>, total_experiments:usize, files:&ExperimentFiles)
 	-> Result<(),BackendError>
 {
 	let mut selector=None;
@@ -523,6 +525,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 	let kind=kind.expect("There were no kind");
 	let backend=backend.expect("There were no backend");
 	let prefix=prefix.unwrap_or_else(||"noprefix".to_string());
+	let outputs_path = files.get_outputs_path();
 	println!("Creating plots");
 	let mut avgs:Vec<Vec<AveragedRecord>>=Vec::with_capacity(kind.len());
 	//let git_id_expr = Expr::Ident("git_id".to_string());
@@ -543,11 +546,11 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 			for &(experiment_index, ref configuration,ref result) in results.iter()
 			{
 				let context=combine(experiment_index, configuration,result);
-				let histogram_values=reevaluate(data,&context,path);
-				let selector=reevaluate(&selector,&context,path);
-				let legend=reevaluate(&legend,&context,path);
-				let git_id = evaluate(&git_id_expr,&context,path);
-				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,path));
+				let histogram_values=reevaluate(data,&context,&outputs_path);
+				let selector=reevaluate(&selector,&context,&outputs_path);
+				let legend=reevaluate(&legend,&context,&outputs_path);
+				let git_id = evaluate(&git_id_expr,&context,&outputs_path);
+				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path));
 				if let ConfigurationValue::Array(ref l)=histogram_values
 				{
 					//let total:f64 = l.iter().map(|cv|match cv{
@@ -614,17 +617,17 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 			{
 				let context=combine(experiment_index, configuration,result);
 				let record=RawRecord{
-					selector:reevaluate(&selector,&context,path),
-					legend:reevaluate(&legend,&context,path),
-					parameter:reevaluate(&pk.parameter.unwrap(),&context,path),
-					abscissa:reevaluate(&pk.abscissas.unwrap(),&context,path),
-					ordinate:reevaluate(&pk.ordinates.unwrap(),&context,path),
-					upper_whisker: pk.upper_whisker.map(|v|reevaluate(v,&context,path)),
-					bottom_whisker: pk.bottom_whisker.map(|v|reevaluate(v,&context,path)),
-					upper_box_limit: pk.upper_box_limit.map(|v|reevaluate(v,&context,path)),
-					bottom_box_limit: pk.bottom_box_limit.map(|v|reevaluate(v,&context,path)),
-					box_middle: pk.box_middle.map(|v|reevaluate(v,&context,path)),
-					git_id: evaluate(&git_id_expr,&context,path),
+					selector:reevaluate(&selector,&context,&outputs_path),
+					legend:reevaluate(&legend,&context,&outputs_path),
+					parameter:reevaluate(&pk.parameter.unwrap(),&context,&outputs_path),
+					abscissa:reevaluate(&pk.abscissas.unwrap(),&context,&outputs_path),
+					ordinate:reevaluate(&pk.ordinates.unwrap(),&context,&outputs_path),
+					upper_whisker: pk.upper_whisker.map(|v|reevaluate(v,&context,&outputs_path)),
+					bottom_whisker: pk.bottom_whisker.map(|v|reevaluate(v,&context,&outputs_path)),
+					upper_box_limit: pk.upper_box_limit.map(|v|reevaluate(v,&context,&outputs_path)),
+					bottom_box_limit: pk.bottom_box_limit.map(|v|reevaluate(v,&context,&outputs_path)),
+					box_middle: pk.box_middle.map(|v|reevaluate(v,&context,&outputs_path)),
+					git_id: evaluate(&git_id_expr,&context,&outputs_path),
 				};
 				//println!("{:?}",record);
 				records.push(record);
@@ -738,7 +741,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 						(String::from("average"),ConfigurationValue::Number(ordinate as f64)),
 						(String::from("all"),collection_cv.clone()),
 					]);
-					match evaluate(&expression,&context,path)
+					match evaluate(&expression,&context,&outputs_path)
 					{
 						ConfigurationValue::Number(new_ordinate) =>
 						{
@@ -779,7 +782,7 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 		match name.as_ref()
 		{
 			//"Tikz" => tikz_backend(backend,averaged,&label_abscissas,&label_ordinates,min_ordinate,max_ordinate,path),
-			"Tikz" => return tikz_backend(backend,avgs,kind,(results.len(),total_experiments),prefix,path),
+			"Tikz" => return tikz_backend(backend,avgs,kind,(results.len(),total_experiments),prefix,files),
 			_ => panic!("unrecognized backend object {}",name),
 		};
 	}
@@ -839,8 +842,8 @@ fn latex_make_command_name(text:&str) -> String
 ///`averages[kind_index][point_index]`: contains the data to be plotted. The data is ordered by selector, which is not an index.
 ///`kind`: the congiguration of the plots
 ///`amount_experiments`: (experiments_with_results, total) of the experiments
-///`path`: the path of the whole experiment
-fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>, kind:Vec<Plotkind>, amount_experiments:(usize,usize), prefix:String, path:&Path)
+///`files`: An ExperimentFiles struct with the information on where to generate each thing.
+fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>, kind:Vec<Plotkind>, amount_experiments:(usize,usize), prefix:String, files:&ExperimentFiles)
 	-> Result<(),BackendError>
 {
 	let mut tex_filename=None;
@@ -875,7 +878,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	}
 	let tex_filename=tex_filename.expect("There were no tex_filename");
 	let pdf_filename=pdf_filename.expect("There were no pdf_filename");
-	let tex_path=path.join(tex_filename);
+	let outputs_path = files.get_outputs_path();
+	let root = files.root.clone().unwrap();
+	let tex_path=&outputs_path.join(tex_filename);
 	println!("Creating {:?}",tex_path);
 	let mut tex_file=File::create(&tex_path).expect("Could not create tex file.");
 	let mut tikz=String::new();
@@ -916,7 +921,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let mut all_legend_tex_id_vec:Vec<String> = Vec::new();
 	let mut all_legend_tex_id_set:HashSet<String> = HashSet::new();
 	let mut all_legend_tex_entry:HashSet<String> = HashSet::new();
-	let folder=path.canonicalize().expect("path does not have canonical form").file_name().expect("could not get name of the folder").to_str().unwrap().to_string();
+	let folder=root.canonicalize().expect("path does not have canonical form").file_name().expect("could not get name of the root folder").to_str().unwrap().to_string();
 	let folder_id = latex_make_command_name(&folder);
 	//while index<averaged.len()
 	//let mut figure_index=0;
@@ -1457,9 +1462,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 {data_string}
 \egroup
 "#,shared_prelude=shared_prelude,local_prelude=local_prelude,data_string=tikz).unwrap();
-	let pdf_path=path.join(&pdf_filename);
+	let pdf_path=&outputs_path.join(&pdf_filename);
 	println!("Creating {:?}",pdf_path);
-	let tmp_path=path.join("tikz_tmp");
+	let tmp_path=root.join("tikz_tmp");
 	if !tmp_path.is_dir()
 	{
 		fs::create_dir(&tmp_path).expect("Something went wrong when creating the tikz tmp directory.");
@@ -1476,11 +1481,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	}
 	let main_cfg_contents=
 	{
-		let cfg=path.join("main.cfg");
-		let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
-		let mut cfg_contents = String::new();
-		cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
-		cfg_contents
+		//let cfg=root.join("main.cfg");
+		//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+		//let mut cfg_contents = String::new();
+		//cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
+		//cfg_contents
+		files.cfg_contents.clone().unwrap()
 	};
 	let all_git_formatted=
 	{
@@ -1581,7 +1587,7 @@ PreprocessArgMax{
 	argument: =configuration.traffic.load,
 }
 */
-fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(usize, ConfigurationValue,ConfigurationValue)>, total_experiments:usize, path:&Path)
+fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(usize, ConfigurationValue,ConfigurationValue)>, total_experiments:usize, files:&ExperimentFiles)
 	-> Result<(),BackendError>
 {
 	//File to be crated, inside "path/".
@@ -1622,15 +1628,16 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(us
 	let selector=selector.expect("There were no selector");
 	let target=target.expect("There were no target");
 	let argument=argument.expect("There were no argument");
+	let outputs_path = files.get_outputs_path();
 	// --- Evaluate the records
 	//records [ selector, argument, target value ]
 	let mut records : Vec< (ConfigurationValue, ConfigurationValue, f64 ) > = vec![];
 	for &(experiment_index, ref configuration,ref result) in results.iter()
 	{
 		let context=combine(experiment_index, configuration,result);
-		let selector=reevaluate(&selector,&context,path);
-		let target=reevaluate(&target,&context,path);
-		let argument=reevaluate(&argument,&context,path);
+		let selector=reevaluate(&selector,&context,&outputs_path);
+		let target=reevaluate(&target,&context,&outputs_path);
+		let argument=reevaluate(&argument,&context,&outputs_path);
 		match target
 		{
 			ConfigurationValue::Number(x) => records.push( (selector,argument,x) ),
@@ -1680,7 +1687,7 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(us
 	for &(experiment_index, ref configuration,ref result) in results.iter()
 	{
 		let context=combine(experiment_index,configuration,result);
-		let selector=reevaluate(&selector,&context,path);
+		let selector=reevaluate(&selector,&context,&outputs_path);
 		let index : usize = optimal.iter().position(|r|r.0 == selector).unwrap_or_else(||panic!("did not found selector {}",selector));
 		let content = vec![
 			(String::from("argument"),optimal[index].1.clone()),
@@ -1689,7 +1696,7 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(us
 		data[experiment_index]= ConfigurationValue::Object(String::from("PreprocessedArgMax"), content);
 	}
 	let cfg = ConfigurationValue::Array(data);
-	let data_path=path.join(filename);
+	let data_path=&outputs_path.join(filename);
 	let mut output = File::create(&data_path).expect("Could not create the data file.");
 	//writeln!(output,"{}",cfg).unwrap();
 	let binary_data = config::config_to_binary(&cfg).expect("error while serializing into binary");

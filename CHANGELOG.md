@@ -9,6 +9,11 @@ BUGFIX: allow push action to work if remote directory exists but main.cfg does n
 Declaration of Module `router::Basic` made public, so that its documentation is generated.
 Added `get_version_number`, in parallel to `get_git_id`.
 git commit -m "Get version number. Fixes with latex and actions on remote."
+BREAKING CHANGE: functions on the output module now use ExperimentFiles instead of Path.
+Generated outputs moved into their own directory.
+Added field `Experiment::experiment_to_slurm` to tie experiment numbers to launcher scripts.
+Added capability to check errors in the launch script standard error output.
+git commit -m "Outputs moved to their own directory. Check error files."
 
 ### 2022-02-12
 Fix on the tikz backend `/tikz/.cd`.
