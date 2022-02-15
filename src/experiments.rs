@@ -138,19 +138,19 @@ fn gather_slurm_jobs() -> Result<Vec<usize>,std::io::Error>
 	).collect())
 }
 
-fn slurm_get_association(field:&str) -> Result<String,std::io::Error>
+fn slurm_get_association(field:&str) -> Result<String,()>
 {
 	let command = Command::new("sacctmgr")
 		.arg("list")
 		.arg("associations")
 		.arg("-p")
-		.output()?;
+		.output().map_err(|_|())?;
 	let output=String::from_utf8_lossy(&command.stdout);
 	let mut lines = output.lines();
 	//let (index,header) = lines.next().unwrap().split('|').enumerate().find(|i,ifield|ifield==field).unwrap_or_else(||format!("field {} not found in header"));
 	let mut index_user=0;
 	let mut index_field=0;
-	let header = lines.next().unwrap();
+	let header = lines.next().ok_or( () )?;
 	for (header_index,header_field) in header.split('|').enumerate()
 	{
 		if header_field == "User"
@@ -162,7 +162,8 @@ fn slurm_get_association(field:&str) -> Result<String,std::io::Error>
 			index_field =header_index;
 		}
 	}
-	let user = std::env::var("USER").unwrap_or_else(|_|panic!("could not read $USER"));
+	//let user = std::env::var("USER").unwrap_or_else(|_|panic!("could not read $USER"));
+	let user = std::env::var("USER").map_err( |_|() )?;
 	for line in lines
 	{
 		let values:Vec<&str> = line.split('|').collect();
@@ -171,23 +172,24 @@ fn slurm_get_association(field:&str) -> Result<String,std::io::Error>
 			return Ok(values[index_field].to_string());
 		}
 	}
-	panic!("field not found");
+	//panic!("field not found");
+	Err( () )
 }
 
-fn slurm_get_qos(name:&str, field:&str) -> Result<String,std::io::Error>
+fn slurm_get_qos(name:&str, field:&str) -> Result<String,()>
 {
 	//sacctmgr show qos -p
 	let command=Command::new("sacctmgr")
 		.arg("show")
 		.arg("qos")
 		.arg("-p")
-		.output()?;
+		.output().map_err(|_|())?;
 	let output=String::from_utf8_lossy(&command.stdout);
 	let mut lines = output.lines();
 	//Name==main -> MaxSubmitPU?->value
 	let mut index_name=0;
 	let mut index_field=0;
-	let header = lines.next().unwrap();
+	let header = lines.next().ok_or( () )?;
 	for (header_index,header_field) in header.split('|').enumerate()
 	{
 		if header_field == "Name"
@@ -207,22 +209,24 @@ fn slurm_get_qos(name:&str, field:&str) -> Result<String,std::io::Error>
 			return Ok(values[index_field].to_string());
 		}
 	}
-	panic!("field not found");
+	//panic!("field not found");
+	Err( () )
 }
 
-pub fn slurm_available_space() -> usize
+pub fn slurm_available_space() -> Result<usize,()>
 {
 	let command=Command::new("squeue")
 		.arg("-ho")
 		.arg("%A")
 		.arg("--me")
-		.output().unwrap();
+		.output().map_err(|_|())?;
 	let output=String::from_utf8_lossy(&command.stdout);
 	let current = output.lines().count();
-	let qos = slurm_get_association("Def QOS").unwrap();//--> main ?
-	let maximum = slurm_get_qos(&qos,"MaxSubmitPU").unwrap();//--> 2000 ?
-	let maximum = maximum.parse::<usize>().expect("should be an integer");
-	maximum - current
+	let qos = slurm_get_association("Def QOS")?;//--> main ?
+	let maximum = slurm_get_qos(&qos,"MaxSubmitPU")?;//--> 2000 ?
+	//let maximum = maximum.parse::<usize>().expect("should be an integer");
+	let maximum = maximum.parse::<usize>().map_err(|_|())?;
+	Ok(maximum - current)
 }
 
 ///Simulations to be run in a slurm/other job.
@@ -1036,8 +1040,10 @@ impl<'a> Experiment<'a>
 				// $ sacctmgr list associations
 				// $ sacctmgr show qos
 				//as described in https://stackoverflow.com/questions/61565703/get-maximum-number-of-jobs-allowed-in-slurm-cluster-as-a-user
-				let available = slurm_available_space();
-				println!("Available number of jobs to send to slurm is {}",available);
+				if let Ok(available) = slurm_available_space()
+				{
+					println!("Available number of jobs to send to slurm is {}",available);
+				}
 			},
 			Action::Check =>
 			{

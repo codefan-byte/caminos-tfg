@@ -10,6 +10,7 @@ Defined a function to query the maximum number of jobs allowed on the slurm syst
 Bring version number in another way.
 Fixed UniformDistance pattern.
 git commit -m "query slurm jobs, fix UniformDistance, fix version number"
+git commit -m "really fix UniformDistance"
 
 ### 2022-02-14
 Removed verbose message when gnerating outputs.
