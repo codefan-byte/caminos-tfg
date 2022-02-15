@@ -1434,7 +1434,7 @@ impl Pattern for UniformDistance
 		let n=topology.num_routers();
 		//assert!(n==source_size && n==target_size,"The UniformDistance pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
 		assert!(source_size==target_size,"The UniformDistance pattern needs source_size({})==target_size({})",source_size,target_size);
-		assert!(source_size/n == 0,"The UniformDistance pattern needs the number of routers({}) to be a divisor of source_size({})",n,source_size);
+		assert!(source_size%n == 0,"The UniformDistance pattern needs the number of routers({}) to be a divisor of source_size({})",n,source_size);
 		self.concentration = source_size/n;
 		self.pool.reserve(n);
 		for i in 0..n

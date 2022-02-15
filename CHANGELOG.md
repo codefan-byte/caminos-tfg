@@ -11,6 +11,7 @@ Bring version number in another way.
 Fixed UniformDistance pattern.
 git commit -m "query slurm jobs, fix UniformDistance, fix version number"
 git commit -m "really fix UniformDistance"
+git commit -m "again with UniformDistance..."
 
 ### 2022-02-14
 Removed verbose message when gnerating outputs.
