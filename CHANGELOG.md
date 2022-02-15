@@ -6,6 +6,10 @@
 ### 2022-02-15
 Added `Pattern::UniformDistance`.
 git commit -m "added UniformDistance pattern"
+Defined a function to query the maximum number of jobs allowed on the slurm system.
+Bring version number in another way.
+Fixed UniformDistance pattern.
+git commit -m "query slurm jobs, fix UniformDistance, fix version number"
 
 ### 2022-02-14
 Removed verbose message when gnerating outputs.

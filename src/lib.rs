@@ -2071,7 +2071,12 @@ pub fn get_git_id() -> &'static str
 /// In public version this is more useful than `get_git_id`.
 pub fn get_version_number() -> &'static str
 {
-	include_str!(concat!(env!("OUT_DIR"), "/generated_version_number"))
+	//include_str!(concat!(env!("OUT_DIR"), "/generated_version_number"))
+	match option_env!("CARGO_PKG_VERSION")
+	{
+		Some( version ) => version,
+		_ => "?",
+	}
 }
 
 

@@ -1421,6 +1421,8 @@ pub struct UniformDistance
 {
 	///Distance to which destinations must chosen.
 	distance: usize,
+	///sources/destinations mapped to each router.
+	concentration: usize,
 	///`pool[i]` contains the routers at `distance` from the router `i`. 
 	pool: Vec<Vec<usize>>,
 }
@@ -1430,7 +1432,10 @@ impl Pattern for UniformDistance
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
 		let n=topology.num_routers();
-		assert!(n==source_size && n==target_size,"The UniformDistance pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
+		//assert!(n==source_size && n==target_size,"The UniformDistance pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
+		assert!(source_size==target_size,"The UniformDistance pattern needs source_size({})==target_size({})",source_size,target_size);
+		assert!(n % source_size == 0,"The UniformDistance pattern needs the number of routers({}) to be multiple of source_size({})",n,source_size);
+		self.concentration = n/source_size;
 		self.pool.reserve(n);
 		for i in 0..n
 		{
@@ -1441,9 +1446,9 @@ impl Pattern for UniformDistance
 	}
 	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
 	{
-		let pool = &self.pool[origin];
+		let pool = &self.pool[origin/self.concentration];
 		let r=rng.borrow_mut().gen_range(0,pool.len());
-		pool[r]
+		pool[r]*self.concentration + (origin%self.concentration)
 	}
 }
 
@@ -1480,7 +1485,8 @@ impl UniformDistance
 		let distance = distance.expect("There were no distance");
 		UniformDistance{
 			distance,
-			pool: vec![],
+			concentration:0,//to be filled on initialization
+			pool: vec![],//to be filled oninitialization
 		}
 	}
 }
