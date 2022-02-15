@@ -14,6 +14,7 @@ use std::cmp::Ordering;
 use std::process::Command;
 use std::collections::{HashSet,BTreeMap};
 use std::rc::Rc;
+use std::fmt::Debug;
 
 use crate::config_parser::{ConfigurationValue,Expr};
 use crate::config::{self,combine,evaluate,reevaluate,values_to_f32_with_count};
@@ -221,6 +222,10 @@ fn create_csv(description: &ConfigurationValue, results: &Vec<(usize,Configurati
 #[derive(PartialEq,PartialOrd,Debug)]
 struct RawRecord
 {
+	/// Index associated to the selector. To keep things in order.
+	selector_index: usize,
+	/// Index associated to the legend. To keep things in order.
+	legend_index: usize,
 	///The selector refers to some Figure
 	selector: ConfigurationValue,
 	///The legend refers to the line inside a Figure
@@ -530,6 +535,17 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 	let mut avgs:Vec<Vec<AveragedRecord>>=Vec::with_capacity(kind.len());
 	//let git_id_expr = Expr::Ident("git_id".to_string());
 	let git_id_expr = Expr::Member( Rc::new(Expr::Ident("result".to_string())) , "git_id".to_string() );
+	let mut selector_map = EnumeratedMap::default();
+	let mut legend_map = EnumeratedMap::default();
+	for &(experiment_index, ref configuration,ref result) in results.iter()
+	{
+		//A first pass to populate maps
+		let context=combine(experiment_index, configuration,result);
+		let selector=reevaluate(&selector,&context,&outputs_path);
+		let legend=reevaluate(&legend,&context,&outputs_path);
+		selector_map.insert( &selector );
+		legend_map.insert( &legend );
+	}
 	for pk in kind.iter()
 	{
 		println!("averaging plot {:?}",pk);
@@ -550,6 +566,8 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 				let selector=reevaluate(&selector,&context,&outputs_path);
 				let legend=reevaluate(&legend,&context,&outputs_path);
 				let git_id = evaluate(&git_id_expr,&context,&outputs_path);
+				let selector_index = selector_map.insert( &selector );
+				let legend_index = legend_map.insert( &legend );
 				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path));
 				if let ConfigurationValue::Array(ref l)=histogram_values
 				{
@@ -589,6 +607,8 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 							_ => panic!("The abscissa is not an array when using array to build the ordinates"),
 						};
 						let record=RawRecord{
+							selector_index,
+							legend_index,
 							selector:selector.clone(),
 							legend:legend.clone(),
 							parameter: abscissa.clone(),
@@ -616,9 +636,15 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 			for &(experiment_index, ref configuration,ref result) in results.iter()
 			{
 				let context=combine(experiment_index, configuration,result);
+				let selector=reevaluate(&selector,&context,&outputs_path);
+				let legend=reevaluate(&legend,&context,&outputs_path);
+				let selector_index = selector_map.insert( &selector );
+				let legend_index = legend_map.insert( &legend );
 				let record=RawRecord{
-					selector:reevaluate(&selector,&context,&outputs_path),
-					legend:reevaluate(&legend,&context,&outputs_path),
+					selector_index,
+					legend_index,
+					selector,
+					legend,
 					parameter:reevaluate(&pk.parameter.unwrap(),&context,&outputs_path),
 					abscissa:reevaluate(&pk.abscissas.unwrap(),&context,&outputs_path),
 					ordinate:reevaluate(&pk.ordinates.unwrap(),&context,&outputs_path),
@@ -1748,4 +1774,39 @@ fn shared_element<I:Iterator>(iter:&mut I) -> Option<I::Item> where I::Item : Pa
 		None
 	}
 }
+
+
+
+/// A map over anything implmenting Debug.
+/// Uses `Debug::fmt` to get the keys. Elements with same debug representation will be considered equal to this map's effects.
+#[derive(Debug,Default)]
+struct EnumeratedMap<T:Debug>
+{
+	///Map from `key.fmt` to offsets.
+	map: BTreeMap<String,usize>,
+	///Elements
+	data: Vec<T>
+}
+
+impl<T:Debug+Clone> EnumeratedMap<T>
+{
+	/// Clone if necessary
+	pub fn insert(&mut self, element:&T)->usize
+	{
+		let key = format!("{:?}",element);
+		match self.map.get(&key)
+		{
+			Some(&x) => x,
+			None =>
+			{
+				let index=self.data.len();
+				self.data.push(element.clone());
+				self.map.insert(key,index);
+				index
+			}
+		}
+	}
+}
+
+
 

@@ -313,14 +313,20 @@ pub struct ExperimentFiles
 
 impl ExperimentFiles
 {
-	pub fn build_cfg_contents(&mut self)
+	/// panic indicates whether to allow panic in this code. Otherwise do not build the content and be silent.
+	pub fn build_cfg_contents(&mut self, panic:bool)
 	{
 		if let None = self.cfg_contents
 		{
 			let cfg=self.root.as_ref().unwrap().join("main.cfg");
 			if let Some(session) = &self.ssh2_session {
-				let sftp = session.sftp().expect("error starting sftp");
-				let mut remote_main_cfg =  sftp.open(&cfg).expect("Could not open remote main.cfg");
+				//let sftp = session.sftp().expect("error starting sftp");
+				let sftp = session.sftp();
+				if !panic && sftp.is_err() { return; }
+				let sftp = sftp.expect("error starting sftp");
+				let remote_main_cfg =  sftp.open(&cfg);
+				if !panic && remote_main_cfg.is_err() { return; }
+				let mut remote_main_cfg= remote_main_cfg.expect("Could not open remote main.cfg");
 				let mut remote_main_cfg_contents=String::new();
 				remote_main_cfg.read_to_string(&mut remote_main_cfg_contents).expect("Could not read remote main.cfg.");
 				self.cfg_contents = Some(remote_main_cfg_contents);
@@ -354,7 +360,7 @@ impl ExperimentFiles
 	{
 		if let None = self.parsed_cfg
 		{
-			self.build_cfg_contents();
+			self.build_cfg_contents(false);
 			let parsed_cfg=match config_parser::parse(self.cfg_contents_ref())
 			{
 				Err(x) => panic!("error parsing configuration file: {:?}",x),
@@ -946,7 +952,7 @@ impl<'a> Experiment<'a>
 			Action::Pull =>
 			{
 				self.initialize_remote();
-				self.remote_files.as_mut().unwrap().build_cfg_contents();
+				self.remote_files.as_mut().unwrap().build_cfg_contents(true);
 				self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
 			},
 			Action::RemoteCheck =>
@@ -991,7 +997,7 @@ impl<'a> Experiment<'a>
 					},
 				};
 				//check remote config
-				self.remote_files.as_mut().unwrap().build_cfg_contents();
+				self.remote_files.as_mut().unwrap().build_cfg_contents(false);
 				if self.remote_files.as_ref().unwrap().cfg_enough_content() {
 					self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
 				} else {
@@ -1491,7 +1497,7 @@ impl<'a> Experiment<'a>
 				Err(x) => panic!("error parsing output description file: {:?}",x),
 				Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
 				{
-					println!("description={}",description);
+					//println!("description={}",description);
 					match create_output(&description,&results,self.files.experiments.len(),&self.files)
 					{
 						Ok(_) => (),

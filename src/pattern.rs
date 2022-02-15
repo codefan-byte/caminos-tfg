@@ -187,6 +187,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Hotspots" => Box::new(Hotspots::new(arg)),
 			"RandomMix" => Box::new(RandomMix::new(arg)),
 			"ConstantShuffle" => Box::new(ConstantShuffle::new(arg)),
+			"UniformDistance" => Box::new(UniformDistance::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1409,6 +1410,77 @@ impl ConstantShuffle
 		ConstantShuffle{
 			size:0,
 			pending:RefCell::new(Vec::new()),
+		}
+	}
+}
+
+
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct UniformDistance
+{
+	///Distance to which destinations must chosen.
+	distance: usize,
+	///`pool[i]` contains the routers at `distance` from the router `i`. 
+	pool: Vec<Vec<usize>>,
+}
+
+impl Pattern for UniformDistance
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+		let n=topology.num_routers();
+		assert!(n==source_size && n==target_size,"The UniformDistance pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
+		self.pool.reserve(n);
+		for i in 0..n
+		{
+			let mut found: Vec<usize> = (0..n).filter(|&j|topology.distance(i,j)==self.distance).collect();
+			found.shrink_to_fit();
+			self.pool.push(found);
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	{
+		let pool = &self.pool[origin];
+		let r=rng.borrow_mut().gen_range(0,pool.len());
+		pool[r]
+	}
+}
+
+impl UniformDistance
+{
+	fn new(arg:PatternBuilderArgument) -> UniformDistance
+	{
+		let mut distance =  None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="UniformDistance"
+			{
+				panic!("A UniformDistance must be created from a `UniformDistance` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"distance" => match value
+					{
+						&ConfigurationValue::Number(f) => distance=Some(f as usize),
+						_ => panic!("bad value for distance"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in UniformDistance",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a UniformDistance from a non-Object");
+		}
+		let distance = distance.expect("There were no distance");
+		UniformDistance{
+			distance,
+			pool: vec![],
 		}
 	}
 }

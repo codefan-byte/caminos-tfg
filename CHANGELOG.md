@@ -2,6 +2,16 @@
 
 ## next [0.4.3 or greater]
 
+
+### 2022-02-15
+Added `Pattern::UniformDistance`.
+git commit -m "added UniformDistance pattern"
+
+### 2022-02-14
+Removed verbose message when gnerating outputs.
+Do not panic when remote main.cfg does not exist while pushing.
+
+
 ## [0.4.2]
 
 ### 2022-02-14
