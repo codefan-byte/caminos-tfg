@@ -12,6 +12,8 @@ Fixed UniformDistance pattern.
 git commit -m "query slurm jobs, fix UniformDistance, fix version number"
 git commit -m "really fix UniformDistance"
 git commit -m "again with UniformDistance..."
+git tag 0.4.3 -m "v0.4.3"
+git commit -m "publish 0.4.3"
 
 ### 2022-02-14
 Removed verbose message when gnerating outputs.
