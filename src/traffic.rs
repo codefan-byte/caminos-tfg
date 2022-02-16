@@ -38,11 +38,14 @@ pub enum ServerTrafficState
 	///The server is currently generating traffic.
 	Generating,
 	///The server is currently waiting to receive some message from others.
+	///If the server is known to not going to generate any more traffic it should be a `FinishedGenerating` state instead.
 	WaitingData,
 	///The server is not going to generate traffic nor change state until the `cycle`.
 	WaitingCycle{cycle:usize},
 	///The server is not generating traffic for some other reasons.
 	UnspecifiedWait,
+	///This server will not generate more traffic, but perhaps it will consume.
+	FinishedGenerating,
 	///This server has nothing else to do within this `Traffic`.
 	Finished,
 }
@@ -453,6 +456,7 @@ impl Traffic for Sum
 			{
 				Finished => (),
 				Generating => return Generating,
+				FinishedGenerating => state = FinishedGenerating,
 				_ => state = UnspecifiedWait,
 			}
 		}
@@ -915,7 +919,9 @@ impl Traffic for Burst
 			ServerTrafficState::Generating
 		} else {
 			//We do not know whether someone is sending us data.
-			if self.is_finished() { ServerTrafficState::Finished } else { ServerTrafficState::UnspecifiedWait }
+			//if self.is_finished() { ServerTrafficState::Finished } else { ServerTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			ServerTrafficState::FinishedGenerating
 		}
 	}
 }
@@ -1329,6 +1335,7 @@ impl Traffic for Sequence
 			} else {
 				state
 			}
+			//In the last traffic we could try to check for FinishedGenerating
 		}
 	}
 }

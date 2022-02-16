@@ -174,6 +174,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 		};
 		match cv_name.as_ref()
 		{
+			"Identity" => Box::new(Identity::new(arg)),
 			"Uniform" => Box::new(UniformPattern::new(arg)),
 			"RandomPermutation" => Box::new(RandomPermutation::new(arg)),
 			"RandomInvolution" => Box::new(RandomInvolution::new(arg)),
@@ -186,7 +187,13 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
 			"Hotspots" => Box::new(Hotspots::new(arg)),
 			"RandomMix" => Box::new(RandomMix::new(arg)),
-			"ConstantShuffle" => Box::new(ConstantShuffle::new(arg)),
+			"ConstantShuffle" =>
+			{
+				println!("WARNING: the name ConstantShuffle is deprectaed, use GloballyShufflingDestinations");
+				Box::new(GloballyShufflingDestinations::new(arg))
+			}
+			"GloballyShufflingDestinations" => Box::new(GloballyShufflingDestinations::new(arg)),
+			"GroupShufflingDestinations" => Box::new(GroupShufflingDestinations::new(arg)),
 			"UniformDistance" => Box::new(UniformDistance::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
@@ -194,6 +201,70 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 	else
 	{
 		panic!("Trying to create a Pattern from a non-Object");
+	}
+}
+
+///Just set `destination = origin`.
+///Mostly to be used inside some meta-patterns.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Identity
+{
+}
+
+impl Pattern for Identity
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+		if source_size!=target_size
+		{
+			unimplemented!("The Identity pattern requires source_size({})=target_size({})",source_size,target_size);
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)->usize
+	{
+		origin
+	}
+}
+
+impl Identity
+{
+	fn new(arg:PatternBuilderArgument) -> Identity
+	{
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Identity"
+			{
+				panic!("A Identity must be created from a `Identity` object not `{}`",cv_name);
+			}
+			for &(ref name,ref _value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"legend_name" => (),
+					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+					//"servers" => match value
+					//{
+					//	&ConfigurationValue::Number(f) => servers=Some(f as usize),
+					//	_ => panic!("bad value for servers"),
+					//}
+					//"load" => match value
+					//{
+					//	&ConfigurationValue::Number(f) => load=Some(f as f32),
+					//	_ => panic!("bad value for load"),
+					//}
+					//"message_size" => (),
+					_ => panic!("Nothing to do with field {} in Identity",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Identity from a non-Object");
+		}
+		Identity{
+		}
 	}
 }
 
@@ -1330,40 +1401,37 @@ impl RandomMix
 	}
 }
 
-///Each source keeps a shuffled list of destinations to which send. Once all have sent it is rebuilt and shuffled again.
+///It keeps a shuffled list, global for all sources, of destinations to which send. Once all have sent it is rebuilt and shuffled again.
 ///Independently of past requests, decisions or origin.
 #[derive(Quantifiable)]
 #[derive(Debug)]
-pub struct ConstantShuffle
+pub struct GloballyShufflingDestinations
 {
-	///Number of servers, including self.
+	///Number of destinations.
 	size: usize,
 	///Pending destinations.
 	pending: RefCell<Vec<usize>>,
 }
 
-impl Pattern for ConstantShuffle
+impl Pattern for GloballyShufflingDestinations
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
 	{
 		self.size=target_size;
 		self.pending=RefCell::new(Vec::with_capacity(self.size));
-		if source_size!=target_size
-		{
-			unimplemented!("Different sizes are not yet implemented for ConstantShuffle");
-		}
+		//if source_size!=target_size
+		//{
+		//	unimplemented!("Different sizes are not yet implemented for GloballyShufflingDestinations");
+		//}
 	}
-	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, _origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
 	{
 		let mut pending = self.pending.borrow_mut();
 		if pending.is_empty()
 		{
 			for i in 0..self.size
 			{
-				if i!=origin
-				{
-					pending.push(i);
-				}
+				pending.push(i);
 			}
 			rng.borrow_mut().shuffle(&mut pending);
 		}
@@ -1371,15 +1439,15 @@ impl Pattern for ConstantShuffle
 	}
 }
 
-impl ConstantShuffle
+impl GloballyShufflingDestinations
 {
-	fn new(arg:PatternBuilderArgument) -> ConstantShuffle
+	fn new(arg:PatternBuilderArgument) -> GloballyShufflingDestinations
 	{
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
-			if cv_name!="ConstantShuffle"
+			if cv_name!="GloballyShufflingDestinations"
 			{
-				panic!("A ConstantShuffle must be created from a `ConstantShuffle` object not `{}`",cv_name);
+				panic!("A GloballyShufflingDestinations must be created from a `GloballyShufflingDestinations` object not `{}`",cv_name);
 			}
 			for &(ref name,ref _value) in cv_pairs
 			{
@@ -1399,17 +1467,98 @@ impl ConstantShuffle
 					//	_ => panic!("bad value for load"),
 					//}
 					//"message_size" => (),
-					_ => panic!("Nothing to do with field {} in ConstantShuffle",name),
+					_ => panic!("Nothing to do with field {} in GloballyShufflingDestinations",name),
 				}
 			}
 		}
 		else
 		{
-			panic!("Trying to create a ConstantShuffle from a non-Object");
+			panic!("Trying to create a GloballyShufflingDestinations from a non-Object");
 		}
-		ConstantShuffle{
-			size:0,
-			pending:RefCell::new(Vec::new()),
+		GloballyShufflingDestinations{
+			size:0,//to be filled in initialization
+			pending:RefCell::new(Vec::new()),//to be filled in initialization
+		}
+	}
+}
+
+///For each group, it keeps a shuffled list of destinations to which send. Once all have sent it is rebuilt and shuffled again.
+///Independently of past requests, decisions or origin.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct GroupShufflingDestinations
+{
+	///The size of each group.
+	group_size: usize,
+	///Number of destinations, in total.
+	size: usize,
+	///Pending destinations.
+	pending: Vec<RefCell<Vec<usize>>>,
+}
+
+impl Pattern for GroupShufflingDestinations
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	{
+		self.size = target_size;
+		let number_of_groups = (source_size+self.group_size-1) / self.group_size;// ts/gs rounded up
+		self.pending=vec![RefCell::new(Vec::with_capacity(self.size)) ; number_of_groups];
+		//if source_size!=target_size
+		//{
+		//	unimplemented!("Different sizes are not yet implemented for GroupShufflingDestinations");
+		//}
+	}
+	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
+	{
+		let group = origin / self.group_size;
+		let mut pending = self.pending[group].borrow_mut();
+		if pending.is_empty()
+		{
+			for i in 0..self.size
+			{
+				pending.push(i);
+			}
+			rng.borrow_mut().shuffle(&mut pending);
+		}
+		pending.pop().unwrap()
+	}
+}
+
+impl GroupShufflingDestinations
+{
+	fn new(arg:PatternBuilderArgument) -> GroupShufflingDestinations
+	{
+		let mut group_size = None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="GroupShufflingDestinations"
+			{
+				panic!("A GroupShufflingDestinations must be created from a `GroupShufflingDestinations` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"group_size" => match value
+					{
+						&ConfigurationValue::Number(f) => group_size=Some(f as usize),
+						_ => panic!("bad value for group_size"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in GroupShufflingDestinations",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a GroupShufflingDestinations from a non-Object");
+		}
+		let group_size = group_size.expect("There was no group_size");
+		GroupShufflingDestinations{
+			group_size,
+			size:0,//to be filled in initialization
+			pending:vec![],//to be filled in initialization
 		}
 	}
 }

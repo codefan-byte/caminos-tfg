@@ -1,7 +1,15 @@
 # Change Log
 
-## next [0.4.3 or greater]
+## next [0.4.4 or greater]
 
+### 2022-02-16
+The pattern `ConstantShuffle` has been renamed into `GloballyShufflingDestinations` and improved a bit.
+Added a similar pattern `GroupShufflingDestinations`, to have something closer to its original idea.
+Added `ServerTrafficState::FinishedGenerating`, since it represent the "finished" state more quickly reached and easily determined.
+Added `Pattern::Identity` for ease of meta-patterns.
+git commit -m "more patterns"
+
+## [0.4.3]
 
 ### 2022-02-15
 Added `Pattern::UniformDistance`.
