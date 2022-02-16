@@ -8,6 +8,9 @@ Added a similar pattern `GroupShufflingDestinations`, to have something closer t
 Added `ServerTrafficState::FinishedGenerating`, since it represent the "finished" state more quickly reached and easily determined.
 Added `Pattern::Identity` for ease of meta-patterns.
 git commit -m "more patterns"
+New traffic `MultimodalBurst`.
+Added `Quantifiable` to more tuples.
+git commit -m "added traffic MultiModalBurst"
 
 ## [0.4.3]
 

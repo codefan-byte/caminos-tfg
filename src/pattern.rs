@@ -189,7 +189,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RandomMix" => Box::new(RandomMix::new(arg)),
 			"ConstantShuffle" =>
 			{
-				println!("WARNING: the name ConstantShuffle is deprectaed, use GloballyShufflingDestinations");
+				println!("WARNING: the name ConstantShuffle is deprecated, use GloballyShufflingDestinations");
 				Box::new(GloballyShufflingDestinations::new(arg))
 			}
 			"GloballyShufflingDestinations" => Box::new(GloballyShufflingDestinations::new(arg)),

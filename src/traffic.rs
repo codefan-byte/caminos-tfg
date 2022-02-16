@@ -211,6 +211,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"ProductTraffic" => Box::new(ProductTraffic::new(arg)),
 			"SubRangeTraffic" => Box::new(SubRangeTraffic::new(arg)),
 			"Burst" => Box::new(Burst::new(arg)),
+			"MultimodalBurst" => Box::new(MultimodalBurst::new(arg)),
 			"Reactive" => Box::new(Reactive::new(arg)),
 			"TimeSequenced" => Box::new(TimeSequenced::new(arg)),
 			"Sequence" => Box::new(Sequence::new(arg)),
@@ -842,22 +843,6 @@ pub struct Burst
 	generated_messages: BTreeSet<*const Message>,
 }
 
-//impl Quantifiable for Burst
-//{
-//	fn total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//	fn print_memory_breakdown(&self)
-//	{
-//		unimplemented!();
-//	}
-//	fn forecast_total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//}
-
 impl Traffic for Burst
 {
 	fn generate_message(&mut self, origin:usize, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> Result<Rc<Message>,TrafficError>
@@ -1385,4 +1370,211 @@ impl Sequence
 		}
 	}
 }
+
+/// Like the `Burst` pattern, but generating messages from different patterns and with different message sizes.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct MultimodalBurst
+{
+	///Number of servers applying this traffic.
+	servers: usize,
+	/// For each kind of message `provenance` we have
+	/// `(pattern,total_messages,message_size,step_size)`
+	/// a Pattern deciding the destination of the message
+	/// a usize with the total number of messages of this kind that each server must generate
+	/// a usize with the size of each message size.
+	/// a usize with the number of messages to send of this kind before switching to the next one.
+	provenance: Vec< (Box<dyn Pattern>,usize,usize,usize) >,
+	///For each server and kind we track `pending[server][kind]=(total_remaining,step_remaining)`.
+	///where `total_remaining` is the total number of messages of this kind that this server has yet to send.
+	///and `step_remaining` is the number of messages that the server will send before switch to the next kind.
+	pending: Vec<Vec<(usize,usize)>>,
+	///For each server we track which provenance kind is the next one.
+	///If for the annotated provenance there is not anything else to send then use the next one.
+	next_provenance: Vec<usize>,
+	///Set of generated messages.
+	generated_messages: BTreeSet<*const Message>,
+}
+
+impl Traffic for MultimodalBurst
+{
+	fn generate_message(&mut self, origin:usize, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin>=self.servers
+		{
+			//panic!("origin {} does not belong to the traffic",origin);
+			return Err(TrafficError::OriginOutsideTraffic);
+		}
+		let pending = &mut self.pending[origin];
+		// Determine the kind to use.
+		let mut provenance_index = self.next_provenance[origin];
+		loop
+		{
+			let (ref mut total_remaining, ref mut step_remaining) = pending[provenance_index];
+			if *total_remaining > 0
+			{
+				*step_remaining -=1;
+				*total_remaining -=1;
+				if *step_remaining == 0
+				{
+					//When the whole step is performed advance `next_provenance`.
+					let (ref _pattern, _total_messages, _message_size, step_size) = self.provenance[provenance_index];
+					*step_remaining = step_size;
+					self.next_provenance[origin] = (provenance_index+1) % pending.len();
+				}
+				break;
+			}
+			provenance_index = (provenance_index+1) % pending.len();
+		}
+		// Build the message
+		let (ref pattern,_total_messages,message_size,_step_size) = self.provenance[provenance_index];
+		let destination=pattern.get_destination(origin,topology,rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		Ok(Rc::new(Message{
+			origin,
+			destination,
+			size:message_size,
+			creation_cycle: cycle,
+		}))
+	}
+	fn probability_per_cycle(&self, server:usize) -> f32
+	{
+		for (total_remaining,_step_remaining) in self.pending[server].iter()
+		{
+			if *total_remaining > 0
+			{
+				return 1.0;
+			}
+		}
+		0.0
+	}
+	fn try_consume(&mut self, message: Rc<Message>, _cycle:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>) -> bool
+	{
+		let message_ptr=message.as_ref() as *const Message;
+		self.generated_messages.remove(&message_ptr)
+	}
+	fn is_finished(&self) -> bool
+	{
+		if self.generated_messages.len()>0
+		{
+			return false;
+		}
+		for server_pending in self.pending.iter()
+		{
+			for (total_remaining, _step_remaining) in server_pending.iter()
+			{
+				if *total_remaining > 0
+				{
+					return false;
+				}
+			}
+		}
+		true
+	}
+	fn server_state(&self, server:usize, _cycle:usize) -> ServerTrafficState
+	{
+		if self.pending[server].iter().find(|(total_remaining,_step_remaining)| *total_remaining > 0 ).is_some() {
+			ServerTrafficState::Generating
+		} else {
+			//We do not know whether someone is sending us data.
+			//if self.is_finished() { ServerTrafficState::Finished } else { ServerTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			ServerTrafficState::FinishedGenerating
+		}
+	}
+}
+
+impl MultimodalBurst
+{
+	pub fn new(arg:TrafficBuilderArgument) -> MultimodalBurst
+	{
+		let mut servers=None;
+		let mut provenance : Option<Vec<(_,_,_,_)>> = None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="MultimodalBurst"
+			{
+				panic!("A MultimodalBurst must be created from a `MultimodalBurst` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match name.as_ref()
+				{
+					"servers" => match value
+					{
+						&ConfigurationValue::Number(f) => servers=Some(f as usize),
+						_ => panic!("bad value for servers"),
+					}
+					"provenance" => match value
+					{
+						&ConfigurationValue::Array(ref a) => provenance=Some(a.iter().map(|pcv|match pcv{
+							&ConfigurationValue::Object(ref _pcv_name, ref pcv_pairs) =>
+							{
+								let mut messages_per_server=None;
+								let mut pattern=None;
+								let mut message_size=None;
+								let mut step_size=None;
+								for &(ref pname, ref pvalue) in pcv_pairs
+								{
+									match pname.as_ref()
+									{
+										"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:pvalue,plugs:arg.plugs})),
+										"messages_per_server" | "total_messages" => match pvalue
+										{
+											&ConfigurationValue::Number(f) => messages_per_server=Some(f as usize),
+											_ => panic!("bad value for messages_per_server ({:?})",pvalue),
+										}
+										"message_size" => match pvalue
+										{
+											&ConfigurationValue::Number(f) => message_size=Some(f as usize),
+											_ => panic!("bad value for message_size"),
+										}
+										"step_size" => match pvalue
+										{
+											&ConfigurationValue::Number(f) => step_size=Some(f as usize),
+											_ => panic!("bad value for step_size"),
+										}
+										_ => panic!("Nothing to do with field {} in provenance of MultimodalBurst",name),
+									}
+								}
+								let pattern=pattern.expect("There were no pattern");
+								let messages_per_server=messages_per_server.expect("There were no messages_per_server");
+								let message_size=message_size.expect("There were no message_size");
+								let step_size=step_size.expect("There were no step_size");
+								(pattern,messages_per_server,message_size,step_size)
+							}
+							_ => panic!("bad value for provenance"),
+						}).collect()),
+						_ => panic!("bad value for provenance"),
+					}
+					_ => panic!("Nothing to do with field {} in MultimodalBurst",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a MultimodalBurst from a non-Object");
+		}
+		let servers=servers.expect("There were no servers");
+		let mut provenance=provenance.expect("There were no provenance");
+		for (pattern,_total_messages,_message_size,_step_size) in provenance.iter_mut()
+		{
+			pattern.initialize(servers, servers, arg.topology, arg.rng);
+		}
+		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size)|(*total_messages,*step_size)).collect();
+		MultimodalBurst{
+			servers,
+			provenance,
+			//pending_messages:vec![messages_per_server;servers],
+			//pending:vec![vec![(0,?);provenance.len()];servers],
+			pending: vec![each_pending;servers],
+			next_provenance:vec![0;servers],
+			generated_messages: BTreeSet::new(),
+		}
+	}
+}
+
 
