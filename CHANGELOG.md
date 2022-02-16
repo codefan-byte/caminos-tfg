@@ -11,6 +11,7 @@ git commit -m "more patterns"
 New traffic `MultimodalBurst`.
 Added `Quantifiable` to more tuples.
 git commit -m "added traffic MultiModalBurst"
+git commit -m "fix on MultimodalBurst"
 
 ## [0.4.3]
 

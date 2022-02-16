@@ -1433,12 +1433,14 @@ impl Traffic for MultimodalBurst
 		{
 			return Err(TrafficError::SelfMessage);
 		}
-		Ok(Rc::new(Message{
+		let message = Rc::new(Message{
 			origin,
 			destination,
 			size:message_size,
 			creation_cycle: cycle,
-		}))
+		});
+		self.generated_messages.insert(message.as_ref() as *const Message);
+		Ok(message)
 	}
 	fn probability_per_cycle(&self, server:usize) -> f32
 	{
