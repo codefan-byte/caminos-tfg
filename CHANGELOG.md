@@ -13,6 +13,7 @@ Added `Quantifiable` to more tuples.
 git commit -m "added traffic MultiModalBurst"
 git commit -m "fix on MultimodalBurst"
 git commit -m "do not panic when the slurm error file does not exist"
+git commit -m "write stderr_file correctly"
 
 ## [0.4.3]
 

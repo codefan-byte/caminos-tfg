@@ -1492,7 +1492,7 @@ impl<'a> Experiment<'a>
 								let slurm_stderr_path = runs_path.join(format!("jobs{}/launch{}-{}.err",journal_entry,batch,slurm_id));
 								let mut stderr_contents = String::new();
 								//let mut stderr_file=File::open(&slurm_stderr_path).unwrap_or_else(|_|panic!("{:?} could not be opened",slurm_stderr_path));
-								if let Ok(mut sdterr_file) = File::open(&slurm_stderr_path)
+								if let Ok(mut stderr_file) = File::open(&slurm_stderr_path)
 								{
 									stderr_file.read_to_string(&mut stderr_contents).unwrap_or_else(|_|panic!("something went wrong reading {:?}",slurm_stderr_path));
 									if stderr_contents.len()>=2
