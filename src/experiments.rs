@@ -1491,14 +1491,17 @@ impl<'a> Experiment<'a>
 							{
 								let slurm_stderr_path = runs_path.join(format!("jobs{}/launch{}-{}.err",journal_entry,batch,slurm_id));
 								let mut stderr_contents = String::new();
-								let mut stderr_file=File::open(&slurm_stderr_path).unwrap_or_else(|_|panic!("{:?} could not be opened",slurm_stderr_path));
-								stderr_file.read_to_string(&mut stderr_contents).unwrap_or_else(|_|panic!("something went wrong reading {:?}",slurm_stderr_path));
-								if stderr_contents.len()>=2
+								//let mut stderr_file=File::open(&slurm_stderr_path).unwrap_or_else(|_|panic!("{:?} could not be opened",slurm_stderr_path));
+								if let Ok(mut sdterr_file) = File::open(&slurm_stderr_path)
 								{
-									println!("Experiment {} contains errors in {:?}: {} bytes",experiment_index,slurm_stderr_path,stderr_contents.len());
-									println!("First error line: {}",stderr_contents.lines().next().expect("Unable to read first line from errors."));
-									errors+=1;
-									progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+									stderr_file.read_to_string(&mut stderr_contents).unwrap_or_else(|_|panic!("something went wrong reading {:?}",slurm_stderr_path));
+									if stderr_contents.len()>=2
+									{
+										println!("Experiment {} contains errors in {:?}: {} bytes",experiment_index,slurm_stderr_path,stderr_contents.len());
+										println!("First error line: {}",stderr_contents.lines().next().expect("Unable to read first line from errors."));
+										errors+=1;
+										progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+									}
 								}
 							}
 						}

@@ -12,6 +12,7 @@ New traffic `MultimodalBurst`.
 Added `Quantifiable` to more tuples.
 git commit -m "added traffic MultiModalBurst"
 git commit -m "fix on MultimodalBurst"
+git commit -m "do not panic when the slurm error file does not exist"
 
 ## [0.4.3]
 
