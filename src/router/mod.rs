@@ -634,16 +634,23 @@ impl StatusAtEmissor for StatusAtServer
 	//fn acknowledge(&mut self, _virtual_channel:usize)
 	{
 		//self.available_size+=1;
-		self.available_size=message.set_available_size.expect("there is no set_avilable_size in the message");
+		//self.available_size=message.set_available_size.expect("there is no set_avilable_size in the message");
+		let new_available_size=message.set_available_size.expect("there is no set_avilable_size in the message");
+		//if new_available_size>64 { dbg!("acknowledge",self.available_size,new_available_size); }
+		//if new_available_size < self.available_size { dbg!("what",new_available_size); }
+		//We receive a guarantee of available size. Guarantees smaller than we already know can be ignored.
+		self.available_size = self.available_size.max(new_available_size);
 	}
 
 	fn notify_outcoming_phit(&mut self, _virtual_channel: usize, _cycle:usize)
 	{
 		self.available_size-=1;
+		//if self.available_size <= 16 { dbg!("notify_outcoming_phit",self.available_size); }
 	}
 
 	fn can_transmit(&self, phit:&Rc<Phit>, _virtual_channel:usize)->bool
 	{
+		//if self.available_size <= 25 { dbg!("can_transmit",self.available_size, phit.index, phit.packet.size); }
 		if phit.is_begin()
 		{
 			self.available_size>=self.size_to_send
@@ -710,6 +717,8 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 	{
 		if phit.is_begin()
 		{
+			//let available_size = self.buffers.iter().map(|b|self.buffer_size - b.len()).max().expect("no buffers");
+			//if available_size>64 || available_size<25 { dbg!("insert",available_size); }
 			let good:Vec<usize>=self.buffers.iter().enumerate().filter_map(|(index,buffer)|{
 				let available = self.buffer_size - buffer.len();
 				if available >= phit.packet.size
@@ -754,10 +763,12 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 			Some(phit) =>
 			{
 				let available_size = self.buffers.iter().map(|b|self.buffer_size - b.len()).max().expect("no buffers");
+				//if available_size>64 || available_size<25 { dbg!("extract",available_size); }
 				//FIXME: we have to correct by link delay somewhere. Assuming delay=1 cycle here.
 				let available_size = if available_size>=1
 				{
-					available_size - 1
+					//The delay must be doubled. Because we have to guarantee that the current space `X` plus the in-flight phits (<=delay) is vaild in the future in up to delay cycles. Thefore when the notification reaches the emissor the space could be `X-delay` with another `delay` flits in-flight. The proper value is, therefore, `X-2delay`.
+					available_size.saturating_sub(2)
 				}
 				else
 				{

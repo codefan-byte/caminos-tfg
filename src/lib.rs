@@ -277,6 +277,7 @@ pub mod quantify;
 pub mod policies;
 pub mod experiments;
 pub mod config;
+pub mod error;
 
 use std::rc::Rc;
 use std::boxed::Box;
@@ -1309,7 +1310,8 @@ impl<'a> Simulation<'a>
 					let router=routers[router_index].borrow();
 					let nvc=router.num_virtual_channels();
 					let buffer_amount=nvc;
-					let buffer_size=(0..nvc).map(|vc|router.virtual_port_size(router_port,vc)).sum::<usize>();
+					//TODO: this seems that should a function of the TransmissionFromServer...
+					let buffer_size=(0..nvc).map(|vc|router.virtual_port_size(router_port,vc)).max().expect("0 buffers in the router");
 					let size_to_send=maximum_packet_size;
 					let from_server_mechanism = TransmissionFromServer::new(buffer_amount,buffer_size,size_to_send);
 					from_server_mechanism.new_status_at_emissor()
@@ -2056,7 +2058,14 @@ pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, opti
 	//{
 	//	Action::LocalAndOutput
 	//};
-	experiment.execute_action(action);
+	match experiment.execute_action(action)
+	{
+		Ok(()) => (),
+		Err(error) =>
+		{
+			println!("Execution the action {} failed with errors:\n{}",action,error);
+		}
+	}
 	//println!("{:?} is a path",path);
 }
 

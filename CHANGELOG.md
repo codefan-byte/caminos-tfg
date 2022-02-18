@@ -2,6 +2,17 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-02-18
+BUGFIX: Get the `buffer_size` when building the servers and minor fixes on TransmissionFromServer.
+git commit -m "Fix in server initialization and improvements on error management."
+
+### 2022-02-17
+Skip output generation if there are too few results.
+Created a new module `error.rs`.
+Added a bit of error management in a couple of functions. Many more to do later.
+Added a couple documentation phrases to the `experiments` module.
+Removed the `panic:bool` flag `build_cfg_contents` as it is controled now via `Result`.
+
 ### 2022-02-16
 The pattern `ConstantShuffle` has been renamed into `GloballyShufflingDestinations` and improved a bit.
 Added a similar pattern `GroupShufflingDestinations`, to have something closer to its original idea.

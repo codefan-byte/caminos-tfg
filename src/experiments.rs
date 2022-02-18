@@ -1,3 +1,8 @@
+/*!
+
+This module implements [Action]s to execute on a [Experiment] folder. It can manage its [ExperimentFiles], pulling results from a remote host, generating outputs, merging data from another experiment, or launching the simulations in a slurm system.
+
+*/
 
 use std::fmt;
 use std::fs::{self,File,OpenOptions};
@@ -13,9 +18,10 @@ use ssh2::Session;
 use indicatif::{ProgressBar,ProgressStyle};
 
 use crate::config_parser::{self,ConfigurationValue};
-use crate::{Simulation,Plugs};
+use crate::{Simulation,Plugs,source_location};
 use crate::output::{create_output};
 use crate::config::{self,evaluate,flatten_configuration_value};
+use crate::error::{Error,ErrorKind,SourceLocation};
 
 #[derive(Debug,Clone,Copy,PartialEq)]
 pub enum Action
@@ -117,13 +123,13 @@ impl ssh2::KeyboardInteractivePrompt for KeyboardInteration
 ///Collect the output of
 ///		$ squeue -ho '%A'
 ///into a vector.
-fn gather_slurm_jobs() -> Result<Vec<usize>,std::io::Error>
+fn gather_slurm_jobs() -> Result<Vec<usize>,Error>
 {
 	let squeue_output=Command::new("squeue")
 		//.current_dir(directory)
 		.arg("-ho")
 		.arg("%A")
-		.output()?;
+		.output().map_err(|e|Error::command_not_found(source_location!(),"squeue".to_string(),e))?;
 	let squeue_output=String::from_utf8_lossy(&squeue_output.stdout);
 	Ok(squeue_output.lines().map(|line|
 		//line.parse::<usize>().expect("squeue should give us integers")
@@ -138,19 +144,19 @@ fn gather_slurm_jobs() -> Result<Vec<usize>,std::io::Error>
 	).collect())
 }
 
-fn slurm_get_association(field:&str) -> Result<String,()>
+fn slurm_get_association(field:&str) -> Result<String,Error>
 {
 	let command = Command::new("sacctmgr")
 		.arg("list")
 		.arg("associations")
 		.arg("-p")
-		.output().map_err(|_|())?;
+		.output().map_err(|e|Error::command_not_found(source_location!(),"squeue".to_string(),e))?;
 	let output=String::from_utf8_lossy(&command.stdout);
 	let mut lines = output.lines();
 	//let (index,header) = lines.next().unwrap().split('|').enumerate().find(|i,ifield|ifield==field).unwrap_or_else(||format!("field {} not found in header"));
 	let mut index_user=0;
 	let mut index_field=0;
-	let header = lines.next().ok_or( () )?;
+	let header = lines.next().ok_or_else( ||Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) )?;
 	for (header_index,header_field) in header.split('|').enumerate()
 	{
 		if header_field == "User"
@@ -163,7 +169,7 @@ fn slurm_get_association(field:&str) -> Result<String,()>
 		}
 	}
 	//let user = std::env::var("USER").unwrap_or_else(|_|panic!("could not read $USER"));
-	let user = std::env::var("USER").map_err( |_|() )?;
+	let user = std::env::var("USER").map_err(|e|Error::missing_environment_variable(source_location!(),"USER".to_string(),e) )?;
 	for line in lines
 	{
 		let values:Vec<&str> = line.split('|').collect();
@@ -172,24 +178,23 @@ fn slurm_get_association(field:&str) -> Result<String,()>
 			return Ok(values[index_field].to_string());
 		}
 	}
-	//panic!("field not found");
-	Err( () )
+	Err( Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) )
 }
 
-fn slurm_get_qos(name:&str, field:&str) -> Result<String,()>
+fn slurm_get_qos(name:&str, field:&str) -> Result<String,Error>
 {
 	//sacctmgr show qos -p
 	let command=Command::new("sacctmgr")
 		.arg("show")
 		.arg("qos")
 		.arg("-p")
-		.output().map_err(|_|())?;
+		.output().map_err(|e|Error::command_not_found(source_location!(),"sacctmgr".to_string(),e))?;
 	let output=String::from_utf8_lossy(&command.stdout);
 	let mut lines = output.lines();
 	//Name==main -> MaxSubmitPU?->value
 	let mut index_name=0;
 	let mut index_field=0;
-	let header = lines.next().ok_or( () )?;
+	let header = lines.next().ok_or_else( ||Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) )?;
 	for (header_index,header_field) in header.split('|').enumerate()
 	{
 		if header_field == "Name"
@@ -210,22 +215,22 @@ fn slurm_get_qos(name:&str, field:&str) -> Result<String,()>
 		}
 	}
 	//panic!("field not found");
-	Err( () )
+	Err( Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) )
 }
 
-pub fn slurm_available_space() -> Result<usize,()>
+pub fn slurm_available_space() -> Result<usize,Error>
 {
 	let command=Command::new("squeue")
 		.arg("-ho")
 		.arg("%A")
 		.arg("--me")
-		.output().map_err(|_|())?;
+		.output().map_err(|e|Error::command_not_found(source_location!(),"squeue".to_string(),e))?;
 	let output=String::from_utf8_lossy(&command.stdout);
 	let current = output.lines().count();
 	let qos = slurm_get_association("Def QOS")?;//--> main ?
 	let maximum = slurm_get_qos(&qos,"MaxSubmitPU")?;//--> 2000 ?
 	//let maximum = maximum.parse::<usize>().expect("should be an integer");
-	let maximum = maximum.parse::<usize>().map_err(|_|())?;
+	let maximum = maximum.parse::<usize>().map_err( |_|Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) )?;
 	Ok(maximum - current)
 }
 
@@ -405,26 +410,25 @@ pub struct ExperimentFiles
 impl ExperimentFiles
 {
 	/// panic indicates whether to allow panic in this code. Otherwise do not build the content and be silent.
-	pub fn build_cfg_contents(&mut self, panic:bool)
+	pub fn build_cfg_contents(&mut self) -> Result<(),Error>
 	{
 		if let None = self.cfg_contents
 		{
 			let cfg=self.root.as_ref().unwrap().join("main.cfg");
 			if let Some(session) = &self.ssh2_session {
 				//let sftp = session.sftp().expect("error starting sftp");
-				let sftp = session.sftp();
-				if !panic && sftp.is_err() { return; }
-				let sftp = sftp.expect("error starting sftp");
-				let remote_main_cfg =  sftp.open(&cfg);
-				if !panic && remote_main_cfg.is_err() { return; }
-				let mut remote_main_cfg= remote_main_cfg.expect("Could not open remote main.cfg");
+				let sftp = session.sftp().map_err(|e|Error::could_not_start_sftp_session(source_location!(),e))?;
+				let mut remote_main_cfg =  sftp.open(&cfg).map_err(|e|Error::could_not_open_remote_file(source_location!(),cfg.to_path_buf(),e))?;
+				//if !panic && remote_main_cfg.is_err() { return Ok(()); }
+				//let mut remote_main_cfg= remote_main_cfg.expect("Could not open remote main.cfg");
 				let mut remote_main_cfg_contents=String::new();
 				remote_main_cfg.read_to_string(&mut remote_main_cfg_contents).expect("Could not read remote main.cfg.");
 				self.cfg_contents = Some(remote_main_cfg_contents);
 			} else {
 				let cfg_contents={
 					let mut cfg_contents = String::new();
-					let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+					//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+					let mut cfg_file=File::open(&cfg).map_err(|e|Error::could_not_open_file(source_location!(),cfg.to_path_buf(),e))?;
 					cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
 					cfg_contents
 				};
@@ -432,6 +436,7 @@ impl ExperimentFiles
 				//println!("cfg_contents={:?}",cfg_contents);
 			}
 		}
+		Ok(())
 	}
 	pub fn cfg_contents_ref(&self) -> &String
 	{
@@ -447,11 +452,11 @@ impl ExperimentFiles
 			Some(ref content) => content.len()>=2,
 		}
 	}
-	pub fn build_parsed_cfg(&mut self)
+	pub fn build_parsed_cfg(&mut self) -> Result<(),Error>
 	{
 		if let None = self.parsed_cfg
 		{
-			self.build_cfg_contents(false);
+			self.build_cfg_contents()?;
 			let parsed_cfg=match config_parser::parse(self.cfg_contents_ref())
 			{
 				Err(x) => panic!("error parsing configuration file: {:?}",x),
@@ -461,6 +466,7 @@ impl ExperimentFiles
 			//println!("parsed_cfg={:?}",parsed_cfg);
 			self.parsed_cfg = Some(parsed_cfg);
 		}
+		Ok(())
 	}
 	pub fn build_runs_path(&mut self)
 	{
@@ -497,9 +503,9 @@ impl ExperimentFiles
 			self.runs_path = Some( runs_path );
 		}
 	}
-	pub fn build_experiments(&mut self)
+	pub fn build_experiments(&mut self) -> Result<(),Error>
 	{
-		self.build_parsed_cfg();
+		self.build_parsed_cfg()?;
 		self.experiments=match self.parsed_cfg
 		{
 			Some(config_parser::Token::Value(ref value)) =>
@@ -514,12 +520,18 @@ impl ExperimentFiles
 					panic!("there are not experiments");
 				}
 			},
-			_ => panic!("Not a value. Got {:?}",self.parsed_cfg),
+			//_ => panic!("Not a value. Got {:?}",self.parsed_cfg),
+			_ =>
+			{
+				let cfg = self.root.as_ref().unwrap().join("main.cfg");
+				return Err(Error::could_not_parse_file(source_location!(),cfg));
+			}
 		};
+		Ok(())
 	}
-	pub fn build_launch_configurations(&mut self)
+	pub fn build_launch_configurations(&mut self)->Result<(),Error>
 	{
-		self.build_parsed_cfg();
+		self.build_parsed_cfg()?;
 		if let config_parser::Token::Value(ref value)=self.parsed_cfg.as_ref().unwrap()
 		{
 			if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=value
@@ -555,6 +567,7 @@ impl ExperimentFiles
 				panic!("Those are not experiments.");
 			}
 		}
+		Ok(())
 	}
 	///Returns true if their main.cfg content is the same
 	///Otherwise panics and prints a diff.
@@ -811,7 +824,7 @@ impl<'a> Experiment<'a>
 		writeln!(journal_file,"{}: {}",self.journal_index,entry).expect("Could not write to journal");
 	}
 	/// Executes an action over the experiment.
-	pub fn execute_action(&mut self,action:Action)
+	pub fn execute_action(&mut self,action:Action) -> Result<(),Error>
 	{
 		let now = chrono::Utc::now();
 		self.write_journal_entry(&format!("Executing action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string()));
@@ -848,7 +861,7 @@ impl<'a> Experiment<'a>
 			_ => (),
 		}
 		let mut results;
-		self.files.build_experiments();
+		self.files.build_experiments()?;
 
 		let external_files = if let (Some(ref path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  ) {
 			let mut ef = ExperimentFiles{
@@ -864,7 +877,7 @@ impl<'a> Experiment<'a>
 				launch_configurations: Vec::new(),
 				packed_results: ConfigurationValue::None,
 			};
-			ef.build_experiments();
+			ef.build_experiments().map_err(|e|e.with_message("could not build external experiments".to_string()))?;
 			ef.build_packed_results();
 			Some(ef)
 		} else {
@@ -961,88 +974,90 @@ impl<'a> Experiment<'a>
 			Action::Slurm =>
 			{
 				uses_jobs=true;
-				let n = self.files.experiments.len();
-						
-				let mut maximum_jobs=None;
-				let mut time:Option<&str> =None;
-				let mut mem =None;
-				let mut option_job_pack_size=None;
-				self.files.build_launch_configurations();
-				for lc in self.files.launch_configurations.iter()
+				if let Ok(_)=self.files.build_launch_configurations()
 				{
-					match lc
+					let n = self.files.experiments.len();
+							
+					let mut maximum_jobs=None;
+					let mut time:Option<&str> =None;
+					let mut mem =None;
+					let mut option_job_pack_size=None;
+					for lc in self.files.launch_configurations.iter()
 					{
-						&ConfigurationValue::Object(ref launch_name, ref launch_pairs) =>
+						match lc
 						{
-							if launch_name=="Slurm"
+							&ConfigurationValue::Object(ref launch_name, ref launch_pairs) =>
 							{
-								for &(ref slurm_name,ref slurm_value) in launch_pairs
+								if launch_name=="Slurm"
 								{
-									match slurm_name.as_ref()
+									for &(ref slurm_name,ref slurm_value) in launch_pairs
 									{
-										"maximum_jobs" => match slurm_value
+										match slurm_name.as_ref()
 										{
-											&ConfigurationValue::Number(f) => maximum_jobs=Some(f as usize),
-											_ => panic!("bad value for maximum_jobs"),
+											"maximum_jobs" => match slurm_value
+											{
+												&ConfigurationValue::Number(f) => maximum_jobs=Some(f as usize),
+												_ => panic!("bad value for maximum_jobs"),
+											}
+											"job_pack_size" => match slurm_value
+											{
+												&ConfigurationValue::Number(f) => option_job_pack_size=Some(f as usize),
+												_ => panic!("bad value for option_job_pack_size"),
+											}
+											"time" => match slurm_value
+											{
+												//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
+												&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
+												_ => panic!("bad value for time"),
+											}
+											"mem" => match slurm_value
+											{
+												//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
+												&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
+												_ => panic!("bad value for mem"),
+											}
+											_ => (),
 										}
-										"job_pack_size" => match slurm_value
-										{
-											&ConfigurationValue::Number(f) => option_job_pack_size=Some(f as usize),
-											_ => panic!("bad value for option_job_pack_size"),
-										}
-										"time" => match slurm_value
-										{
-											//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
-											&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
-											_ => panic!("bad value for time"),
-										}
-										"mem" => match slurm_value
-										{
-											//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
-											&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
-											_ => panic!("bad value for mem"),
-										}
-										_ => (),
 									}
 								}
 							}
+							_ => (),//XXX perhaps error on unknown launch configuration?
 						}
-						_ => (),//XXX perhaps error on unknown launch configuration?
 					}
-				}
-				if let Some(value)=maximum_jobs
-				{
-					let new_job_pack_size=(n + value-1 ) / value;//rounding up of experiments/maximum
-					if new_job_pack_size>=job_pack_size
+					if let Some(value)=maximum_jobs
 					{
-						job_pack_size=new_job_pack_size;
+						let new_job_pack_size=(n + value-1 ) / value;//rounding up of experiments/maximum
+						if new_job_pack_size>=job_pack_size
+						{
+							job_pack_size=new_job_pack_size;
+						}
+						else
+						{
+							panic!("Trying to reduce job_pack_size from {} to {}.",job_pack_size,new_job_pack_size);
+						}
 					}
-					else
+					if let Some(value)=option_job_pack_size
 					{
-						panic!("Trying to reduce job_pack_size from {} to {}.",job_pack_size,new_job_pack_size);
+						if job_pack_size!=1 && value!=1
+						{
+							panic!("Trying to change job_pack_size unexpectedly");
+						}
+						job_pack_size = value;
 					}
-				}
-				if let Some(value)=option_job_pack_size
-				{
-					if job_pack_size!=1 && value!=1
+					if let Some(value)=time
 					{
-						panic!("Trying to change job_pack_size unexpectedly");
+						slurm_time=value.to_string();
 					}
-					job_pack_size = value;
-				}
-				if let Some(value)=time
-				{
-					slurm_time=value.to_string();
-				}
-				slurm_mem=mem.map(|x:&str|x.to_string());
-				// TODO: we can look how many jobs we can submit by
-				// $ sacctmgr list user $USER
-				// $ sacctmgr list associations
-				// $ sacctmgr show qos
-				//as described in https://stackoverflow.com/questions/61565703/get-maximum-number-of-jobs-allowed-in-slurm-cluster-as-a-user
-				if let Ok(available) = slurm_available_space()
-				{
-					println!("Available number of jobs to send to slurm is {}",available);
+					slurm_mem=mem.map(|x:&str|x.to_string());
+					// TODO: we can look how many jobs we can submit by
+					// $ sacctmgr list user $USER
+					// $ sacctmgr list associations
+					// $ sacctmgr show qos
+					//as described in https://stackoverflow.com/questions/61565703/get-maximum-number-of-jobs-allowed-in-slurm-cluster-as-a-user
+					if let Ok(available) = slurm_available_space()
+					{
+						println!("Available number of jobs to send to slurm is {}",available);
+					}
 				}
 			},
 			Action::Check =>
@@ -1052,7 +1067,7 @@ impl<'a> Experiment<'a>
 			Action::Pull =>
 			{
 				self.initialize_remote();
-				self.remote_files.as_mut().unwrap().build_cfg_contents(true);
+				self.remote_files.as_mut().unwrap().build_cfg_contents()?;
 				self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
 			},
 			Action::RemoteCheck =>
@@ -1097,7 +1112,7 @@ impl<'a> Experiment<'a>
 					},
 				};
 				//check remote config
-				self.remote_files.as_mut().unwrap().build_cfg_contents(false);
+				self.remote_files.as_mut().unwrap().build_cfg_contents().ok();
 				if self.remote_files.as_ref().unwrap().cfg_enough_content() {
 					self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
 				} else {
@@ -1584,31 +1599,39 @@ impl<'a> Experiment<'a>
 				}
 				//println!("result file processed.");
 			}
-			//let binary_results_path = self.files.root.join("binary.results");
-			//let mut binary_results_file=File::create(&binary_results_path).expect("Could not create binary results file.");
-			//let full_results = ConfigurationValue::Experiments(results.iter().map(|(_cfg,res)|res.clone()).collect());
-			//let binary_results = config::config_to_binary(&full_results).expect("error while serializing into binary");
-			//binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
-
-			//println!("results={:?}",results);
-			let od=self.files.root.as_ref().unwrap().join("main.od");
-			let mut od_file=File::open(&od).expect("main.od could not be opened");
-			let mut od_contents = String::new();
-			od_file.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
-			match config_parser::parse(&od_contents)
+			const MINIMUM_RESULT_COUNT_TO_GENERATE : usize = 3usize;
+			// I would use 1..MINIMUM_RESULT_COUNT_TO_GENERATE but
+			// exclusive range pattern syntax is experimental
+			// see issue #37854 <https://github.com/rust-lang/rust/issues/37854> for more information
+			const MAXIMUM_RESULT_COUNT_TO_SKIP : usize = MINIMUM_RESULT_COUNT_TO_GENERATE-1;
+			match results.len()
 			{
-				Err(x) => panic!("error parsing output description file: {:?}",x),
-				Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
+				0 => println!("There are no results. Skipping output generation."),
+				result_count @ 1..=MAXIMUM_RESULT_COUNT_TO_SKIP => println!("There are only {} results. Skipping simulation as it is lower than {}",result_count,MINIMUM_RESULT_COUNT_TO_GENERATE),
+				result_count =>
 				{
-					//println!("description={}",description);
-					match create_output(&description,&results,self.files.experiments.len(),&self.files)
+					println!("There are {} results.",result_count);
+					//println!("results={:?}",results);
+					let od=self.files.root.as_ref().unwrap().join("main.od");
+					let mut od_file=File::open(&od).expect("main.od could not be opened");
+					let mut od_contents = String::new();
+					od_file.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
+					match config_parser::parse(&od_contents)
 					{
-						Ok(_) => (),
-						Err(err) => println!("ERROR: could not create output {:?}",err),
-					}
-				},
-				_ => panic!("The output description file does not contain a list.")
-			};
+						Err(x) => panic!("error parsing output description file: {:?}",x),
+						Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
+						{
+							//println!("description={}",description);
+							match create_output(&description,&results,self.files.experiments.len(),&self.files)
+							{
+								Ok(_) => (),
+								Err(err) => println!("ERROR: could not create output {:?}",err),
+							}
+						},
+						_ => panic!("The output description file does not contain a list.")
+					};
+				}
+			}
 		}
 		if added_packed_results>=1
 		{
@@ -1645,6 +1668,7 @@ impl<'a> Experiment<'a>
 		let fin = format!("Finished action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string());
 		self.write_journal_entry(&fin);
 		println!("{}",fin);
+		Ok(())
 	}
 	///Tries to initiate a ssh session with the remote host.
 	///Will ask a pasword via keyboard.
