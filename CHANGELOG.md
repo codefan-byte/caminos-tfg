@@ -5,6 +5,9 @@
 ### 2022-02-23
 Wrapped the progress bar into a new struct.
 git commit -m "Added a statistic about missed message generations. Some improvements on error management and visualization."
+More minor improvements on display of errors and others.
+Slurm options moved into its own structs. And added a `wrapper` option to interpose some script into the slurm scripts.
+git commit -m "Added a wrapper option for slurm and other minor improvements."
 
 ### 2022-02-22
 Added field `ServerStatistics::missed_generations`. And added several derivated metrics to the results.

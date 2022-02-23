@@ -7,9 +7,8 @@ see [`create_output`][create_output] for documentation on the configuration synt
 
 */
 
-use std::path::{PathBuf};
 use std::fs::{self,File};
-use std::io::{self,Write};
+use std::io::{Write};
 use std::cmp::Ordering;
 use std::process::Command;
 use std::collections::{HashSet,BTreeMap};
@@ -19,16 +18,9 @@ use std::fmt::Debug;
 use crate::config_parser::{ConfigurationValue,Expr};
 use crate::config::{self,combine,evaluate,reevaluate,values_to_f32_with_count};
 use crate::experiments::ExperimentFiles;
-use crate::get_git_id;
+use crate::error::{Error,SourceLocation};
+use crate::{get_git_id,source_location};
 
-#[derive(Debug)]
-pub enum BackendError
-{
-	CouldNotGenerateFile{
-		filepath: PathBuf,
-		io_error: Option<io::Error>,
-	}
-}
 
 /** Creates some output using an output description object as guide.
 
@@ -134,7 +126,7 @@ Plots
 
 **/
 pub fn create_output(description: &ConfigurationValue, results: &Vec<(usize,ConfigurationValue,ConfigurationValue)>, total_experiments:usize, files:&ExperimentFiles)
-	-> Result<(),BackendError>
+	-> Result<(),Error>
 {
 	if let &ConfigurationValue::Object(ref name, ref _attributes) = description
 	{
@@ -155,18 +147,18 @@ pub fn create_output(description: &ConfigurationValue, results: &Vec<(usize,Conf
 				println!("Creating a file with ArgMax preprocessing...");
 				return create_preprocess_arg_max(description,results,total_experiments,files);
 			},
-			_ => panic!("unrecognized output description object {}",name),
+			_ => return Err(Error::ill_formed_configuration(source_location!(),description.clone()).with_message(format!("unrecognized output description object {}",name))),
 		};
 	}
 	else
 	{
-		panic!("Output description is not an object.");
+		return Err(Error::ill_formed_configuration(source_location!(),description.clone()).with_message(format!("Output description is not an object.")));
 	};
 }
 
 ///Creates a csv file using filename and field given in `description`.
 fn create_csv(description: &ConfigurationValue, results: &Vec<(usize,ConfigurationValue,ConfigurationValue)>, files:&ExperimentFiles)
-	-> Result<(),BackendError>
+	-> Result<(),Error>
 {
 	let mut fields=None;
 	let mut filename=None;
@@ -487,7 +479,7 @@ impl<'a> Plotkind<'a>
 
 ///Create plots according to a `Plots` object.
 fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, ConfigurationValue,ConfigurationValue)>, total_experiments:usize, files:&ExperimentFiles)
-	-> Result<(),BackendError>
+	-> Result<(),Error>
 {
 	let mut selector=None;
 	let mut legend=None;
@@ -870,7 +862,7 @@ fn latex_make_command_name(text:&str) -> String
 ///`amount_experiments`: (experiments_with_results, total) of the experiments
 ///`files`: An ExperimentFiles struct with the information on where to generate each thing.
 fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>, kind:Vec<Plotkind>, amount_experiments:(usize,usize), prefix:String, files:&ExperimentFiles)
-	-> Result<(),BackendError>
+	-> Result<(),Error>
 {
 	let mut tex_filename=None;
 	let mut pdf_filename=None;
@@ -1595,9 +1587,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			.expect("pdflatex failed to start");
 	}
 	let filepath=tmp_path.join(tmpname_pdf);
-	//fs::copy(&tmp_path.join("tmp.pdf"),&pdf_path).expect("copying temporal pdf failed.");
-	fs::copy(&filepath,&pdf_path).or_else(|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))?;
-	//fs::copy(&filepath,&pdf_path).map_or_else(|amount_copied|Ok(),|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))
+	//fs::copy(&filepath,&pdf_path).or_else(|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))?;
+	fs::copy(&filepath,&pdf_path).map_err(|err|Error::could_not_generate_file(source_location!(),filepath,err))?;
 	Ok(())
 }
 
@@ -1614,7 +1605,7 @@ PreprocessArgMax{
 }
 */
 fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(usize, ConfigurationValue,ConfigurationValue)>, total_experiments:usize, files:&ExperimentFiles)
-	-> Result<(),BackendError>
+	-> Result<(),Error>
 {
 	//File to be crated, inside "path/".
 	let mut filename = None;

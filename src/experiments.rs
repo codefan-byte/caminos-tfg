@@ -120,6 +120,96 @@ impl ssh2::KeyboardInteractivePrompt for KeyboardInteration
 	}
 }
 
+struct SlurmOptions
+{
+	time: String,
+	mem: Option<String>,
+	maximum_jobs: Option<usize>,
+	job_pack_size: Option<usize>,
+	wrapper: Option<PathBuf>,
+}
+
+impl Default for SlurmOptions
+{
+	fn default() -> Self
+	{
+		SlurmOptions{
+			time: "0-24:00:00".to_string(),
+			mem: None,
+			maximum_jobs: None,
+			job_pack_size: None,
+			wrapper: None,
+		}
+	}
+}
+
+impl SlurmOptions
+{
+	pub fn new(launch_configurations:&Vec<ConfigurationValue>) -> Result<SlurmOptions,Error>
+	{
+		let mut maximum_jobs=None;
+		let mut time:Option<&str> =None;
+		let mut mem:Option<&str> =None;
+		let mut job_pack_size=None;
+		let mut wrapper = None;
+		for lc in launch_configurations.iter()
+		{
+			match lc
+			{
+				&ConfigurationValue::Object(ref launch_name, ref launch_pairs) =>
+				{
+					if launch_name=="Slurm"
+					{
+						for &(ref slurm_name,ref slurm_value) in launch_pairs
+						{
+							match slurm_name.as_ref()
+							{
+								"maximum_jobs" => match slurm_value
+								{
+									&ConfigurationValue::Number(f) => maximum_jobs=Some(f as usize),
+									_ => panic!("bad value for maximum_jobs"),
+								}
+								"job_pack_size" => match slurm_value
+								{
+									&ConfigurationValue::Number(f) => job_pack_size=Some(f as usize),
+									_ => panic!("bad value for job_pack_size"),
+								}
+								"time" => match slurm_value
+								{
+									//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
+									&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
+									_ => panic!("bad value for time"),
+								}
+								"mem" => match slurm_value
+								{
+									//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
+									&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
+									_ => panic!("bad value for mem"),
+								}
+								"wrapper" => match slurm_value
+								{
+									&ConfigurationValue::Literal(ref s) => wrapper=Some(s.to_string()),
+									_ => panic!("bad value for a remote wrapper"),
+								},
+								_ => (),
+							}
+						}
+					}
+				}
+				_ => (),//XXX perhaps error on unknown launch configuration?
+			}
+		}
+		Ok(SlurmOptions{
+			time: time.map(|x|x.to_string()).unwrap_or_else(||"0-24:00:00".to_string()),
+			mem: mem.map(|x|x.to_string()),
+			maximum_jobs,
+			job_pack_size,
+			wrapper: wrapper.map(|value|Path::new(&value).to_path_buf()),
+		})
+	}
+}
+
+
 ///Collect the output of
 ///		$ squeue -ho '%A'
 ///into a vector.
@@ -221,6 +311,10 @@ fn slurm_get_qos(name:&str, field:&str) -> Result<String,Error>
 
 pub fn slurm_available_space() -> Result<usize,Error>
 {
+	// $ sacctmgr list user $USER
+	// $ sacctmgr list associations
+	// $ sacctmgr show qos
+	//as described in https://stackoverflow.com/questions/61565703/get-maximum-number-of-jobs-allowed-in-slurm-cluster-as-a-user
 	let command=Command::new("squeue")
 		.arg("-ho")
 		.arg("%A")
@@ -264,10 +358,10 @@ impl Job
 		self.execution_id_vec.push(execution_id);
 	}
 
-	fn write_slurm_script(&self, out:&mut dyn Write,prefix:&str,slurm_time:&str, slurm_mem:Option<&str>,job_lines:&str)
+	fn write_slurm_script(&self, out:&mut dyn Write,prefix:&str, slurm_options:&SlurmOptions, job_lines:&str)
 	{
 		// #SBATCH --mem=1000 ?? In megabytes or suffix [K|M|G|T]. See sbatch man page for more info.
-		let mem_str = if let Some(s)=slurm_mem { format!("#SBATCH --mem={}\n",s) } else {"".to_string()};
+		let mem_str = if let Some(s)=&slurm_options.mem { format!("#SBATCH --mem={}\n",s) } else {"".to_string()};
 		writeln!(out,"#!/bin/bash
 #SBATCH --job-name=CAMINOS
 #SBATCH -D .
@@ -278,16 +372,15 @@ impl Job
 #SBATCH --time={slurm_time}
 {mem_str}
 {job_lines}
-",prefix=prefix,slurm_time=slurm_time,mem_str=mem_str,job_lines=job_lines).unwrap();
+",prefix=prefix,slurm_time=slurm_options.time,mem_str=mem_str,job_lines=job_lines).unwrap();
 	}
 
-	fn launch_slurm_script(&self, directory:&Path,script_name:&str) -> usize
+	fn launch_slurm_script(&self, directory:&Path,script_name:&str) -> Result<usize,Error>
 	{
 		let sbatch_output=Command::new("sbatch")
 			.current_dir(directory)
 			.arg(script_name)
-			.output()
-			.expect("sbatch failed to start");
+			.output().map_err(|e|Error::command_not_found(source_location!(),"sbatch".to_string(),e))?;
 		//Should be something like "Submitted batch job 382683"
 		let mut jobids=vec![];
 		//let sbatch_stdout=sbatch_output.stdout.iter().collect::<String>();
@@ -303,28 +396,28 @@ impl Job
 		}
 		if jobids.len()!=1
 		{
-			panic!("sbatch executed but we got incorrect jobids ({:?} from {})",jobids,sbatch_stdout);
+			return Err(Error::nonsense_command_output(source_location!()).with_message(format!("sbatch executed but we got incorrect jobids ({:?} from {})",jobids,sbatch_stdout)));
 		}
-		jobids[0]
+		Ok(jobids[0])
 	}
 	
 	///Creates a slurm script with the jobs and launch them. Returns a description to include in the journal.
 	///internal_job_id is the one used in the script files. Currently being the id of the first experiment in the batch.
 	///jobs_path is the path where the launch script is created.
 	///slurm_time and slurm_mem are passed as slurm arguments.
-	fn slurm(&mut self, internal_job_id:usize, jobs_path:&Path, slurm_time:&str, slurm_mem:Option<&str>) -> String
+	fn slurm(&mut self, internal_job_id:usize, jobs_path:&Path, slurm_options:&SlurmOptions) -> Result<String,Error>
 	{
 		let job_lines=self.execution_code_vec.join("\n") + "\n/bin/date\necho job finished\n";
 		let launch_name=format!("launch{}",internal_job_id);
 		let launch_script=jobs_path.join(&launch_name);
 		let mut launch_script_file=File::create(&launch_script).expect("Could not create launch file");
-		self.write_slurm_script(&mut launch_script_file,&launch_name,slurm_time,slurm_mem,&job_lines);
-		let slurm_job_id=self.launch_slurm_script(&jobs_path,&launch_name);
+		self.write_slurm_script(&mut launch_script_file,&launch_name,slurm_options,&job_lines);
+		let slurm_job_id=self.launch_slurm_script(&jobs_path,&launch_name)?;
 		//FIXME: we also need the execution ids inside that job.
 		//let execution_id_string=self.execution_id_vec.join(",");
 		//let execution_id_string=self.execution_id_vec.iter().map(|id|format!("{}",id)).zip(repeat(",")).collect::<String>();
 		let execution_id_string=self.execution_id_vec.iter().map(|id|format!("{}",id)).collect::<Vec<String>>().join(",");
-		format!("{}={}[{}], ",slurm_job_id,internal_job_id,execution_id_string)
+		Ok(format!("{}={}[{}], ",slurm_job_id,internal_job_id,execution_id_string))
 	}
 }
 
@@ -570,15 +663,15 @@ impl ExperimentFiles
 		}
 		Ok(())
 	}
-	///Returns true if their main.cfg content is the same
-	///Otherwise panics and prints a diff.
-	pub fn compare_cfg(&self, other:&ExperimentFiles) -> bool
+	///Returns Ok if their main.cfg content is the same
+	///Otherwise returns an error and prints a diff.
+	pub fn compare_cfg(&self, other:&ExperimentFiles) -> Result<(),Error>
 	{
 		let local_content = self.cfg_contents.as_ref().unwrap();
 		let other_content = other.cfg_contents.as_ref().unwrap();
 		if local_content == other_content {
 			println!("The configurations match");
-			return true;
+			return Ok(());
 		} else {
 			let mut last_both=None;
 			let mut show_both=false;
@@ -636,7 +729,7 @@ impl ExperimentFiles
 			let remote_cfg_path = other.root.as_ref().unwrap().join("main.cfg");
 			let username = other.username.as_ref().unwrap();
 			let host = other.host.as_ref().unwrap();
-			panic!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path);
+			return Err(Error::undetermined(source_location!()).with_message(format!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path)));
 		}
 	}
 	pub fn build_packed_results(&mut self)
@@ -955,8 +1048,9 @@ impl<'a> Experiment<'a>
 		let mut job_pack_size=1;//how many binary runs per job.
 		//let mut pending_jobs=vec![];
 		let mut job=Job::new();
-		let mut slurm_time : String = "0-24:00:00".to_string();
-		let mut slurm_mem: Option<String>=None;
+		//let mut slurm_time : String = "0-24:00:00".to_string();
+		//let mut slurm_mem: Option<String>=None;
+		let mut slurm_options: Option<SlurmOptions> = None;
 		let mut uses_jobs=false;
 		match action
 		{
@@ -978,83 +1072,37 @@ impl<'a> Experiment<'a>
 				if let Ok(_)=self.files.build_launch_configurations()
 				{
 					let n = self.files.experiments.len();
-							
-					let mut maximum_jobs=None;
-					let mut time:Option<&str> =None;
-					let mut mem =None;
-					let mut option_job_pack_size=None;
-					for lc in self.files.launch_configurations.iter()
+					if let Ok(got) = SlurmOptions::new(&self.files.launch_configurations)
 					{
-						match lc
+						if let Some(value)=got.maximum_jobs
 						{
-							&ConfigurationValue::Object(ref launch_name, ref launch_pairs) =>
+							let new_job_pack_size=(n + value-1 ) / value;//rounding up of experiments/maximum
+							if new_job_pack_size>=job_pack_size
 							{
-								if launch_name=="Slurm"
-								{
-									for &(ref slurm_name,ref slurm_value) in launch_pairs
-									{
-										match slurm_name.as_ref()
-										{
-											"maximum_jobs" => match slurm_value
-											{
-												&ConfigurationValue::Number(f) => maximum_jobs=Some(f as usize),
-												_ => panic!("bad value for maximum_jobs"),
-											}
-											"job_pack_size" => match slurm_value
-											{
-												&ConfigurationValue::Number(f) => option_job_pack_size=Some(f as usize),
-												_ => panic!("bad value for option_job_pack_size"),
-											}
-											"time" => match slurm_value
-											{
-												//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
-												&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
-												_ => panic!("bad value for time"),
-											}
-											"mem" => match slurm_value
-											{
-												//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
-												&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
-												_ => panic!("bad value for mem"),
-											}
-											_ => (),
-										}
-									}
-								}
+								job_pack_size=new_job_pack_size;
 							}
-							_ => (),//XXX perhaps error on unknown launch configuration?
+							else
+							{
+								panic!("Trying to reduce job_pack_size from {} to {}.",job_pack_size,new_job_pack_size);
+							}
 						}
-					}
-					if let Some(value)=maximum_jobs
-					{
-						let new_job_pack_size=(n + value-1 ) / value;//rounding up of experiments/maximum
-						if new_job_pack_size>=job_pack_size
+						if let Some(value)=got.job_pack_size
 						{
-							job_pack_size=new_job_pack_size;
+							if job_pack_size!=1 && value!=1
+							{
+								panic!("Trying to change job_pack_size unexpectedly");
+							}
+							job_pack_size = value;
 						}
-						else
-						{
-							panic!("Trying to reduce job_pack_size from {} to {}.",job_pack_size,new_job_pack_size);
-						}
+						//if let Some(value)=got.time
+						//{
+						//	slurm_time=value.to_string();
+						//}
+						//slurm_mem=mem.map(|x:&str|x.to_string());
+						slurm_options=Some(got);
+					} else {
+						slurm_options = Some( SlurmOptions::default() );
 					}
-					if let Some(value)=option_job_pack_size
-					{
-						if job_pack_size!=1 && value!=1
-						{
-							panic!("Trying to change job_pack_size unexpectedly");
-						}
-						job_pack_size = value;
-					}
-					if let Some(value)=time
-					{
-						slurm_time=value.to_string();
-					}
-					slurm_mem=mem.map(|x:&str|x.to_string());
-					// TODO: we can look how many jobs we can submit by
-					// $ sacctmgr list user $USER
-					// $ sacctmgr list associations
-					// $ sacctmgr show qos
-					//as described in https://stackoverflow.com/questions/61565703/get-maximum-number-of-jobs-allowed-in-slurm-cluster-as-a-user
 					if let Ok(available) = slurm_available_space()
 					{
 						println!("Available number of jobs to send to slurm is {}",available);
@@ -1067,13 +1115,13 @@ impl<'a> Experiment<'a>
 			},
 			Action::Pull =>
 			{
-				self.initialize_remote();
+				self.initialize_remote()?;
 				self.remote_files.as_mut().unwrap().build_cfg_contents()?;
-				self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
+				self.files.compare_cfg(&self.remote_files.as_ref().unwrap())?;
 			},
 			Action::RemoteCheck =>
 			{
-				self.initialize_remote();
+				self.initialize_remote()?;
 				let remote_root=self.remote_files.as_ref().unwrap().root.clone().unwrap();
 				let remote_binary=self.remote_files.as_ref().unwrap().binary.clone().unwrap();
 				let mut channel = self.remote_files.as_ref().unwrap().ssh2_session.as_ref().unwrap().channel_session().unwrap();
@@ -1091,7 +1139,7 @@ impl<'a> Experiment<'a>
 			},
 			Action::Push =>
 			{
-				self.initialize_remote();
+				self.initialize_remote()?;
 				//Bring the remote files to this machine
 				let remote_root=self.remote_files.as_ref().unwrap().root.clone().unwrap();
 				//Download remote main.cfg
@@ -1115,7 +1163,7 @@ impl<'a> Experiment<'a>
 				//check remote config
 				self.remote_files.as_mut().unwrap().build_cfg_contents().ok();
 				if self.remote_files.as_ref().unwrap().cfg_enough_content() {
-					self.files.compare_cfg(&self.remote_files.as_ref().unwrap());
+					self.files.compare_cfg(&self.remote_files.as_ref().unwrap())?;
 				} else {
 					let remote_cfg_path = remote_root.join("main.cfg");
 					let mut remote_cfg = sftp.create(&remote_cfg_path).expect("Could not create remote main.cfg");
@@ -1144,8 +1192,9 @@ impl<'a> Experiment<'a>
 		//Remove mutabiity to prevent mistakes.
 		let must_draw=must_draw;
 		let job_pack_size=job_pack_size;
-		let slurm_time=slurm_time;
-		let slurm_mem=slurm_mem;
+		//let slurm_time=slurm_time;
+		//let slurm_mem=slurm_mem;
+		let slurm_options = slurm_options;
 		let uses_jobs=uses_jobs;
 
 		self.files.build_runs_path()?;
@@ -1382,13 +1431,25 @@ impl<'a> Experiment<'a>
 						writeln!(local_cfg_file,"{}",experiment).unwrap();
 						//let job_line=format!("echo experiment {}\n/bin/date\n{} {}/local.cfg --results={}/local.result",experiment_index,self.binary.display(),experiment_path_string,experiment_path_string);
 						//pending_jobs.push(job_line);
-						job.add_execution(experiment_index,&self.files.binary.as_ref().unwrap(),&experiment_path_string);
+						let slurm_options = slurm_options.as_ref().unwrap();
+						let binary = slurm_options.wrapper.as_ref().unwrap_or_else(||self.files.binary.as_ref().unwrap());
+						job.add_execution(experiment_index,binary,&experiment_path_string);
 						if job.len()>=job_pack_size
 						{
 							delta_amount_slurm+=job.len();
 							let job_id=experiment_index;
-							let slurm_mem : Option<&str> = match slurm_mem { Some(ref x) => Some(x), None=>None };
-							launch_entry += &job.slurm(job_id,&jobs_path,slurm_time.as_ref(),slurm_mem);
+							//let slurm_mem : Option<&str> = match slurm_mem { Some(ref x) => Some(x), None=>None };
+							//launch_entry += &job.slurm(job_id,&jobs_path,slurm_time.as_ref(),slurm_mem);
+							match job.slurm(job_id,&jobs_path,slurm_options)
+							{
+								Ok( launched_batch ) => launch_entry += &launched_batch,
+								Err( e ) =>
+								{
+									eprintln!("Error when launching jobs:\n{}\ntrying to terinate the action without launching more.",e);
+									job=Job::new();
+									break;
+								}
+							}
 							job=Job::new();
 						}
 					},
@@ -1519,8 +1580,17 @@ impl<'a> Experiment<'a>
 		if job.len()>0
 		{
 			let job_id=self.files.experiments.len();
-			let slurm_mem : Option<&str> = match slurm_mem { Some(ref x) => Some(x), None=>None };
-			launch_entry += &job.slurm(job_id,&jobs_path,slurm_time.as_ref(),slurm_mem);
+			//let slurm_mem : Option<&str> = match slurm_mem { Some(ref x) => Some(x), None=>None };
+			//launch_entry += &job.slurm(job_id,&jobs_path,slurm_time.as_ref(),slurm_mem);
+			let slurm_options = slurm_options.as_ref().unwrap();
+			match job.slurm(job_id,&jobs_path,slurm_options)
+			{
+				Ok( launched_batch ) => launch_entry += &launched_batch,
+				Err( e ) =>
+				{
+					eprintln!("Error when launching remaining jobs:\n{}\ntrying to terminate the action.",e);
+				}
+			}
 			drop(job);
 		}
 
@@ -1532,6 +1602,7 @@ impl<'a> Experiment<'a>
 		let status_string = format!("Before: completed={} of {} slurm={} inactive={} active={} Changed: slurm=+{} completed=+{}",progress.before_amount_completed,self.files.experiments.len(),before_amount_slurm,before_amount_inactive,before_amount_active,delta_amount_slurm,delta_completed);
 		self.write_journal_entry(&status_string);
 		println!("{}",status_string);
+		println!("Now: completed={} of {}. {} on slurm",progress.before_amount_completed+delta_completed,self.files.experiments.len(),before_amount_slurm+delta_amount_slurm);
 		
 		if must_draw
 		{
@@ -1660,7 +1731,7 @@ impl<'a> Experiment<'a>
 	}
 	///Tries to initiate a ssh session with the remote host.
 	///Will ask a pasword via keyboard.
-	fn initialize_remote(&mut self)
+	fn initialize_remote(&mut self) -> Result<(),Error>
 	{
 		let remote_path = self.files.root.as_ref().unwrap().join("remote");
 		let mut remote_file = File::open(&remote_path).expect("remote could not be opened");
@@ -1773,13 +1844,15 @@ impl<'a> Experiment<'a>
 		if !session.authenticated() && methods.contains("password")
 		{
 			let password=prompt.ask_password(&username,&host);
-			session.userauth_password(&username,&password).expect("Password authentication failed.");
+			//session.userauth_password(&username,&password).expect("Password authentication failed.");
+			session.userauth_password(&username,&password).map_err(|e|Error::authentication_failed(source_location!(),e))?;
 		}
 		//if !session.authenticated() && methods.contains("publickey")
 		assert!(session.authenticated());
 		self.remote_files.as_mut().unwrap().ssh2_session = Some(session);
 		println!("ssh2 session created with remote host");
 		self.remote_files.as_mut().unwrap().build_packed_results();
+		Ok(())
 	}
 }
 

@@ -4,10 +4,12 @@ This module is for managing errors in the code of caminos-lib. To avoid invoking
 
 Instead of `expect` or `unwrap_or_else` try
 * `map_err` like in `.map_err(|e|Error::command_not_found(source_location!(),"squeue".to_string(),e))?;`
-* `ok_or_else` like in `.ok_or_else( ||Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) )?;
+* `ok_or_else` like in `.ok_or_else( ||Error::nonsense_command_output(source_location!()) )?;
 
 Instead of `panic!` try
-* Return an error. E.g., by `return Err( Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) );`
+* Return an error. E.g., by `return Err( Error::nonsense_command_output(source_location!()) );`
+
+To include arbitrary messages use the `with_message` method, like as `Error::undetermined(source_location!()).with_message(format!("A text like in a panic: {}",thing_to_dump))`.
 
 When displaying errors
 * Write to the standard error instead of to the standard output. I.e., with `eprintln!` instead of `println!`.
@@ -74,6 +76,13 @@ pub enum ErrorKind
 	},
 	IllFormedConfiguration{
 		value: ConfigurationValue,
+	},
+	AuthenticationFailed{
+		error: ssh2::Error,
+	},
+	CouldNotGenerateFile{
+		filepath: PathBuf,
+		error: std::io::Error,
 	},
 	/// Any other error. Better to add new types than to use this thing.
 	Undetermined,
@@ -191,6 +200,27 @@ impl Error
 			message:None,
 		}
 	}
+	pub fn authentication_failed(source_location:SourceLocation,error:ssh2::Error)->Error
+	{
+		Error{
+			source_location,
+			kind: AuthenticationFailed{
+				error,
+			},
+			message:None,
+		}
+	}
+	pub fn could_not_generate_file(source_location:SourceLocation,filepath:PathBuf,error:std::io::Error)->Error
+	{
+		Error{
+			source_location,
+			kind: CouldNotGenerateFile{
+				filepath,
+				error,
+			},
+			message:None,
+		}
+	}
 	pub fn undetermined(source_location:SourceLocation)->Error
 	{
 		Error{
@@ -254,6 +284,14 @@ impl Display for ErrorKind
 			IllFormedConfiguration{value} =>
 			{
 				writeln!(formatter,"IllFormedConfiguration error: The following configuration value could not be interpreted:\n{}",value)?;
+			},
+			AuthenticationFailed{error} =>
+			{
+				writeln!(formatter,"AuthenticationFailed error: The authentication failed.\nssh2_error: {}",error)?;
+			},
+			CouldNotGenerateFile{filepath,error} =>
+			{
+				writeln!(formatter,"CouldNotGenerateFile error: The file {:?} could not be created.\nerror: {}",filepath,error)?;
 			},
 			Undetermined =>
 			{
