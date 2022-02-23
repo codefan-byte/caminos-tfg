@@ -2,6 +2,15 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-02-23
+Wrapped the progress bar into a new struct.
+git commit -m "Added a statistic about missed message generations. Some improvements on error management and visualization."
+
+### 2022-02-22
+Added field `ServerStatistics::missed_generations`. And added several derivated metrics to the results.
+Write some error to stderr instead of stdout.
+Converted some panic into `Err`.
+
 ### 2022-02-18
 BUGFIX: Get the `buffer_size` when building the servers and minor fixes on TransmissionFromServer.
 git commit -m "Fix in server initialization and improvements on error management."

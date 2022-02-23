@@ -321,6 +321,8 @@ struct ServerStatistics
 	cycle_last_created_phit: usize,
 	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
 	cycle_last_consumed_message: usize,
+	///Number of times the traffic returned true from `should_generate`, but it could not be stored.
+	missed_generations: usize,
 }
 
 impl ServerStatistics
@@ -334,6 +336,7 @@ impl ServerStatistics
 			total_message_delay:0,
 			cycle_last_created_phit: 0,
 			cycle_last_consumed_message: 0,
+			missed_generations: 0,
 		}
 	}
 	fn reset(&mut self)
@@ -342,6 +345,7 @@ impl ServerStatistics
 		self.consumed_phits=0;
 		self.consumed_messages=0;
 		self.total_message_delay=0;
+		self.missed_generations=0;
 	}
 }
 
@@ -1541,31 +1545,32 @@ impl<'a> Simulation<'a>
 			if let (Location::RouterPort{router_index: index,router_port: port},link_class)=server.port
 			{
 				//FIXME: magic value
-				if server.stored_messages.len()<20 && self.traffic.should_generate(iserver,self.cycle,&self.rng)
+				//if server.stored_messages.len()<20 && self.traffic.should_generate(iserver,self.cycle,&self.rng)
+				if self.traffic.should_generate(iserver,self.cycle,&self.rng)
 				{
-					//server.stored_messages.push_back(Rc::new(self.traffic.generate_message(iserver,&self.rng)));
-					//if let Some(message) = self.traffic.generate_message(iserver,&self.rng)
-					//{
-					//	server.stored_messages.push_back(Rc::new(message));
-					//}
-					match self.traffic.generate_message(iserver,self.cycle,&self.network.topology,&self.rng)
-					{
-						Ok(message) =>
+					if server.stored_messages.len()<20 {
+						match self.traffic.generate_message(iserver,self.cycle,&self.network.topology,&self.rng)
 						{
-							if message.destination>=num_servers
+							Ok(message) =>
 							{
-								panic!("Message sent to outside the network unexpectedly.");
-							}
-							if message.destination==iserver
-							{
-								panic!("Generated message to self unexpectedly.");
-							}
-							server.stored_messages.push_back(message);
-						},
-						Err(TrafficError::OriginOutsideTraffic) => (),
-						Err(TrafficError::SelfMessage) => (),
-						//Err(error) => panic!("An error happened when generating traffic: {:?}",error),
-					};
+								if message.destination>=num_servers
+								{
+									panic!("Message sent to outside the network unexpectedly.");
+								}
+								if message.destination==iserver
+								{
+									panic!("Generated message to self unexpectedly.");
+								}
+								server.stored_messages.push_back(message);
+							},
+							Err(TrafficError::OriginOutsideTraffic) => (),
+							Err(TrafficError::SelfMessage) => (),
+							//Err(error) => panic!("An error happened when generating traffic: {:?}",error),
+						};
+					} else {
+						//There is no space in the server queue of messages.
+						server.statistics.missed_generations += 1;
+					}
 				}
 				if server.stored_packets.len()==0 && server.stored_messages.len()>0
 				{
@@ -1687,6 +1692,8 @@ impl<'a> Simulation<'a>
 		let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
 		let server_average_cycle_last_created_phit : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<usize>() as f64)/(self.network.servers.len() as f64);
 		let server_average_cycle_last_consumed_message : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.network.servers.len() as f64);
+		let server_average_missed_generations : f64 = (self.network.servers.iter().map(|s|s.statistics.missed_generations).sum::<usize>() as f64)/(self.network.servers.len() as f64);
+		let servers_with_missed_generations : usize = self.network.servers.iter().map(|s|if s.statistics.missed_generations > 0 {1} else {0}).sum::<usize>();
 		let git_id=get_git_id();
 		let version_number = get_version_number();
 		let mut result_content = vec![
@@ -1703,6 +1710,8 @@ impl<'a> Simulation<'a>
 			(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
 			(String::from("server_average_cycle_last_created_phit"),ConfigurationValue::Number(server_average_cycle_last_created_phit)),
 			(String::from("server_average_cycle_last_consumed_message"),ConfigurationValue::Number(server_average_cycle_last_consumed_message)),
+			(String::from("server_average_missed_generations"),ConfigurationValue::Number(server_average_missed_generations)),
+			(String::from("servers_with_missed_generations"),ConfigurationValue::Number(servers_with_missed_generations as f64)),
 			//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
 			(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
 			(String::from("version_number"),ConfigurationValue::Literal(format!("{}",version_number))),
@@ -1779,12 +1788,14 @@ impl<'a> Simulation<'a>
 			let mut servers_average_message_delay : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.total_message_delay as f64/s.statistics.consumed_messages as f64).collect();
 			let mut servers_cycle_last_created_phit : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
 			let mut servers_cycle_last_consumed_message : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
+			let mut servers_missed_generations : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.missed_generations).collect();
 			//XXX There are more efficient ways to find percentiles than to sort them, but should not be notable in any case. See https://en.wikipedia.org/wiki/Selection_algorithm
 			servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_accepted_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_average_message_delay.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_cycle_last_created_phit.sort();
 			servers_cycle_last_consumed_message.sort();
+			servers_missed_generations.sort();
 			for &percentile in self.statistics.server_percentiles.iter()
 			{
 				let mut index:usize = num_servers * usize::from(percentile) /100;
@@ -1800,6 +1811,7 @@ impl<'a> Simulation<'a>
 					(String::from("average_message_delay"),ConfigurationValue::Number(servers_average_message_delay[index])),
 					(String::from("cycle_last_created_phit"),ConfigurationValue::Number(servers_cycle_last_created_phit[index] as f64)),
 					(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(servers_cycle_last_consumed_message[index] as f64)),
+					(String::from("missed_generations"),ConfigurationValue::Number(servers_missed_generations[index] as f64)),
 				];
 				result_content.push((format!("server_percentile{}",percentile),ConfigurationValue::Object(String::from("ServerStatistics"),server_content)));
 			}
@@ -2063,7 +2075,7 @@ pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, opti
 		Ok(()) => (),
 		Err(error) =>
 		{
-			println!("Execution the action {} failed with errors:\n{}",action,error);
+			eprintln!("Execution the action {} failed with errors:\n{}",action,error);
 		}
 	}
 	//println!("{:?} is a path",path);

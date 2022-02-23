@@ -9,10 +9,16 @@ Instead of `expect` or `unwrap_or_else` try
 Instead of `panic!` try
 * Return an error. E.g., by `return Err( Error::new(source_location!(),ErrorKind::NonsenseCommandOutput) );`
 
+When displaying errors
+* Write to the standard error instead of to the standard output. I.e., with `eprintln!` instead of `println!`.
+* If you need to exit the application you may use `std::process::exit` instead of `panic!`.
+
 */
 
 use std::fmt::{Display,Formatter};
 use std::path::PathBuf;
+
+use crate::config_parser::{ConfigurationValue};
 
 /// The main Error class to be used in each `Result(Whatever,Error)`.
 /// It contains the code source of the error and its kind.
@@ -65,6 +71,9 @@ pub enum ErrorKind
 	},
 	CouldNotParseFile{
 		filepath: PathBuf,
+	},
+	IllFormedConfiguration{
+		value: ConfigurationValue,
 	},
 	/// Any other error. Better to add new types than to use this thing.
 	Undetermined,
@@ -172,6 +181,16 @@ impl Error
 			message:None,
 		}
 	}
+	pub fn ill_formed_configuration(source_location:SourceLocation,value:ConfigurationValue)->Error
+	{
+		Error{
+			source_location,
+			kind: IllFormedConfiguration{
+				value,
+			},
+			message:None,
+		}
+	}
 	pub fn undetermined(source_location:SourceLocation)->Error
 	{
 		Error{
@@ -231,6 +250,10 @@ impl Display for ErrorKind
 			CouldNotParseFile{filepath} =>
 			{
 				writeln!(formatter,"CouldNotParseFile error: The file {:?} could not be parsed.",filepath)?;
+			},
+			IllFormedConfiguration{value} =>
+			{
+				writeln!(formatter,"IllFormedConfiguration error: The following configuration value could not be interpreted:\n{}",value)?;
 			},
 			Undetermined =>
 			{

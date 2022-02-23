@@ -131,17 +131,18 @@ fn gather_slurm_jobs() -> Result<Vec<usize>,Error>
 		.arg("%A")
 		.output().map_err(|e|Error::command_not_found(source_location!(),"squeue".to_string(),e))?;
 	let squeue_output=String::from_utf8_lossy(&squeue_output.stdout);
-	Ok(squeue_output.lines().map(|line|
-		//line.parse::<usize>().expect("squeue should give us integers")
-		match line.parse::<usize>()
-		{
-			Ok(x) => x,
-			Err(e) =>
-			{
-				panic!("error {} on parsing line [{}]",e,line);
-			},
-		}
-	).collect())
+	squeue_output.lines().map(|line|
+		//match line.parse::<usize>()
+		//{
+		//	Ok(x) => Ok(x),
+		//	Err(e) =>
+		//	{
+		//		//panic!("error {} on parsing line [{}]",e,line);
+		//		return Err(Error::nonsense_command_output(source_location!()).with_message(format!("error {} on parsing line [{}]",e,line)));
+		//	},
+		//}
+		line.parse::<usize>().map_err(|e|Error::nonsense_command_output(source_location!()).with_message(format!("error {} on parsing line [{}] from squeue",e,line)))
+	).collect()
 }
 
 fn slurm_get_association(field:&str) -> Result<String,Error>
@@ -409,7 +410,7 @@ pub struct ExperimentFiles
 
 impl ExperimentFiles
 {
-	/// panic indicates whether to allow panic in this code. Otherwise do not build the content and be silent.
+	/// Reads and stores the contents of main.cfg.
 	pub fn build_cfg_contents(&mut self) -> Result<(),Error>
 	{
 		if let None = self.cfg_contents
@@ -457,18 +458,16 @@ impl ExperimentFiles
 		if let None = self.parsed_cfg
 		{
 			self.build_cfg_contents()?;
-			let parsed_cfg=match config_parser::parse(self.cfg_contents_ref())
-			{
-				Err(x) => panic!("error parsing configuration file: {:?}",x),
-				Ok(x) => x,
-				//println!("parsed correctly: {:?}",x);
-			};
+			let parsed_cfg=config_parser::parse(self.cfg_contents_ref()).map_err(|x|{
+				let cfg=self.root.as_ref().unwrap().join("main.cfg");
+				Error::could_not_parse_file(source_location!(),cfg).with_message(format!("error:{:?}",x))
+			})?;
 			//println!("parsed_cfg={:?}",parsed_cfg);
 			self.parsed_cfg = Some(parsed_cfg);
 		}
 		Ok(())
 	}
-	pub fn build_runs_path(&mut self)
+	pub fn build_runs_path(&mut self) -> Result<(),Error>
 	{
 		if let None = self.runs_path
 		{
@@ -499,9 +498,10 @@ impl ExperimentFiles
 				}
 				runs_path
 			};
-			let runs_path=runs_path.canonicalize().unwrap_or_else(|e|panic!("The runs path \"{:?}\" cannot be resolved (error {})",runs_path,e));
+			let runs_path=runs_path.canonicalize().map_err(|e|Error::undetermined(source_location!()).with_message(format!("The runs path \"{:?}\" cannot be resolved (error {})",runs_path,e)))?;
 			self.runs_path = Some( runs_path );
 		}
+		Ok(())
 	}
 	pub fn build_experiments(&mut self) -> Result<(),Error>
 	{
@@ -517,10 +517,10 @@ impl ExperimentFiles
 				}
 				else
 				{
-					panic!("there are not experiments");
+					let cfg = self.root.as_ref().unwrap().join("main.cfg");
+					return Err(Error::could_not_parse_file(source_location!(),cfg).with_message("there are not experiments".to_string()));
 				}
 			},
-			//_ => panic!("Not a value. Got {:?}",self.parsed_cfg),
 			_ =>
 			{
 				let cfg = self.root.as_ref().unwrap().join("main.cfg");
@@ -543,7 +543,8 @@ impl ExperimentFiles
 				//}
 				if cv_name!="Configuration"
 				{
-					panic!("A simulation must be created from a `Configuration` object not `{}`",cv_name);
+					//panic!("A simulation must be created from a `Configuration` object not `{}`",cv_name);
+					return Err( Error::ill_formed_configuration(source_location!(),value.clone()).with_message(format!("A simulation must be created from a `Configuration` object not `{}`",cv_name)) );
 				}
 				//let mut maximum_jobs=None;
 				//let mut time:Option<&str> =None;
@@ -556,7 +557,7 @@ impl ExperimentFiles
 						"launch_configurations" => match value
 						{
 							&ConfigurationValue::Array(ref l) => self.launch_configurations = l.clone(),
-							_ => panic!("bad value for launch_configurations"),
+							_ => return Err( Error::ill_formed_configuration(source_location!(),value.clone()).with_message(format!("bad value for launch_configurations")) ),
 						}
 						_ => (),
 					}
@@ -564,7 +565,7 @@ impl ExperimentFiles
 			}
 			else
 			{
-				panic!("Those are not experiments.");
+				return Err( Error::ill_formed_configuration(source_location!(),value.clone()).with_message(format!("Those are not experiments.")) );
 			}
 		}
 		Ok(())
@@ -1107,7 +1108,7 @@ impl<'a> Experiment<'a>
 					},
 					Err(_err) =>
 					{
-						println!("Could not open remote '{:?}', creating it",remote_root);
+						eprintln!("Could not open remote '{:?}', creating it",remote_root);
 						sftp.mkdir(&remote_root,0o755).expect("Could not create remote directory");
 					},
 				};
@@ -1147,7 +1148,7 @@ impl<'a> Experiment<'a>
 		let slurm_mem=slurm_mem;
 		let uses_jobs=uses_jobs;
 
-		self.files.build_runs_path();
+		self.files.build_runs_path()?;
 		let runs_path : PathBuf = self.files.runs_path.as_ref().unwrap().to_path_buf();
 
 		//Execute or launch jobs.
@@ -1163,30 +1164,17 @@ impl<'a> Experiment<'a>
 		{
 			fs::create_dir(&jobs_path).expect("Something went wrong when creating the jobs directory.");
 		}
-		let mut before_amount_completed=0;//We have a good local.result.
+		//let mut before_amount_completed=0;//We have a good local.result.
 		let before_amount_slurm=self.experiments_on_slurm.len();//We can see the slurm job id in squeue. (and looking the journal file)
 		let mut before_amount_inactive=0;//We have not done anything with the execution yet, i.e., no local.result.
 		let mut before_amount_active=0;//We have a local.result with size 0, so we have done something. Perhaps some execution error.
 		let mut delta_amount_slurm=0;
 		let mut delta_completed=0;
 		let sftp = self.remote_files.as_ref().map(|f|f.ssh2_session.as_ref().unwrap().sftp().unwrap());
-		let progress_bar = ProgressBar::new((end_index-start_index) as u64);
-		progress_bar.set_style(ProgressStyle::default_bar().template("{prefix} [{elapsed_precise}] {bar:30.blue/white.dim} {pos:5}/{len:5} {msg}"));
-		let mut pulled=0;
-		let mut empty=0;
-		let mut missing=0;
-		let mut merged=0;
-		let mut errors=0;
-		match action
-		{
-			Action::Pull => progress_bar.set_prefix("pulling files"),
-			Action::Local | Action::LocalAndOutput => progress_bar.set_prefix("running locally"),
-			Action::Slurm => progress_bar.set_prefix("preparing slurm scripts"),
-			_ => progress_bar.set_prefix("checking result files"),
-		};
+		let mut progress = ActionProgress::new(&action,end_index-start_index);
 		for (experiment_index,experiment) in self.files.experiments.iter().enumerate().skip(start_index).take(end_index-start_index)
 		{
-			progress_bar.inc(1);
+			progress.inc(1);
 			if let Some(ref expr) = self.options.where_clause
 			{
 				match evaluate(&expr,experiment,&self.files.root.as_ref().unwrap())
@@ -1288,7 +1276,7 @@ impl<'a> Experiment<'a>
 												}
 												Err(_error)=>
 												{
-													println!("pulled invalid results (experiment {}).",experiment_index);
+													eprintln!("pulled invalid results (experiment {}).",experiment_index);
 												}
 											}
 										}
@@ -1307,7 +1295,7 @@ impl<'a> Experiment<'a>
 									writeln!(new_result_file,"{}",ext_result_contents.unwrap()).unwrap();
 									//drop(new_result_file);//ensure it closes and syncs
 								}
-								merged+=1;
+								progress.merged+=1;
 								is_merged=true;
 							}
 						}
@@ -1339,7 +1327,7 @@ impl<'a> Experiment<'a>
 					}
 					Err(_error)=>
 					{
-						println!("There are missing results (experiment {}).",experiment_index);
+						eprintln!("There are missing results (experiment {}).",experiment_index);
 						ConfigurationValue::None
 					}
 				};
@@ -1367,8 +1355,8 @@ impl<'a> Experiment<'a>
 			//if !result_path.is_file() || result_path.metadata().unwrap().len()==0
 			if has_content || is_packed || is_merged
 			{
-				before_amount_completed+=1;
-				progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+				progress.before_amount_completed+=1;
+				//progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 			}
 			else
 			{
@@ -1438,8 +1426,8 @@ impl<'a> Experiment<'a>
 										Err(_err) =>
 										{
 											//println!("could not read remote file ({}).",err);
-											missing+=1;
-											progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+											progress.missing+=1;
+											//progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 											continue;
 										}
 									};
@@ -1449,7 +1437,7 @@ impl<'a> Experiment<'a>
 									if remote_result_contents.len()<5
 									{
 										//println!("Remote file does not have contents.");
-										empty+=1;
+										progress.empty+=1;
 										(None,Some(remote_result_contents))
 									} else {
 										match config_parser::parse(&remote_result_contents)
@@ -1493,10 +1481,10 @@ impl<'a> Experiment<'a>
 								//drop(new_result_file);//ensure it closes and syncs
 							}
 							delta_completed+=1;
-							pulled+=1;
+							progress.pulled+=1;
 						}
 						//File::open(&result_path).expect("did not work even after pulling it.")
-						progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+						//progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 					}
 					Action::Check =>
 					{
@@ -1514,8 +1502,8 @@ impl<'a> Experiment<'a>
 									{
 										println!("Experiment {} contains errors in {:?}: {} bytes",experiment_index,slurm_stderr_path,stderr_contents.len());
 										println!("First error line: {}",stderr_contents.lines().next().expect("Unable to read first line from errors."));
-										errors+=1;
-										progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+										progress.errors+=1;
+										//progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 									}
 								}
 							}
@@ -1527,7 +1515,7 @@ impl<'a> Experiment<'a>
 				};
 			}
 		}
-		progress_bar.finish();
+		progress.finish();
 		if job.len()>0
 		{
 			let job_id=self.files.experiments.len();
@@ -1541,7 +1529,7 @@ impl<'a> Experiment<'a>
 			self.write_journal_entry(&format!("Launched jobs {}",launch_entry));
 		}
 
-		let status_string = format!("Before: completed={} of {} slurm={} inactive={} active={} Changed: slurm=+{} completed=+{}",before_amount_completed,self.files.experiments.len(),before_amount_slurm,before_amount_inactive,before_amount_active,delta_amount_slurm,delta_completed);
+		let status_string = format!("Before: completed={} of {} slurm={} inactive={} active={} Changed: slurm=+{} completed=+{}",progress.before_amount_completed,self.files.experiments.len(),before_amount_slurm,before_amount_inactive,before_amount_active,delta_amount_slurm,delta_completed);
 		self.write_journal_entry(&status_string);
 		println!("{}",status_string);
 		
@@ -1625,7 +1613,7 @@ impl<'a> Experiment<'a>
 							match create_output(&description,&results,self.files.experiments.len(),&self.files)
 							{
 								Ok(_) => (),
-								Err(err) => println!("ERROR: could not create output {:?}",err),
+								Err(err) => eprintln!("ERROR: could not create output {:?}",err),
 							}
 						},
 						_ => panic!("The output description file does not contain a list.")
@@ -1794,3 +1782,60 @@ impl<'a> Experiment<'a>
 		self.remote_files.as_mut().unwrap().build_packed_results();
 	}
 }
+
+#[derive(Debug)]
+pub struct ActionProgress
+{
+	bar: ProgressBar,
+	pulled: usize,
+	empty: usize,
+	missing: usize,
+	merged: usize,
+	errors: usize,
+	before_amount_completed: usize,
+}
+
+impl ActionProgress
+{
+	pub fn new(action:&Action,size:usize)->ActionProgress
+	{
+		let bar = ProgressBar::new(size as u64);
+		bar.set_style(ProgressStyle::default_bar().template("{prefix} [{elapsed_precise}] {bar:30.blue/white.dim} {pos:5}/{len:5} {msg}"));
+		match action
+		{
+			Action::Pull => bar.set_prefix("pulling files"),
+			Action::Local | Action::LocalAndOutput => bar.set_prefix("running locally"),
+			Action::Slurm => bar.set_prefix("preparing slurm scripts"),
+			_ => bar.set_prefix("checking result files"),
+		};
+		ActionProgress{
+			bar: bar,
+			pulled: 0,
+			empty: 0,
+			missing: 0,
+			merged: 0,
+			errors: 0,
+			before_amount_completed: 0,
+		}
+	}
+	pub fn inc(&self, increment:u64)
+	{
+		//self.bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged, {} errors",self.pulled,self.empty,self.missing,self.before_amount_completed,self.merged,self.errors));
+		let values = vec![ (self.pulled,"pulled"), (self.empty,"empty"), (self.missing,"missing"), (self.before_amount_completed,"already"), (self.merged,"merged"), (self.errors,"errors")  ];
+		let message : String = values.iter().filter_map(|(x,s)|{
+			if *x>0 { Some(format!("{} {}",x,s)) } else { None }
+		}).collect::<Vec<_>>().join(", ");
+		self.bar.set_message(&message);
+		self.bar.inc(increment);
+	}
+	pub fn finish(&self)
+	{
+		self.bar.finish()
+	}
+}
+
+
+
+
+
+
