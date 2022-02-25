@@ -2,6 +2,10 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-02-25
+BREAKING CHANGE: Added a server argument to `Traffic::try_consume`.
+git commit -m "New traffic BoundedDifference."
+
 ### 2022-02-23
 Wrapped the progress bar into a new struct.
 git commit -m "Added a statistic about missed message generations. Some improvements on error management and visualization."

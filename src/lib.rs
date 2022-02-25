@@ -23,6 +23,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 * Added the function `server_state` to the `Traffic` trait.
 * Functions on the output module now use ExperimentFiles instead of Path.
+* Added a server argument to `Traffic::try_consume`.
 
 ## [0.3.0] to [0.4.0]
 
@@ -398,7 +399,7 @@ impl Server
 			//statistics.total_message_delay+=cycle-message.creation_cycle;
 			statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			self.consumed_phits.remove(&message_ptr);
-			if !traffic.try_consume(message,cycle,topology,rng)
+			if !traffic.try_consume(self.index,message,cycle,topology,rng)
 			{
 				panic!("The traffic could not consume its own message.");
 			}

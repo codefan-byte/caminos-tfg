@@ -22,6 +22,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 * Added the function `server_state` to the `Traffic` trait.
 * Functions on the output module now use ExperimentFiles instead of Path.
+* Added a server argument to `Traffic::try_consume`.
 
 ## [0.3.0] to [0.4.0]
 

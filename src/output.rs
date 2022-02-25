@@ -1583,8 +1583,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			.current_dir(&tmp_path)
 			.arg("--shell-escape")
 			.arg(&tmpname_tex)
-			.output()
-			.expect("pdflatex failed to start");
+			.output().map_err(|e|Error::command_not_found(source_location!(),"pdflatex".to_string(),e))?;
 	}
 	let filepath=tmp_path.join(tmpname_pdf);
 	//fs::copy(&filepath,&pdf_path).or_else(|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))?;

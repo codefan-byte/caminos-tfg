@@ -1183,7 +1183,7 @@ impl<'a> Experiment<'a>
 				{
 					scancel = scancel.arg(jobid.to_string());
 				}
-				scancel.output().expect("scancel failed");
+				scancel.output().map_err(|e|Error::command_not_found(source_location!(),"scancel".to_string(),e))?;
 			},
 			Action::Shell => (),
 			Action::Pack => (),
