@@ -5,6 +5,8 @@
 ### 2022-02-25
 BREAKING CHANGE: Added a server argument to `Traffic::try_consume`.
 git commit -m "New traffic BoundedDifference."
+Added config function `sub` and aliases `plus`, `minus`.
+git commit -m "config fucntion sub and aliases"
 
 ### 2022-02-23
 Wrapped the progress bar into a new struct.

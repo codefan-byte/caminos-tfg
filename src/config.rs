@@ -397,7 +397,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					};
 					if condition { true_expression } else { false_expression }
 				}
-				"add" =>
+				"add" | "plus" =>
 				{
 					let mut first=None;
 					let mut second=None;
@@ -429,6 +429,39 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
 					ConfigurationValue::Number(first+second)
+				}
+				"sub" | "minus" =>
+				{
+					let mut first=None;
+					let mut second=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"first" =>
+							{
+								first=Some(evaluate(val,context,path));
+							},
+							"second" =>
+							{
+								second=Some(evaluate(val,context,path));
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let first=first.expect("first argument of and not given.");
+					let second=second.expect("second argument of and not given.");
+					let first=match first
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("first argument of {} evaluated to a non-number ({}:?)",function_name,first),
+					};
+					let second=match second
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
+					};
+					ConfigurationValue::Number(first-second)
 				}
 				"mul" =>
 				{
