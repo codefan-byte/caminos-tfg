@@ -1137,6 +1137,10 @@ pub struct Simulation<'a>
 	pub routing: Box<dyn Routing>,
 	///The properties associated to each link class.
 	pub link_classes: Vec<LinkClass>,
+	///Maximum number of messages for generation to store in each server. Its default value is 20 messages.
+	///Attemps to generate traffic that fails because of the limit are tracked into the `missed_generations` statistic.
+	///Note that packets are not generated until it is the turn for the message to be sent to a router.
+	pub server_queue_size: usize,
 	///The queue of events guiding the simulation.
 	pub event_queue: EventQueue,
 	///The current cycle, i.e, the current discrete time.
@@ -1168,6 +1172,7 @@ impl<'a> Simulation<'a>
 		let mut statistics_server_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
+		let mut server_queue_size = None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="Configuration"
@@ -1204,6 +1209,11 @@ impl<'a> Simulation<'a>
 					{
 						&ConfigurationValue::Number(f) => maximum_packet_size=Some(f.round() as usize),
 						_ => panic!("bad value for maximum_packet_size"),
+					}
+					"server_queue_size" => match value
+					{
+						&ConfigurationValue::Number(f) => server_queue_size=Some(f.round() as usize),
+						_ => panic!("bad value for server_queue_size"),
 					}
 					"router" => router_cfg=Some(&value),
 					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,plugs})),
@@ -1283,6 +1293,8 @@ impl<'a> Simulation<'a>
 		let topology=topology.expect("There were no topology");
 		let traffic=traffic.expect("There were no traffic");
 		let maximum_packet_size=maximum_packet_size.expect("There were no maximum_packet_size");
+		let server_queue_size = server_queue_size.unwrap_or(20);
+		assert!(server_queue_size>0, "we need space in the servers to store generated messages.");
 		let router_cfg=router_cfg.expect("There were no router");
 		let mut routing=routing.expect("There were no routing");
 		let link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
@@ -1356,6 +1368,7 @@ impl<'a> Simulation<'a>
 			maximum_packet_size,
 			routing,
 			link_classes,
+			server_queue_size,
 			event_queue: EventQueue::new(1000),
 			cycle:0,
 			statistics,
@@ -1545,11 +1558,9 @@ impl<'a> Simulation<'a>
 			//println!("credits of {} = {}",iserver,server.credits);
 			if let (Location::RouterPort{router_index: index,router_port: port},link_class)=server.port
 			{
-				//FIXME: magic value
-				//if server.stored_messages.len()<20 && self.traffic.should_generate(iserver,self.cycle,&self.rng)
 				if self.traffic.should_generate(iserver,self.cycle,&self.rng)
 				{
-					if server.stored_messages.len()<20 {
+					if server.stored_messages.len()<self.server_queue_size {
 						match self.traffic.generate_message(iserver,self.cycle,&self.network.topology,&self.rng)
 						{
 							Ok(message) =>

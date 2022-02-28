@@ -2,6 +2,10 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-02-28
+Server queue size made a configuration option. `Simulation::server_queue_size`.
+git commit -m "Added option server_queue_size."
+
 ### 2022-02-25
 BREAKING CHANGE: Added a server argument to `Traffic::try_consume`.
 git commit -m "New traffic BoundedDifference."
