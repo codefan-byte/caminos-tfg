@@ -2,6 +2,9 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-03-01
+git commit -m "Removed panic when executing the shell action. Create default files other than main.cfg if they are not in the given source."
+
 ### 2022-02-28
 Server queue size made a configuration option. `Simulation::server_queue_size`.
 git commit -m "Added option server_queue_size."

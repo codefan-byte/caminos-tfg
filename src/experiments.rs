@@ -935,21 +935,38 @@ impl<'a> Experiment<'a>
 				{
 					panic!("{:?} already exists, could not proceed with the shell action. To generate new files delete main.cfg manually.",cfg);
 				}
+				let path_main_od = self.files.root.as_ref().unwrap().join("main.od");
+				let path_remote = self.files.root.as_ref().unwrap().join("remote");
 				if let Some(ref path) = self.options.external_source
 				{
 					//Copy files from the source path.
-					fs::copy(path.join("main.cfg"),&cfg).expect("error copying main.cfg");
-					fs::copy(path.join("main.od"),self.files.root.as_ref().unwrap().join("main.od")).expect("error copying main.od");
-					//TODO: Try to update the paths in the remote file.
-					fs::copy(path.join("remote"),self.files.root.as_ref().unwrap().join("remote")).expect("error copying remote");
+					//fs::copy(path.join("main.cfg"),&cfg).expect("error copying main.cfg");
+					fs::copy(path.join("main.cfg"),&cfg).map_err(|e|Error::could_not_generate_file(source_location!(),cfg,e).with_message(format!("trying to copy it from {path:?}")))?;
+					let external_main_od = path.join("main.od");
+					if external_main_od.exists(){
+						fs::copy(external_main_od,&path_main_od).map_err(|e|Error::could_not_generate_file(source_location!(),path_main_od,e))?;
+					} else {
+						println!("There is not main.od on the source given [{path:?}], creating a default one.");
+						let mut new_od_file=File::create(&path_main_od).map_err(|e|Error::could_not_generate_file(source_location!(),path_main_od.to_path_buf(),e))?;
+						writeln!(new_od_file,"{}",ExperimentFiles::example_od()).map_err(|e|Error::could_not_generate_file(source_location!(),path_main_od,e))?;
+					}
+					let external_remote = path.join("remote");
+					if external_remote.exists() {
+						//TODO: Try to update the paths in the remote file.
+						fs::copy(external_remote,&path_remote).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote,e))?;
+					} else {
+						println!("There is not remote on the source given [{path:?}], creating a default one.");
+						let mut new_remote_file=File::create(&path_remote).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote.to_path_buf(),e))?;
+						writeln!(new_remote_file,"{}",ExperimentFiles::example_remote()).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote,e))?;
+					}
 				} else {
 					//Write some default files.
-					let mut new_cfg_file=File::create(&cfg).expect("Could not create main.cfg.");
-					writeln!(new_cfg_file,"{}",ExperimentFiles::example_cfg()).unwrap();
-					let mut new_od_file=File::create(self.files.root.as_ref().unwrap().join("main.od")).expect("Could not create main.od.");
-					writeln!(new_od_file,"{}",ExperimentFiles::example_od()).unwrap();
-					let mut new_remote_file=File::create(self.files.root.as_ref().unwrap().join("remote")).expect("Could not create remote.");
-					writeln!(new_remote_file,"{}",ExperimentFiles::example_remote()).unwrap();
+					let mut new_cfg_file=File::create(&cfg).map_err(|e|Error::could_not_generate_file(source_location!(),cfg.to_path_buf(),e))?;
+					writeln!(new_cfg_file,"{}",ExperimentFiles::example_cfg()).map_err(|e|Error::could_not_generate_file(source_location!(),cfg,e))?;
+					let mut new_od_file=File::create(&path_main_od).map_err(|e|Error::could_not_generate_file(source_location!(),path_main_od.to_path_buf(),e))?;
+					writeln!(new_od_file,"{}",ExperimentFiles::example_od()).map_err(|e|Error::could_not_generate_file(source_location!(),path_main_od,e))?;
+					let mut new_remote_file=File::create(&path_remote).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote.to_path_buf(),e))?;
+					writeln!(new_remote_file,"{}",ExperimentFiles::example_remote()).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote,e))?;
 				};
 			},
 			_ => (),
