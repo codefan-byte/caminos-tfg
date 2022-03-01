@@ -1910,17 +1910,21 @@ impl ActionProgress
 	}
 	pub fn inc(&self, increment:u64)
 	{
-		//self.bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged, {} errors",self.pulled,self.empty,self.missing,self.before_amount_completed,self.merged,self.errors));
+		self.update();
+		self.bar.inc(increment);
+	}
+	pub fn finish(&self)
+	{
+		self.update();
+		self.bar.finish()
+	}
+	pub fn update(&self)
+	{
 		let values = vec![ (self.pulled,"pulled"), (self.empty,"empty"), (self.missing,"missing"), (self.before_amount_completed,"already"), (self.merged,"merged"), (self.errors,"errors")  ];
 		let message : String = values.iter().filter_map(|(x,s)|{
 			if *x>0 { Some(format!("{} {}",x,s)) } else { None }
 		}).collect::<Vec<_>>().join(", ");
 		self.bar.set_message(&message);
-		self.bar.inc(increment);
-	}
-	pub fn finish(&self)
-	{
-		self.bar.finish()
 	}
 }
 
