@@ -12,11 +12,12 @@ use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
 use crate::router::Router;
 use crate::topology::{Topology,Location};
-use crate::Plugs;
+use crate::{Plugs,Phit};
 
 use std::cell::{RefCell};
 use std::fmt::Debug;
 use std::convert::TryInto;
+use std::rc::Rc;
 
 use ::rand::{Rng,StdRng};
 
@@ -50,6 +51,8 @@ pub struct RequestInfo<'a>
 	pub time_at_front: Option<usize>,
 	///current_cycle: The current cycle of the simulation.
 	pub current_cycle: usize,
+	///The phit for which we are requesting an egress.
+	pub phit: Rc<Phit>,
 }
 
 ///How virtual channels are selected for a packet
@@ -296,6 +299,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"ArgumentVC" => Box::new(ArgumentVC::new(arg)),
 			"Either" => Box::new(Either::new(arg)),
 			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
+			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1216,11 +1220,10 @@ pub struct OccupancyFunction
 
 impl VirtualChannelPolicy for OccupancyFunction
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy OccupancyFunction");
-		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
-		if dist==0
+		if router.get_index().expect("we need routers with index") == info.target_router_index
 		{
 			//do nothing
 			candidates
@@ -1446,11 +1449,10 @@ pub struct VecLabel
 
 impl VirtualChannelPolicy for VecLabel
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy VecLabel");
-		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
-		if dist==0
+		if router.get_index().expect("we need routers with index") == info.target_router_index
 		{
 			//do nothing
 			candidates
@@ -1540,8 +1542,7 @@ impl VirtualChannelPolicy for MapLabel
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapLabel");
-		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
-		if dist==0
+		if router.get_index().expect("we need routers with index") == info.target_router_index
 		{
 			//do nothing
 			candidates
@@ -1654,11 +1655,10 @@ pub struct ShiftEntryVC
 
 impl VirtualChannelPolicy for ShiftEntryVC
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy ShiftEntryVC");
-		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
-		if dist==0
+		if router.get_index().expect("we need routers with index") == info.target_router_index
 		{
 			//do nothing
 			candidates
@@ -1739,8 +1739,7 @@ impl VirtualChannelPolicy for MapHop
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapHop");
-		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
-		if dist==0
+		if router.get_index().expect("we need routers with index") == info.target_router_index
 		{
 			//do nothing
 			candidates
@@ -1990,8 +1989,7 @@ impl VirtualChannelPolicy for MapEntryVC
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapEntryVC");
-		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
-		if dist==0
+		if router.get_index().expect("we need routers with index") == info.target_router_index
 		{
 			//do nothing
 			candidates
@@ -2068,6 +2066,107 @@ impl MapEntryVC
 		MapEntryVC{
 			vc_to_policy,
 			above_policy,
+		}
+	}
+}
+
+
+///Apply a different policy to candidates whose messages have their size in different ranges.
+///For example, with `limits:[160]` and `policies:[Identity,ArgumentVC{allowed:[2,3]}]` we force packets in long messages to use some given virtual channels.
+#[derive(Debug)]
+pub struct MapMessageSize
+{
+	///Which policy to apply, index by the range in which they are included.
+	///`policy` must have exactly one element more than `limits`.
+	policies: Vec<Box<dyn VirtualChannelPolicy>>,
+	///Exclusive superior limits of the ranges. There is another one which is unbounded.
+	limits: Vec<usize>,
+}
+
+impl VirtualChannelPolicy for MapMessageSize
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		if router.get_index().expect("we need routers with index") == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let message_size = info.phit.packet.message.size;
+			let mut index = 0usize;
+			while index<self.limits.len() && message_size >= self.limits[index]
+			{
+				index+=1;
+			}
+			self.policies[index].filter(candidates,router,info,topology,rng)
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl MapMessageSize
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> MapMessageSize
+	{
+		let mut policies : Option<Vec<_>> =None;
+		let mut limits : Option<Vec<_>> =None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="MapMessageSize"
+			{
+				panic!("A MapMessageSize must be created from a `MapMessageSize` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+ 					"policies" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => policies=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
+							_ => panic!("bad value for policies"),
+						}).collect()),
+ 						_ => panic!("bad value for policies"),
+ 					}
+ 					"limits" => match value
+ 					{
+						&ConfigurationValue::Array(ref l) => limits=Some(l.iter().map(|v| match v{
+							&ConfigurationValue::Number(x) => x as usize,
+							_ => panic!("bad value for limits"),
+						}).collect()),
+ 						_ => panic!("bad value for limits"),
+ 					}
+					_ => panic!("Nothing to do with field {} in MapMessageSize",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a MapMessageSize from a non-Object");
+		}
+		let policies=policies.expect("There were no policies");
+		let limits=limits.expect("There were no limits");
+		assert!(policies.len()==limits.len()+1,"In MapMessageSize the `policies` array must have one element more than `limits`, as the last range is unbounded.");
+		MapMessageSize{
+			policies,
+			limits,
 		}
 	}
 }

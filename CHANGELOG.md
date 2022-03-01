@@ -5,6 +5,9 @@
 ### 2022-03-01
 git commit -m "Removed panic when executing the shell action. Create default files other than main.cfg if they are not in the given source."
 git commit -m "Update the progress bar message when finishing it."
+BREAKING CHANGE: Added phit to `RequestInfo`.
+New policy `MapMessageSize`.
+git commit -m "Added a new meta-policy, MapMessageSize. RequestInfo now contains the phit."
 
 ### 2022-02-28
 Server queue size made a configuration option. `Simulation::server_queue_size`.

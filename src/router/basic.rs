@@ -737,6 +737,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 							virtual_channel_available_output_space: virtual_channel_available_output_space.as_ref(),
 							time_at_front: Some(self.time_at_input_head[entry_port][entry_vc]),
 							current_cycle: simulation.cycle,
+							phit: phit.clone(),
 						};
 						for vcp in self.virtual_channel_policies.iter()
 						{
