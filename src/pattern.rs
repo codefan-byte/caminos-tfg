@@ -47,17 +47,52 @@ pub struct PatternBuilderArgument<'a>
 
 /**Build a new pattern. Patterns are maps between two sets which may depend on the RNG. Generally over the whole set of servers, but sometimes among routers or groups. Check the domentation of the parent Traffic/Permutation for its interpretation.
 
+## Roughly uniform patterns
+
 ### Uniform
 
 In the uniform pattern all elements have same probability to send to any other.
-```
+```ignore
 Uniform{
 	legend_name: "uniform",
 }
 ```
 
+### GloballyShufflingDestinations
 
-## Permutations.
+An uniform-like pattern that avoids repeating the same destination. It keeps a global vector of destinations. It is shuffled and each created message gets its destination from there. Sometimes you may be selected yourself as destination.
+
+```ignore
+GloballyShufflingDestinations{
+	legend_name: "globally shuffled destinations",
+}
+```
+
+### GroupShufflingDestinations
+
+Alike `GloballyShufflingDestinations` but keeping one destination vector per each group.
+
+```ignore
+GroupShufflingDestinations{
+	//E.g., if we select `group_size` to be the number of servers per router we are keeping a destination vector for each router.
+	group_size: 5,
+	legend_name: "router shuffled destinations",
+}
+```
+
+### UniformDistance
+
+Each message gets its destination uniformly random among the servers attached to neighbour routers.
+
+```ignore
+UniformDistance{
+	distance: 1,
+	legend_name: "uniform among neighbours",
+}
+```
+
+
+## Permutations and maps.
 Each element has a unique destination and a unique element from which it is a destination.
 
 ### RandomPermutation
@@ -76,6 +111,9 @@ RandomInvolution{
 }
 ```
 
+### FixedRandom
+Each source has an independent unique destination. By the "birtday paradox" we can expect several sources to share a destination, causing incast contention.
+
 ### FileMap
 A map read from file. Each elment has a unique destination.
 ```
@@ -93,13 +131,15 @@ CartesianTransform{
 	shift: [0,4,0],//optional
 	permute: [0,2,1],//optional
 	complement: [false,true,false],//optional
+	project: [false,false,false],//optional
 	legend_name: "Some lineal transformation over a 8x8 mesh with 4 servers per router",
 }
 ```
 
 ### Hotspots.
 A pool of hotspots is build from a given list of `destinations` plus some amount `extra_random_destinations` computed randomly on initialization.
-Destinations are randomly selected from such pool
+Destinations are randomly selected from such pool.
+This causes incast contention, more explicitly than `FixedRandom`.
 ```
 Hotspots{
 	//destinations: [],//default empty
@@ -195,6 +235,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"GloballyShufflingDestinations" => Box::new(GloballyShufflingDestinations::new(arg)),
 			"GroupShufflingDestinations" => Box::new(GroupShufflingDestinations::new(arg)),
 			"UniformDistance" => Box::new(UniformDistance::new(arg)),
+			"FixedRandom" => Box::new(FixedRandom::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -369,22 +410,6 @@ pub struct RandomPermutation
 {
 	permutation: Vec<usize>,
 }
-
-//impl Quantifiable for RandomPermutation
-//{
-//	fn total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//	fn print_memory_breakdown(&self)
-//	{
-//		unimplemented!();
-//	}
-//	fn forecast_total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//}
 
 impl Pattern for RandomPermutation
 {
@@ -880,7 +905,7 @@ impl ComponentsPattern
 /// Interpretate the origin as with cartesian coordinates and apply transformations.
 /// May permute the dimensions if they have same side.
 /// May complement the dimensions.
-/// Order of composition is: first shift, second permute -> last complement.
+/// Order of composition is: first shift, second permute, third complement, fourth project.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct CartesianTransform
@@ -895,6 +920,8 @@ pub struct CartesianTransform
 	///Optionally, which dimensions must be complemented.
 	///`complement=[true,false,false]` means `target_coordinates[0]=side-1-coordinates[0]`.
 	complement: Option<Vec<bool>>,
+	///Indicates dimensions to be projected into 0. This causes incast contention.
+	project: Option<Vec<bool>>,
 }
 
 impl Pattern for CartesianTransform
@@ -929,7 +956,12 @@ impl Pattern for CartesianTransform
 			Some(ref v) => up_permuted.iter().enumerate().map(|(index,&value)|if v[index]{self.cartesian_data.sides[index]-1-value}else {value}).collect(),
 			None => up_permuted,
 		};
-		self.cartesian_data.pack(&up_complemented)
+		let up_projected=match self.project
+		{
+			Some(ref v) => up_complemented.iter().enumerate().map(|(index,&value)|if v[index]{0} else {value}).collect(),
+			None => up_complemented,
+		};
+		self.cartesian_data.pack(&up_projected)
 	}
 }
 
@@ -941,6 +973,7 @@ impl CartesianTransform
 		let mut shift=None;
 		let mut permute=None;
 		let mut complement=None;
+		let mut project=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
 			if cv_name!="CartesianTransform"
@@ -985,6 +1018,15 @@ impl CartesianTransform
 						}).collect()),
 						_ => panic!("bad value for complement"),
 					}
+					"project" => match value
+					{
+						&ConfigurationValue::Array(ref a) => project=Some(a.iter().map(|v|match v{
+							&ConfigurationValue::True => true,
+							&ConfigurationValue::False => false,
+							_ => panic!("bad value in project"),
+						}).collect()),
+						_ => panic!("bad value for project"),
+					}
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in CartesianTransform",name),
 				}
@@ -1002,6 +1044,7 @@ impl CartesianTransform
 			shift,
 			permute,
 			complement,
+			project,
 		}
 	}
 }
@@ -1636,6 +1679,79 @@ impl UniformDistance
 			distance,
 			concentration:0,//to be filled on initialization
 			pool: vec![],//to be filled oninitialization
+		}
+	}
+}
+
+///Build a random map on initialization, which is then kept constant.
+///Optionally allow self-messages.
+///See `RandomPermutation` and `FileMap`.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct FixedRandom
+{
+	map: Vec<usize>,
+	allow_self: bool,
+}
+
+impl Pattern for FixedRandom
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	{
+		self.map.reserve(source_size);
+		let mut rng = rng.borrow_mut();
+		for source in 0..source_size
+		{
+			// To avoid selecting self we substract 1 from the total. If the random falls in the latter half we add it again.
+			let n = if self.allow_self || target_size<source { target_size } else { target_size -1 };
+			let mut elem = rng.gen_range(0,n);
+			if !self.allow_self && elem>=source
+			{
+				elem += 1;
+			}
+			self.map.push(elem);
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)->usize
+	{
+		self.map[origin]
+	}
+}
+
+impl FixedRandom
+{
+	fn new(arg:PatternBuilderArgument) -> FixedRandom
+	{
+		let mut allow_self = false;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="FixedRandom"
+			{
+				panic!("A FixedRandom must be created from a `FixedRandom` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+					"allow_self" => match value
+					{
+						&ConfigurationValue::True => allow_self=true,
+						&ConfigurationValue::False => allow_self=false,
+						_ => panic!("bad value for allow_self"),
+					}
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in FixedRandom",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a FixedRandom from a non-Object");
+		}
+		FixedRandom{
+			map: vec![],//to be intializated
+			allow_self,
 		}
 	}
 }

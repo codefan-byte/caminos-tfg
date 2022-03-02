@@ -2,6 +2,12 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-03-02
+Documented some patterns.
+Added pattern FixedRandom.
+Added optional field `project` to pattern `CartesianTransform`.
+git commit -m "New pattern FixedRandom and field project in CartesianTransform."
+
 ### 2022-03-01
 git commit -m "Removed panic when executing the shell action. Create default files other than main.cfg if they are not in the given source."
 git commit -m "Update the progress bar message when finishing it."
