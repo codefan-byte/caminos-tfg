@@ -1445,5 +1445,71 @@ pub fn config_mut_into<'a>(value:&'a mut ConfigurationValue, expr_path:&Expr) ->
 	}
 }
 
+/// Less strict than PartialEq
+/// Ignores the fields `legend_name`, and `launch_configurations`.
+pub fn config_relaxed_cmp(a:&ConfigurationValue, b:&ConfigurationValue) -> bool
+{
+	use ConfigurationValue::*;
+	let ignore = |key| key == "legend_name" || key == "launch_configurations";
+	match (a,b)
+	{
+		(Literal(sa),Literal(sb)) => sa==sb,
+		(Number(xa),Number(xb)) => xa==xb,
+		(Object(na,xa),Object(nb,xb)) =>
+		{
+			//na==nb && xa==xb,
+			if na != nb { return false; }
+			//do we want to enforce order of the fields?
+			for ( (ka,va),(kb,vb) ) in
+				xa.iter().filter(|(key,_)| !ignore(key) ).zip(
+				xb.iter().filter(|(key,_)| !ignore(key)  ) )
+			{
+				if ka != kb { return false; }
+				if !config_relaxed_cmp(va,vb) { return false; }
+			}
+			return true;
+		}
+		(Array(xa),Array(xb)) =>
+		{
+			//xa==xb
+			for (va,vb) in
+				xa.iter().zip(
+				xb.iter() )
+			{
+				if !config_relaxed_cmp(va,vb) { return false; }
+			}
+			return true;
+		}
+		(Experiments(xa),Experiments(xb)) =>
+		{
+			//xa==xb
+			for (va,vb) in
+				xa.iter().zip(
+				xb.iter() )
+			{
+				if !config_relaxed_cmp(va,vb) { return false; }
+			}
+			return true;
+		}
+		(NamedExperiments(na,xa),NamedExperiments(nb,xb)) =>
+		{
+			//na==nb && xa==xb,
+			if na != nb { return false; }
+			for (va,vb) in
+				xa.iter().zip(
+				xb.iter() )
+			{
+				if !config_relaxed_cmp(va,vb) { return false; }
+			}
+			return true;
+		}
+		(True,True) => true,
+		(False,False) => true,
+		(Where(xa,ea),Where(xb,eb)) => xa==xb && ea==eb,
+		(Expression(xa),Expression(xb)) => xa==xb,
+		(None,None) => true,
+		_ => false,
+	}
+}
 
 

@@ -2,6 +2,12 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-03-07
+Small documentation fix on TimeSequenced traffic.
+Implemented `config_relaxed_cmp` to ignore some small differences in experiment configurations.
+Allow to merge experiments even if the `legend_name` and `launch_configurations` do not match.
+git commit -m "Use a relaxed comparison of configs while merging results with --source"
+
 ### 2022-03-02
 Documented some patterns.
 Added pattern FixedRandom.

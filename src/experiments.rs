@@ -1290,7 +1290,8 @@ impl<'a> Experiment<'a>
 				{
 					for (ext_index,ext_experiment) in external_files.experiments.iter().enumerate()
 					{
-						if experiment==ext_experiment
+						//if experiment==ext_experiment
+						if config::config_relaxed_cmp(experiment,ext_experiment)
 						{
 							//println!("matching local experiment {} with external experiment {}",experiment_index,ext_index);
 							let mut ext_result_contents=None;

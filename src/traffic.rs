@@ -1106,7 +1106,7 @@ pub struct TimeSequenced
 {
 	///List of applicable traffics.
 	traffics: Vec<Box<dyn Traffic>>,
-	///End time of each traffic.
+	///End time of each traffic. Counting from the end of the previous one.
 	times: Vec<usize>,
 }
 
