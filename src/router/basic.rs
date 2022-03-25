@@ -1020,7 +1020,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 			};
 		}
 
-		//-- For each output port decide which input actually use it this cycle.
+		//-- For each output port decide which input actually uses it this cycle.
 		let mut events=vec![];
 		for exit_port in 0..self.transmission_port_status.len()
 		{

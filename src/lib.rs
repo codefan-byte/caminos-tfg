@@ -198,7 +198,7 @@ An example of output decription `main.od` is
 		selector: =configuration.traffic.pattern.legend_name,//Make a plot for each value of the selector
 		kind: [
 			//We may create groups of figures.
-			//In this example. For each value of pattern we draw three graphics.
+			//In this example. For e>ach value of pattern we draw three graphics.
 			Plotkind{
 				//The first one is accepted load for each offered load.
 				//Simulations with same parameter, here offered load, are averaged together.
@@ -280,6 +280,7 @@ pub mod policies;
 pub mod experiments;
 pub mod config;
 pub mod error;
+pub mod allocator;
 
 use std::rc::Rc;
 use std::boxed::Box;
