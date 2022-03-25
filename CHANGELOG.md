@@ -2,6 +2,15 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-03-25
+git commit -m "Added temporal statistics to the Basic router."
+
+### 2022-03-24
+New field `RouterBuilderArgument::statistics_temporal_step` to inform about the corresponding field in `Statistics`.
+Added to basic router methods `gather_cycle_statistics` and `get_current_temporal_measurement`, and associated fields.
+Updated constructor of `Basic` router to use `RouterBuilderArgument`.
+The method `aggregate_statistics` in the basic router now includes temporal statistics.
+
 ### 2022-03-07
 Small documentation fix on TimeSequenced traffic.
 Implemented `config_relaxed_cmp` to ignore some small differences in experiment configurations.

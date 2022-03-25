@@ -4,15 +4,15 @@ use std::rc::{Rc,Weak};
 use std::ops::Deref;
 use std::mem::{size_of};
 use ::rand::{Rng,StdRng};
-use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage};
+use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument};
 use crate::config_parser::ConfigurationValue;
-use crate::topology::{Topology,Location};
+use crate::topology::{Location};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
 use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
 use crate::{Phit,Packet,Simulation};
 use crate::quantify::Quantifiable;
-use crate::Plugs;
+//use crate::Plugs;
 
 
 ///Strategy for the arbitration of the output port.
@@ -74,12 +74,50 @@ pub struct Basic<TM:TransmissionMechanism>
 	maximum_packet_size: usize,
 
 	//statistics:
+	statistics_temporal_step: usize,
+	principal_measurement: BasicRouterMeasurement,
+	temporal_statistics: Vec<BasicRouterMeasurement>,
+}
+
+#[derive(Clone)]
+pub struct BasicRouterMeasurement
+{
 	///The first cycle included in the statistics.
-	statistics_begin_cycle: usize,
+	pub begin_cycle: usize,
 	///Accumulated over time, averaged per port.
-	statistics_output_buffer_occupation_per_vc: Vec<f64>,
+	pub output_buffer_occupation_per_vc: Vec<f64>,
 	///Accumulated over time, averaged per port.
-	statistics_reception_space_occupation_per_vc: Vec<f64>,
+	pub reception_space_occupation_per_vc: Vec<f64>,
+}
+
+impl BasicRouterMeasurement
+{
+	/// The number of virtual_channels in use
+	pub fn new(virtual_channels: usize) -> BasicRouterMeasurement
+	{
+		BasicRouterMeasurement{
+			begin_cycle: 0,
+			output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
+			reception_space_occupation_per_vc: vec![0f64;virtual_channels],
+		}
+	}
+	pub fn into_mul(mut self, factor:f64 ) -> BasicRouterMeasurement
+	{
+		self.mul(factor);
+		self
+	}
+	pub fn mul(&mut self, factor:f64 )->&mut BasicRouterMeasurement
+	{
+		for elem in self.output_buffer_occupation_per_vc.iter_mut()
+		{
+			*elem *= factor;
+		}
+		for elem in self.reception_space_occupation_per_vc.iter_mut()
+		{
+			*elem *= factor;
+		}
+		self
+	}
 }
 
 impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
@@ -131,9 +169,10 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 		//{
 		//	Some((0..n_vcs).map(|vc|self.output_buffers.iter().map(|port|port[vc].len()).sum::<usize>() as f64).collect())
 		//};
-		let cycle_span = cycle - self.statistics_begin_cycle;
-		let mut reception_space_occupation_per_vc:Option<Vec<f64>> = Some(self.statistics_reception_space_occupation_per_vc.iter().map(|x|x/cycle_span as f64).collect());
-		let mut output_buffer_occupation_per_vc:Option<Vec<f64>> = Some(self.statistics_output_buffer_occupation_per_vc.iter().map(|x|x/cycle_span as f64).collect());
+		let cycle_span = cycle - self.principal_measurement.begin_cycle;
+		let mut reception_space_occupation_per_vc:Option<Vec<f64>> = Some(self.principal_measurement.reception_space_occupation_per_vc.iter().map(|x|x/cycle_span as f64).collect());
+		let mut output_buffer_occupation_per_vc:Option<Vec<f64>> = Some(self.principal_measurement.output_buffer_occupation_per_vc.iter().map(|x|x/cycle_span as f64).collect());
+		let mut temporal_statistics: Vec<  BasicRouterMeasurement  > = self.temporal_statistics.iter().map(|m|m.clone().into_mul(1f64/self.statistics_temporal_step as f64)).collect();
 		if let Some(previous)=statistics
 		{
 			if let ConfigurationValue::Object(cv_name,previous_pairs) = previous
@@ -191,10 +230,64 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 								}
 								else
 								{
-									println!("Ignoring average_output_buffer_occupation_per_vc.");
+									println!("Ignoring average_reception_space_occupation_per_vc.");
 								}
 							}
-							_ => panic!("bad value for average_output_buffer_occupation_per_vc"),
+							_ => panic!("bad value for average_reception_space_occupation_per_vc"),
+						},
+						"temporal_statistics" => match value
+						{
+							&ConfigurationValue::Object(_, ref prev_t_pairs) =>
+							{
+								let mut local_average_output_buffer_occupation_per_vc : Vec<Vec<f64>> = vec![];
+								let mut local_average_reception_space_occupation_per_vc : Vec<Vec<f64>> = vec![];
+								for (ref t_name,ref t_value) in prev_t_pairs
+								{
+									match t_name.as_ref()
+									{
+										"average_output_buffer_occupation_per_vc" => match t_value
+										{
+											&ConfigurationValue::Array(ref prev_a) =>
+											{
+												local_average_output_buffer_occupation_per_vc = prev_a.iter().map(|outer|match outer{
+													&ConfigurationValue::Array(ref outer_a) => outer_a.iter().map(|inner|match inner{
+														&ConfigurationValue::Number(ref inner_x) => *inner_x,
+														_ => panic!(),
+													}).collect(),
+													_ => panic!(),
+												}).collect();
+											}
+											_ => panic!("bad value for average_output_buffer_occupation_per_vc"),
+										},
+										"average_reception_space_occupation_per_vc" => match t_value
+										{
+											&ConfigurationValue::Array(ref prev_a) =>
+											{
+												local_average_reception_space_occupation_per_vc = prev_a.iter().map(|outer|match outer{
+													&ConfigurationValue::Array(ref outer_a) => outer_a.iter().map(|inner|match inner{
+														&ConfigurationValue::Number(ref inner_x) => *inner_x,
+														_ => panic!(),
+													}).collect(),
+													_ => panic!(),
+												}).collect();
+											}
+											_ => panic!("bad value for average_reception_space_occupation_per_vc"),
+										},
+										_ => panic!(),
+									}
+								}
+								assert!(temporal_statistics.len()==local_average_output_buffer_occupation_per_vc.len());
+								assert!(temporal_statistics.len()==local_average_reception_space_occupation_per_vc.len());
+								for temporal_index in 0..temporal_statistics.len()
+								{
+									for measurement_index in 0..temporal_statistics[temporal_index].output_buffer_occupation_per_vc.len()
+									{
+										temporal_statistics[temporal_index].output_buffer_occupation_per_vc[measurement_index] += local_average_output_buffer_occupation_per_vc[temporal_index][measurement_index];
+										temporal_statistics[temporal_index].reception_space_occupation_per_vc[measurement_index] += local_average_reception_space_occupation_per_vc[temporal_index][measurement_index];
+									}
+								}
+							}
+							_ => panic!("bad value for temporal_statistics"),
 						},
 						_ => panic!("Nothing to do with field {} in Basic statistics",name),
 					}
@@ -242,16 +335,32 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 			}
 			result_content.push((String::from("average_reception_space_occupation_per_vc"),ConfigurationValue::Array(content.iter().map(|x|ConfigurationValue::Number(*x)).collect())));
 		}
+		if !temporal_statistics.is_empty()
+		{
+			if is_last
+			{
+				let factor=1f64 / total_routers as f64;
+				for m in temporal_statistics.iter_mut()
+				{
+					m.mul(factor);
+				}
+			}
+			let temporal_content = vec![
+				(String::from("average_output_buffer_occupation_per_vc"),ConfigurationValue::Array(temporal_statistics.iter().map(|m|ConfigurationValue::Array(m.output_buffer_occupation_per_vc.iter().map(|x|ConfigurationValue::Number(*x)).collect())).collect())),
+				(String::from("average_reception_space_occupation_per_vc"),ConfigurationValue::Array(temporal_statistics.iter().map(|m|ConfigurationValue::Array(m.reception_space_occupation_per_vc.iter().map(|x|ConfigurationValue::Number(*x)).collect())).collect())),
+			];
+			result_content.push((String::from("temporal_statistics"),ConfigurationValue::Object(String::from("TemporalStatistics"),temporal_content)));
+		}
 		Some(ConfigurationValue::Object(String::from("Basic"),result_content))
 	}
 	fn reset_statistics(&mut self, next_cycle:usize)
 	{
-		self.statistics_begin_cycle=next_cycle;
-		for x in self.statistics_output_buffer_occupation_per_vc.iter_mut()
+		self.principal_measurement.begin_cycle=next_cycle;
+		for x in self.principal_measurement.output_buffer_occupation_per_vc.iter_mut()
 		{
 			*x=0f64;
 		}
-		for x in self.statistics_reception_space_occupation_per_vc.iter_mut()
+		for x in self.principal_measurement.reception_space_occupation_per_vc.iter_mut()
 		{
 			*x=0f64;
 		}
@@ -260,8 +369,17 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 
 impl Basic<SimpleVirtualChannels>
 {
-	pub fn new(router_index: usize, cv:&ConfigurationValue, plugs:&Plugs, topology:&dyn Topology, maximum_packet_size:usize) -> Rc<RefCell<Basic<SimpleVirtualChannels>>>
+	//pub fn new(router_index: usize, cv:&ConfigurationValue, plugs:&Plugs, topology:&dyn Topology, maximum_packet_size:usize) -> Rc<RefCell<Basic<SimpleVirtualChannels>>>
+	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<Basic<SimpleVirtualChannels>>>
 	{
+		let RouterBuilderArgument{
+			router_index,
+			cv,
+			plugs,
+			topology,
+			maximum_packet_size,
+			statistics_temporal_step,
+		} = arg;
 		//let mut servers=None;
 		//let mut load=None;
 		let mut virtual_channels=None;
@@ -301,7 +419,7 @@ impl Basic<SimpleVirtualChannels>
 						})).collect()),
 						_ => panic!("bad value for permute"),
 					}
-					"delay" => (),//FIXME: yet undecided if/how to implemente this.
+					"delay" => (),//FIXME: yet undecided if/how to implement this.
 					"buffer_size" => match value
 					{
 						&ConfigurationValue::Number(f) => buffer_size=Some(f as usize),
@@ -422,9 +540,12 @@ impl Basic<SimpleVirtualChannels>
 			time_at_input_head,
 			output_arbiter: OutputArbiter::Token{port_token: vec![0;input_ports]},
 			maximum_packet_size,
-			statistics_begin_cycle: 0,
-			statistics_output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
-			statistics_reception_space_occupation_per_vc: vec![0f64;virtual_channels],
+			//statistics_begin_cycle: 0,
+			//statistics_output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
+			//statistics_reception_space_occupation_per_vc: vec![0f64;virtual_channels],
+			statistics_temporal_step,
+			principal_measurement: BasicRouterMeasurement::new(virtual_channels),
+			temporal_statistics: vec![],
 		}));
 		//r.borrow_mut().self_rc=r.downgrade();
 		r.borrow_mut().self_rc=Rc::<_>::downgrade(&r);
@@ -432,7 +553,7 @@ impl Basic<SimpleVirtualChannels>
 	}
 }
 
-impl<TM:TransmissionMechanism> Basic<TM>
+impl<TM:'static+TransmissionMechanism> Basic<TM>
 {
 	///Whether a phit in an input buffer can advance.
 	///bubble_in_use should be true only for leading phits that require the additional space.
@@ -479,6 +600,53 @@ impl<TM:TransmissionMechanism> Basic<TM>
 			available_internal_space >= necessary_credits
 		}
 	}
+	fn get_current_temporal_measurement(&mut self, cycle:usize) -> Option<usize>
+	{
+		if self.statistics_temporal_step>0
+		{
+			let index = cycle / self.statistics_temporal_step;
+			if self.temporal_statistics.len() <= index
+			{
+				let vcs=self.num_virtual_channels();
+				self.temporal_statistics.resize_with(index+1,||BasicRouterMeasurement::new(vcs));
+				self.temporal_statistics[index].begin_cycle = index*self.statistics_temporal_step;
+			}
+			Some(index)
+		} else { None }
+	}
+	fn gather_cycle_statistics(&mut self, cycle:usize, cycles_span:usize)
+	{
+		let amount_virtual_channels=self.num_virtual_channels();
+		let current_temporal_index = self.get_current_temporal_measurement(cycle);
+		for port_space in self.reception_port_space.iter()
+		{
+			for vc in 0..amount_virtual_channels
+			{
+				//self.principal_measurement.reception_space_occupation_per_vc[vc]+=(port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64 / self.reception_port_space.len() as f64;
+				let increment = (port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64 / self.reception_port_space.len() as f64;
+				self.principal_measurement.reception_space_occupation_per_vc[vc]+= increment;
+				for mindex in current_temporal_index
+				{
+					//FIXME: what if cycles_span > 1
+					self.temporal_statistics[mindex].reception_space_occupation_per_vc[vc]+= increment;
+				}
+			}
+		}
+		for output_port in self.output_buffers.iter()
+		{
+			for (vc,buffer) in output_port.iter().enumerate()
+			{
+				//self.principal_measurement.output_buffer_occupation_per_vc[vc]+=(buffer.len()*cycles_span) as f64 / self.output_buffers.len() as f64;
+				let increment = (buffer.len()*cycles_span) as f64 / self.output_buffers.len() as f64;
+				self.principal_measurement.output_buffer_occupation_per_vc[vc]+= increment;
+				for mindex in current_temporal_index
+				{
+					//FIXME: what if cycles_span > 1
+					self.temporal_statistics[mindex].output_buffer_occupation_per_vc[vc]+= increment;
+				}
+			}
+		}
+	}
 }
 
 
@@ -519,20 +687,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		
 		let amount_virtual_channels=self.num_virtual_channels();
 		//-- gather cycle statistics
-		for port_space in self.reception_port_space.iter()
-		{
-			for vc in 0..amount_virtual_channels
-			{
-				self.statistics_reception_space_occupation_per_vc[vc]+=(port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64 / self.reception_port_space.len() as f64;
-			}
-		}
-		for output_port in self.output_buffers.iter()
-		{
-			for (vc,buffer) in output_port.iter().enumerate()
-			{
-				self.statistics_output_buffer_occupation_per_vc[vc]+=(buffer.len()*cycles_span) as f64 / self.output_buffers.len() as f64;
-			}
-		}
+		self.gather_cycle_statistics(simulation.cycle,cycles_span);
 
 		//-- Precompute whatever polcies ask for.
 		let server_ports : Option<Vec<usize>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_server_ports())
@@ -552,6 +707,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		{
 			None
 		};
+		// `busy_ports[port_index]` is true for output ports for which there is some assigned input buffer which can advance.
 		let busy_ports:Vec<bool> = self.transmission_port_status.iter().enumerate().map(|(port,ref _status)|{
 			let mut is_busy = false;
 			for vc in 0..amount_virtual_channels
@@ -859,7 +1015,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 			};
 		}
 
-		//-- For each output port decide with input actually use it this cycle.
+		//-- For each output port decide which input actually use it this cycle.
 		let mut events=vec![];
 		for exit_port in 0..self.transmission_port_status.len()
 		{

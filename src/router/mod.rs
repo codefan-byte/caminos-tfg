@@ -60,6 +60,9 @@ pub struct RouterBuilderArgument<'a>
 	pub topology: &'a dyn Topology,
 	///The maximum number of phits that packet gonna have.
 	pub maximum_packet_size: usize,
+	///The corresponding value of the `Statistics` struct.
+	///Available to the router for the case it want to use the same period.
+	pub statistics_temporal_step: usize,
 }
 
 ///Creates a router from a configuration value.
@@ -75,7 +78,8 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 		};
 		match cv_name.as_ref()
 		{
-			"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
+			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
+			"Basic" => Basic::<SimpleVirtualChannels>::new(arg),
 			_ => panic!("Unknown router {}",cv_name),
 		}
 	}

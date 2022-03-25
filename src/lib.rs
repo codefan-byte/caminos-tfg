@@ -691,6 +691,7 @@ pub struct StatisticMeasurement
 
 impl StatisticMeasurement
 {
+	//TODO: this do not use `self`, and does not work with temporal statistics.
 	fn jain_server_created_phits(&self, network:&Network) -> f64
 	{
 		//double rcvd_count_total=0.0;
@@ -1315,7 +1316,8 @@ impl<'a> Simulation<'a>
 			cv:router_cfg,
 			plugs,
 			topology:topology.as_ref(),
-			maximum_packet_size
+			maximum_packet_size,
+			statistics_temporal_step,
 		})).collect();
 		let servers=(0..num_servers).map(|index|{
 			let port=topology.server_neighbour(index);
