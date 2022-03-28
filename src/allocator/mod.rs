@@ -86,7 +86,7 @@ pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
         }; */
         match cv_name.as_ref()
         {
-            "Random" => return Box::new(RandomAllocator::new(arg)),
+            "Random" => return Box::new(RandomAllocator::new(&arg)),
           //  "Islip" => return Box::new(IslipAllocator::new(arg)),
           //  "SeparableInputFirst" => return Box::new(SeparableInputFirstAllocator::new(arg)),
             _ => panic!("Unknown allocator: {}", cv_name),

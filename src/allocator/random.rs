@@ -84,7 +84,7 @@ impl RandomAllocator {
     /// * `args` - The arguments for the allocator
     /// # Returns
     /// * `RandomAllocator` - The new random allocator
-    pub fn new(args: AllocatorBuilderArgument) -> RandomAllocator {
+    pub fn new(args: &AllocatorBuilderArgument) -> RandomAllocator {
         // Check if the arguments are valid
         if args.num_clients <= 0 || args.num_resources <= 0 {
             panic!("Invalid arguments");
