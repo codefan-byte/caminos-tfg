@@ -4,6 +4,7 @@
 
 ### 2022-03-29
 git commit -m "error and match_object macros. With the action shell and source the remote folder name is rewritten."
+git commit -m "Upgraded dependency rand-0.4 to rand-0.8. It has been more tricky than expected."
 
 ### 2022-03-26
 Minor improvements.

@@ -1,6 +1,6 @@
 
 use std::cell::RefCell;
-use ::rand::{StdRng};
+use ::rand::{rngs::StdRng};
 use std::fmt::Debug;
 use std::convert::TryInto;
 use quantifiable_derive::Quantifiable;//the derive macro

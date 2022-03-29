@@ -19,7 +19,7 @@ use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng};
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]
@@ -354,7 +354,7 @@ impl VirtualChannelPolicy for Random
 	//fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _target_router_index:usize, _entry_port:usize, _entry_virtual_channel:usize, _performed_hops:usize, _server_ports:&Option<Vec<usize>>, _port_average_neighbour_queue_length:&Option<Vec<f32>>, _port_last_transmission:&Option<Vec<usize>>, _port_occuped_output_space:&Option<Vec<usize>>, _port_available_output_space:&Option<Vec<usize>>, _current_cycle:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
-		vec![candidates[rng.borrow_mut().gen_range(0,candidates.len())].clone()]
+		vec![candidates[rng.borrow_mut().gen_range(0..candidates.len())].clone()]
 	}
 
 	fn need_server_ports(&self)->bool
@@ -498,7 +498,7 @@ impl VirtualChannelPolicy for Hops
 		//	//panic!("There is no route from router {} to server {} increasing on virtual channels",self.router_index,phit.packet.message.destination);
 		//	continue;
 		//}
-		//filtered[simulation.rng.borrow_mut().gen_range(0,filtered.len())]
+		//filtered[simulation.rng.borrow_mut().gen_range(0..filtered.len())]
 		filtered
 	}
 
@@ -587,7 +587,7 @@ impl VirtualChannelPolicy for WideHops
 		//	//panic!("There is no route from router {} to server {} increasing on virtual channels",self.router_index,phit.packet.message.destination);
 		//	continue;
 		//}
-		//filtered[simulation.rng.borrow_mut().gen_range(0,filtered.len())]
+		//filtered[simulation.rng.borrow_mut().gen_range(0..filtered.len())]
 		filtered
 	}
 

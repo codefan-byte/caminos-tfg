@@ -7,16 +7,19 @@ see [`new_routing`](fn.new_routing.html) for documentation on the configuration 
 
 */
 
+use std::cell::RefCell;
+use std::fmt::Debug;
+use std::convert::TryFrom;
+use std::ops::DerefMut;
+
+use ::rand::{rngs::StdRng,Rng,prelude::SliceRandom};
+
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute};
 use crate::topology::{Topology,Location,NeighbourRouterIteratorItem};
 use crate::matrix::Matrix;
-use std::cell::RefCell;
-use ::rand::{StdRng,Rng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::Plugs;
-use std::fmt::Debug;
-use std::convert::TryFrom;
 
 ///Information stored in the packet for the `Routing` algorithms to operate.
 #[derive(Quantifiable)]
@@ -608,10 +611,11 @@ impl Routing for Valiant
 			{
 				panic!("There are not legal middle routers to select in Valiant from router {} towards router {}",current_router,target_router);
 			}
-			let r = rng.borrow_mut().gen_range(0,available.len());
+			//let r = rng.borrow_mut().gen_range(0,available.len());//rng-0.4
+			let r = rng.borrow_mut().gen_range(0..available.len());//rng-0.8
 			available[r]
 		} else {
-			rng.borrow_mut().gen_range(0,n)
+			rng.borrow_mut().gen_range(0..n)
 		};
 		let mut bri=routing_info.borrow_mut();
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
@@ -858,7 +862,7 @@ impl<R:SourceRouting+Debug> Routing for R
 			{
 				panic!("No path found from router {} to router {}",current_router,target_router);
 			}
-			let r=rng.borrow_mut().gen_range(0,path_collection.len());
+			let r=rng.borrow_mut().gen_range(0..path_collection.len());
 			routing_info.borrow_mut().selected_path=Some(path_collection[r].clone());
 		}
 	}
@@ -1029,7 +1033,7 @@ impl Routing for SumRouting
 	{
 		let all:Vec<i32> = match self.policy
 		{
-			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0,2)],
+			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0..2)],
 			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond
 			| SumRoutingPolicy::SecondWhenFirstEmpty | SumRoutingPolicy::EscapeToSecond => vec![0,1],
 		};
@@ -2413,7 +2417,8 @@ impl Routing for SourceAdaptiveRouting
 			let mut selected_indices : Vec<i32> = (0i32..<i32>::try_from(path_collection.len()).unwrap()).collect();
 			if selected_indices.len()>self.amount
 			{
-				rng.borrow_mut().shuffle(&mut selected_indices);
+				//rng.borrow_mut().shuffle(&mut selected_indices);//rng-0.4
+				selected_indices.shuffle(rng.borrow_mut().deref_mut());
 				selected_indices.resize_with(self.amount,||unreachable!());
 			}
 			routing_info.borrow_mut().selections=Some(selected_indices);
@@ -2567,7 +2572,7 @@ impl Routing for EachLengthSourceAdaptiveRouting
 				if candidates.len()==0 {
 					None
 				} else {
-					let r = rng.borrow_mut().gen_range(0,candidates.len());
+					let r = rng.borrow_mut().gen_range(0..candidates.len());
 					Some(i32::try_from(candidates[r]).unwrap())
 				}
 			}).collect();

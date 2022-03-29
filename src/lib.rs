@@ -297,7 +297,7 @@ use std::convert::TryFrom;
 use std::cmp::Ordering;
 //use std::default::default;
 //use std::borrow::Cow;
-use rand::{StdRng,SeedableRng};
+use rand::{rngs::StdRng,SeedableRng};
 
 use config_parser::{ConfigurationValue,Expr};
 use topology::{Topology,new_topology,TopologyBuilderArgument,Location,
@@ -1300,7 +1300,17 @@ impl<'a> Simulation<'a>
 		let router_cfg=router_cfg.expect("There were no router");
 		let mut routing=routing.expect("There were no routing");
 		let link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
-		let rng=RefCell::new(StdRng::from_seed(&[seed]));
+		let rng=RefCell::new(StdRng::from_seed({
+			//let mut std_rng_seed : Vec<u8> = Vec::from(seed.to_ne_bytes());
+			//std_rng_seed.resize(32,0);
+			//let std_rng_seed = seed.to_ne_bytes().into_iter().collect();
+			let mut std_rng_seed = [0u8;32];
+			for (index,value) in seed.to_ne_bytes().iter().enumerate()
+			{
+				std_rng_seed[index]=*value;
+			}
+			std_rng_seed
+		}));
 		let topology=new_topology(TopologyBuilderArgument{
 			cv:topology,
 			plugs,

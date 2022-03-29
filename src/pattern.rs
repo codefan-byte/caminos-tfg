@@ -7,9 +7,11 @@ see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration 
 */
 
 use std::cell::{RefCell};
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 use std::fs::File;
 use std::io::{BufRead,BufReader};
+use std::ops::DerefMut;
+
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::CartesianData;//for CartesianTransform
@@ -350,7 +352,8 @@ impl Pattern for UniformPattern
 		//let mut rng = thread_rng();//FIXME use seed
 		loop
 		{
-			let r=rng.borrow_mut().gen_range(0,self.size);
+			//let r=rng.borrow_mut().gen_range(0,self.size);//in rng-0.4
+			let r=rng.borrow_mut().gen_range(0..self.size);//in rng-0.8
 			if r!=origin
 			{
 				return r;
@@ -420,8 +423,8 @@ impl Pattern for RandomPermutation
 			panic!("In a permutation source_size({}) must be equal to target_size({}).",source_size,target_size);
 		}
 		self.permutation=(0..source_size).collect();
-		//let mut rng = thread_rng();//FIXME use seed
-		rng.borrow_mut().shuffle(&mut self.permutation);
+		//rng.borrow_mut().shuffle(&mut self.permutation);//rng-0.4
+		self.permutation.shuffle(rng.borrow_mut().deref_mut());//rng-0.8
 	}
 	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)->usize
 	{
@@ -511,8 +514,8 @@ impl Pattern for RandomInvolution
 		let mut max=2;
 		for _iteration in 0..iterations
 		{
-			let first=rng.borrow_mut().gen_range(0,max);
-			let second=rng.borrow_mut().gen_range(0,max-1);
+			let first=rng.borrow_mut().gen_range(0..max);
+			let second=rng.borrow_mut().gen_range(0..max-1);
 			let (low,high) = if second>=first
 			{
 				(first,second+1)
@@ -829,7 +832,7 @@ impl Pattern for ComponentsPattern
 		}
 		let global_dest=self.global_pattern.get_destination(global,topology,rng);
 		//let local_dest=self.block_pattern.get_destination(local,topology,rng);
-		let r_local=rng.borrow_mut().gen_range(0,self.components[global_dest].len());
+		let r_local=rng.borrow_mut().gen_range(0..self.components[global_dest].len());
 		let dest=self.components[global_dest][r_local];
 		let radix=topology.ports(dest);
 		let mut candidate_stack=Vec::with_capacity(radix);
@@ -841,7 +844,7 @@ impl Pattern for ComponentsPattern
 				_ => (),
 			}
 		}
-		let rserver=rng.borrow_mut().gen_range(0,candidate_stack.len());
+		let rserver=rng.borrow_mut().gen_range(0..candidate_stack.len());
 		candidate_stack[rserver]
 	}
 }
@@ -1342,7 +1345,7 @@ impl Pattern for Hotspots
 		//XXX Do we want to check the user given destinations against target_size?
 		for _ in 0..self.extra_random_destinations
 		{
-			let r=rng.borrow_mut().gen_range(0,target_size);
+			let r=rng.borrow_mut().gen_range(0..target_size);
 			self.destinations.push(r);
 		}
 		if self.destinations.is_empty()
@@ -1352,7 +1355,7 @@ impl Pattern for Hotspots
 	}
 	fn get_destination(&self, _origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
 	{
-		let r = rng.borrow_mut().gen_range(0,self.destinations.len());
+		let r = rng.borrow_mut().gen_range(0..self.destinations.len());
 		self.destinations[r]
 	}
 }
@@ -1438,7 +1441,7 @@ impl Pattern for RandomMix
 	}
 	fn get_destination(&self, origin:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
 	{
-		let mut w = rng.borrow_mut().gen_range(0,self.total_weight);
+		let mut w = rng.borrow_mut().gen_range(0..self.total_weight);
 		let mut index = 0;
 		while w>self.weights[index]
 		{
@@ -1530,7 +1533,8 @@ impl Pattern for GloballyShufflingDestinations
 			{
 				pending.push(i);
 			}
-			rng.borrow_mut().shuffle(&mut pending);
+			//rng.borrow_mut().shuffle(&mut pending);//rng-0.4
+			pending.shuffle(rng.borrow_mut().deref_mut());//rng-0.8
 		}
 		pending.pop().unwrap()
 	}
@@ -1615,7 +1619,8 @@ impl Pattern for GroupShufflingDestinations
 			{
 				pending.push(i);
 			}
-			rng.borrow_mut().shuffle(&mut pending);
+			//rng.borrow_mut().shuffle(&mut pending);//rng-0.4
+			pending.shuffle(rng.borrow_mut().deref_mut());//rng-0.8
 		}
 		pending.pop().unwrap()
 	}
@@ -1693,7 +1698,7 @@ impl Pattern for UniformDistance
 	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)->usize
 	{
 		let pool = &self.pool[origin/self.concentration];
-		let r=rng.borrow_mut().gen_range(0,pool.len());
+		let r=rng.borrow_mut().gen_range(0..pool.len());
 		pool[r]*self.concentration + (origin%self.concentration)
 	}
 }
@@ -1758,7 +1763,7 @@ impl Pattern for FixedRandom
 		{
 			// To avoid selecting self we substract 1 from the total. If the random falls in the latter half we add it again.
 			let n = if self.allow_self || target_size<source { target_size } else { target_size -1 };
-			let mut elem = rng.gen_range(0,n);
+			let mut elem = rng.gen_range(0..n);
 			if !self.allow_self && elem>=source
 			{
 				elem += 1;

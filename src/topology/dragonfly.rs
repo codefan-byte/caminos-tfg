@@ -1,6 +1,6 @@
 
 use std::cell::RefCell;
-use ::rand::{StdRng};
+use ::rand::{rngs::StdRng};
 use super::{Topology,Location};
 use super::cartesian::CartesianData;
 use quantifiable_derive::Quantifiable;//the derive macro

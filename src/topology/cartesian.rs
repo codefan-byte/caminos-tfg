@@ -1,6 +1,6 @@
 
 use std::cell::RefCell;
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology,Location};
@@ -375,7 +375,8 @@ impl Topology for Torus
 			{
 				if let Some(rng)=rng
 				{
-					let r=rng.borrow_mut().gen_range(0,2);
+					//let r=rng.borrow_mut().gen_range(0,2);//rng-0.4
+					let r=rng.borrow_mut().gen_range(0..2);//rng-0.8
 					if r==0 { a } else { -b }
 				}
 				else
@@ -1082,7 +1083,7 @@ impl Routing for ValiantDOR
 			//XXX Should we skip if current[dim]==target[dim]?
 			let dim=self.randomized[offset];
 			let side=cartesian_data.sides[dim];
-		 	let t=rng.borrow_mut().gen_range(0,side);
+		 	let t=rng.borrow_mut().gen_range(0..side);
 			up_target[dim]=t;
 			let aux_rr=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 			r=aux_rr[dim];
@@ -1170,7 +1171,7 @@ impl Routing for ValiantDOR
 						let dim=self.randomized[offset];
 						//XXX Should we skip if current[dim]==target[dim]?
 						let side=cartesian_data.sides[dim];
-						let t=rng.borrow_mut().gen_range(0,side);
+						let t=rng.borrow_mut().gen_range(0..side);
 						let mut up_target=cartesian_data.unpack(target_router.unwrap());
 						up_target[dim]=t;
 						let aux_rr=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
@@ -1394,7 +1395,7 @@ impl Routing for O1TURN
 		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
 		routing_info.borrow_mut().routing_record=Some(routing_record);
 		routing_info.borrow_mut().selections=Some(vec![{
-			rng.borrow_mut().gen_range(0,2)
+			rng.borrow_mut().gen_range(0..2)
 		}]);
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)

@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::mem::{size_of};
 use std::collections::{BTreeMap};
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use self::basic::Basic;
 use crate::config_parser::ConfigurationValue;
@@ -389,7 +389,8 @@ impl SpaceAtReceptor for ParallelBuffers
 		 		let vc={
 		 			if phit.is_begin()
 		 			{
-		 				let r=rng.borrow_mut().gen_range(0,self.buffers.len());
+		 				//let r=rng.borrow_mut().gen_range(0,self.buffers.len());//rng-0.4
+		 				let r=rng.borrow_mut().gen_range(0..self.buffers.len());//rng-0.8
 		 				self.input_virtual_channel_choices.insert(packet_ptr,r);
 		 				r
 		 			}
@@ -738,7 +739,7 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 			{
 				panic!("There is no space for the packet. packet.size={} available={:?}",phit.packet.size,self.buffers.iter().map(|buffer|self.buffer_size-buffer.len()).collect::<Vec<usize>>());
 			}
-			let r=rng.borrow_mut().gen_range(0,good.len());
+			let r=rng.borrow_mut().gen_range(0..good.len());
 			self.currently_selected=good[r]
 		}
 		let index = self.currently_selected;

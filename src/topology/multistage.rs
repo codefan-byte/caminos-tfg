@@ -2,7 +2,7 @@
 use std::cell::{RefCell};
 use std::collections::BTreeSet;
 
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 
 use super::{Topology,Location,TopologyBuilderArgument,
@@ -531,12 +531,13 @@ impl ExplicitStage
 					}
 				}
 				//sample points x,y, keep them last in U to remove them in O(1)
-				let r=rng.borrow_mut().gen_range(0,upwards_available_amount);
+				//let r=rng.borrow_mut().gen_range(0,upwards_available_amount);//rand-0.4
+				let r=rng.borrow_mut().gen_range(0..upwards_available_amount);//rand-0.8
 				let x=upwards_available[r];
 				upwards_available[r]=upwards_available[upwards_available_amount-1];
 				upwards_available[upwards_available_amount-1]=x;
 
-				let r=rng.borrow_mut().gen_range(0,downwards_available_amount);
+				let r=rng.borrow_mut().gen_range(0..downwards_available_amount);
 				let y=downwards_available[r];
 				downwards_available[r]=downwards_available[downwards_available_amount-1];
 				downwards_available[downwards_available_amount-1]=y;

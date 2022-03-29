@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{BufRead,BufReader};
 
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use super::{Topology,Location};
 use super::cartesian::CartesianData;
@@ -284,14 +284,15 @@ impl NeighboursLists
 				}
 				//sample points x,y, keep them last in U to remove them in O(1)
 				//vertex_index r=randomInteger(Un);
-				let r=rng.borrow_mut().gen_range(0,Un);
+				//let r=rng.borrow_mut().gen_range(0,Un);//rng-0.4
+				let r=rng.borrow_mut().gen_range(0..Un);//rng-0.8
 				//vertex_index x=U[r];
 				let x=U[r];
 				U[r]=U[Un-1];
 				U[Un-1]=x;
 
 				//r=randomInteger(Un-1);
-				let r=rng.borrow_mut().gen_range(0,Un-1);
+				let r=rng.borrow_mut().gen_range(0..Un-1);
 				//vertex_index y=U[r];
 				let y=U[r];
 				U[r]=U[Un-2];

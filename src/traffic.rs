@@ -12,7 +12,7 @@ use crate::config_parser::ConfigurationValue;
 use std::boxed::Box;
 use std::cell::{RefCell};
 use crate::{Message,Plugs};
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng};
 use crate::pattern::{Pattern,new_pattern,PatternBuilderArgument};
 use std::rc::Rc;
 use std::collections::{BTreeSet,BTreeMap,VecDeque};
@@ -69,7 +69,7 @@ pub trait Traffic : Quantifiable + Debug
 	fn should_generate(&self, server:usize, _cycle:usize, rng: &RefCell<StdRng>) -> bool
 	{
 		let p=self.probability_per_cycle(server);
-		let r=rng.borrow_mut().gen_range(0f32,1f32);
+		let r=rng.borrow_mut().gen_range(0f32..1f32);
 		r<p
 	}
 	///Indicates the state of the server within the traffic.
@@ -387,7 +387,8 @@ impl Traffic for Sum
 	fn generate_message(&mut self, origin:usize, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> Result<Rc<Message>,TrafficError>
 	{
 		let probs:Vec<f32> =self.list.iter().map(|t|t.probability_per_cycle(origin)).collect();
-		let mut r=rng.borrow_mut().gen_range(0f32,probs.iter().sum());
+		//let mut r=rng.borrow_mut().gen_range(0f32,probs.iter().sum());//rng-0.4
+		let mut r=rng.borrow_mut().gen_range(0f32..probs.iter().sum());//rng-0.8
 		for i in 0..self.list.len()
 		{
 			if r<probs[i]

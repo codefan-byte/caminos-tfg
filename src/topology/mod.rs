@@ -16,7 +16,7 @@ pub mod multistage;
 
 use std::cell::{RefCell};
 use std::fs::File;
-use ::rand::{StdRng};
+use ::rand::{rngs::StdRng};
 use std::io::{Write};
 
 use quantifiable_derive::Quantifiable;//the derive macro

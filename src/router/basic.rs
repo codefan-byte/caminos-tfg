@@ -1,9 +1,9 @@
 
 use std::cell::RefCell;
 use std::rc::{Rc,Weak};
-use std::ops::Deref;
+use std::ops::{Deref,DerefMut};
 use std::mem::{size_of};
-use ::rand::{Rng,StdRng};
+use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument};
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Location};
@@ -987,16 +987,21 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						_ => false,
 					}
 				});
-				simulation.rng.borrow_mut().shuffle(&mut request_transit);
-				simulation.rng.borrow_mut().shuffle(&mut request_injection);
+				//shuffle has changed notably from rng-0.4 to rng-0.8
+				//simulation.rng.borrow_mut().shuffle(&mut request_transit);
+				//simulation.rng.borrow_mut().shuffle(&mut request_injection);
+				let mut rng=simulation.rng.borrow_mut();
+				request_transit.shuffle(rng.deref_mut());
+				request_injection.shuffle(rng.deref_mut());
 				//**rx=request_transit;
 				rx=request_transit;
 				rx.append(&mut request_injection);
 			}
 			else
 			{
-				//simulation.rng.borrow_mut().shuffle(rx);
-				simulation.rng.borrow_mut().shuffle(&mut rx);
+				//shuffle has changed notably from rng-0.4 to rng-0.8
+				//simulation.rng.borrow_mut().shuffle(&mut rx);
+				rx.shuffle(simulation.rng.borrow_mut().deref_mut());
 			}
 			rx
 		});
@@ -1174,7 +1179,8 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
 				let selected_virtual_channel = match self.output_arbiter
 				{
-					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0,cand.len())],
+					//OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0,cand.len())],//rng-0.4
+					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0..cand.len())],//rng-0.8
 					OutputArbiter::Token{ref mut port_token}=>
 					{
 						//Or by tokens as in fsin
