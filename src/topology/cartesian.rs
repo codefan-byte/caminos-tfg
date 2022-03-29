@@ -375,8 +375,8 @@ impl Topology for Torus
 			{
 				if let Some(rng)=rng
 				{
-					//let r=rng.borrow_mut().gen_range(0,2);//rng-0.4
-					let r=rng.borrow_mut().gen_range(0..2);//rng-0.8
+					//let r=rng.borrow_mut().gen_range(0,2);//rand-0.4
+					let r=rng.borrow_mut().gen_range(0..2);//rand-0.8
 					if r==0 { a } else { -b }
 				}
 				else

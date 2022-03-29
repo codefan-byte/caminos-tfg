@@ -352,8 +352,8 @@ impl Pattern for UniformPattern
 		//let mut rng = thread_rng();//FIXME use seed
 		loop
 		{
-			//let r=rng.borrow_mut().gen_range(0,self.size);//in rng-0.4
-			let r=rng.borrow_mut().gen_range(0..self.size);//in rng-0.8
+			//let r=rng.borrow_mut().gen_range(0,self.size);//in rand-0.4
+			let r=rng.borrow_mut().gen_range(0..self.size);//in rand-0.8
 			if r!=origin
 			{
 				return r;
@@ -423,8 +423,8 @@ impl Pattern for RandomPermutation
 			panic!("In a permutation source_size({}) must be equal to target_size({}).",source_size,target_size);
 		}
 		self.permutation=(0..source_size).collect();
-		//rng.borrow_mut().shuffle(&mut self.permutation);//rng-0.4
-		self.permutation.shuffle(rng.borrow_mut().deref_mut());//rng-0.8
+		//rng.borrow_mut().shuffle(&mut self.permutation);//rand-0.4
+		self.permutation.shuffle(rng.borrow_mut().deref_mut());//rand-0.8
 	}
 	fn get_destination(&self, origin:usize, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)->usize
 	{
@@ -1533,8 +1533,8 @@ impl Pattern for GloballyShufflingDestinations
 			{
 				pending.push(i);
 			}
-			//rng.borrow_mut().shuffle(&mut pending);//rng-0.4
-			pending.shuffle(rng.borrow_mut().deref_mut());//rng-0.8
+			//rng.borrow_mut().shuffle(&mut pending);//rand-0.4
+			pending.shuffle(rng.borrow_mut().deref_mut());//rand-0.8
 		}
 		pending.pop().unwrap()
 	}
@@ -1619,8 +1619,8 @@ impl Pattern for GroupShufflingDestinations
 			{
 				pending.push(i);
 			}
-			//rng.borrow_mut().shuffle(&mut pending);//rng-0.4
-			pending.shuffle(rng.borrow_mut().deref_mut());//rng-0.8
+			//rng.borrow_mut().shuffle(&mut pending);//rand-0.4
+			pending.shuffle(rng.borrow_mut().deref_mut());//rand-0.8
 		}
 		pending.pop().unwrap()
 	}

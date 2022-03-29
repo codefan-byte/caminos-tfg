@@ -1301,9 +1301,7 @@ impl<'a> Simulation<'a>
 		let mut routing=routing.expect("There were no routing");
 		let link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
 		let rng=RefCell::new(StdRng::from_seed({
-			//let mut std_rng_seed : Vec<u8> = Vec::from(seed.to_ne_bytes());
-			//std_rng_seed.resize(32,0);
-			//let std_rng_seed = seed.to_ne_bytes().into_iter().collect();
+			//This has been changed from rand-0.4 to rand-0.8
 			let mut std_rng_seed = [0u8;32];
 			for (index,value) in seed.to_ne_bytes().iter().enumerate()
 			{

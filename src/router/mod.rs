@@ -389,8 +389,8 @@ impl SpaceAtReceptor for ParallelBuffers
 		 		let vc={
 		 			if phit.is_begin()
 		 			{
-		 				//let r=rng.borrow_mut().gen_range(0,self.buffers.len());//rng-0.4
-		 				let r=rng.borrow_mut().gen_range(0..self.buffers.len());//rng-0.8
+		 				//let r=rng.borrow_mut().gen_range(0,self.buffers.len());//rand-0.4
+		 				let r=rng.borrow_mut().gen_range(0..self.buffers.len());//rand-0.8
 		 				self.input_virtual_channel_choices.insert(packet_ptr,r);
 		 				r
 		 			}

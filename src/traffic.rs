@@ -387,8 +387,8 @@ impl Traffic for Sum
 	fn generate_message(&mut self, origin:usize, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>) -> Result<Rc<Message>,TrafficError>
 	{
 		let probs:Vec<f32> =self.list.iter().map(|t|t.probability_per_cycle(origin)).collect();
-		//let mut r=rng.borrow_mut().gen_range(0f32,probs.iter().sum());//rng-0.4
-		let mut r=rng.borrow_mut().gen_range(0f32..probs.iter().sum());//rng-0.8
+		//let mut r=rng.borrow_mut().gen_range(0f32,probs.iter().sum());//rand-0.4
+		let mut r=rng.borrow_mut().gen_range(0f32..probs.iter().sum());//rand-0.8
 		for i in 0..self.list.len()
 		{
 			if r<probs[i]

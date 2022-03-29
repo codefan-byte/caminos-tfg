@@ -611,8 +611,8 @@ impl Routing for Valiant
 			{
 				panic!("There are not legal middle routers to select in Valiant from router {} towards router {}",current_router,target_router);
 			}
-			//let r = rng.borrow_mut().gen_range(0,available.len());//rng-0.4
-			let r = rng.borrow_mut().gen_range(0..available.len());//rng-0.8
+			//let r = rng.borrow_mut().gen_range(0,available.len());//rand-0.4
+			let r = rng.borrow_mut().gen_range(0..available.len());//rand-0.8
 			available[r]
 		} else {
 			rng.borrow_mut().gen_range(0..n)
@@ -2417,7 +2417,7 @@ impl Routing for SourceAdaptiveRouting
 			let mut selected_indices : Vec<i32> = (0i32..<i32>::try_from(path_collection.len()).unwrap()).collect();
 			if selected_indices.len()>self.amount
 			{
-				//rng.borrow_mut().shuffle(&mut selected_indices);//rng-0.4
+				//rng.borrow_mut().shuffle(&mut selected_indices);//rand-0.4
 				selected_indices.shuffle(rng.borrow_mut().deref_mut());
 				selected_indices.resize_with(self.amount,||unreachable!());
 			}

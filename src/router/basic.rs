@@ -987,7 +987,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						_ => false,
 					}
 				});
-				//shuffle has changed notably from rng-0.4 to rng-0.8
+				//shuffle has changed notably from rand-0.4 to rand-0.8
 				//simulation.rng.borrow_mut().shuffle(&mut request_transit);
 				//simulation.rng.borrow_mut().shuffle(&mut request_injection);
 				let mut rng=simulation.rng.borrow_mut();
@@ -999,7 +999,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 			}
 			else
 			{
-				//shuffle has changed notably from rng-0.4 to rng-0.8
+				//shuffle has changed notably from rand-0.4 to rand-0.8
 				//simulation.rng.borrow_mut().shuffle(&mut rx);
 				rx.shuffle(simulation.rng.borrow_mut().deref_mut());
 			}
@@ -1179,8 +1179,8 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
 				let selected_virtual_channel = match self.output_arbiter
 				{
-					//OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0,cand.len())],//rng-0.4
-					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0..cand.len())],//rng-0.8
+					//OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0,cand.len())],//rand-0.4
+					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0..cand.len())],//rand-0.8
 					OutputArbiter::Token{ref mut port_token}=>
 					{
 						//Or by tokens as in fsin

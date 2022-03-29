@@ -284,8 +284,8 @@ impl NeighboursLists
 				}
 				//sample points x,y, keep them last in U to remove them in O(1)
 				//vertex_index r=randomInteger(Un);
-				//let r=rng.borrow_mut().gen_range(0,Un);//rng-0.4
-				let r=rng.borrow_mut().gen_range(0..Un);//rng-0.8
+				//let r=rng.borrow_mut().gen_range(0,Un);//rand-0.4
+				let r=rng.borrow_mut().gen_range(0..Un);//rand-0.8
 				//vertex_index x=U[r];
 				let x=U[r];
 				U[r]=U[Un-1];
