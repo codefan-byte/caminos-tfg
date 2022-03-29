@@ -1513,3 +1513,68 @@ pub fn config_relaxed_cmp(a:&ConfigurationValue, b:&ConfigurationValue) -> bool
 }
 
 
+/// match arms agains the keys of an object
+/// first argument, `$cv:expr`, is the ConfigurationValue expected to be the object
+/// second argument, `$name:literal`, is the name the Object should have.
+/// third argument, `$valueid:ident`, is the variable name capturing the value in the object's elements
+///    and can be used in the arms
+/// the remaining arguments are the arms of the match.
+#[macro_export]
+macro_rules! match_object{
+	//($cv:expr, $name:literal, $valueid:ident, $($key:literal => $arm:tt)* ) => {{
+	($cv:expr, $name:literal, $valueid:ident, $($arm:tt)* ) => {{
+		//Error::$kind( source_location!(), $($args),* )
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs) = $cv
+		{
+			if cv_name!= $name
+			{
+				panic!("A Pow must be created from a `{}` object not `{}`",$name,cv_name);
+			}
+			for &(ref name,ref $valueid) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+					$( $arm )*
+					"legend_name" => Ok(()),
+					//_ => panic!("Nothing to do with field {} in {}",name,$name),
+					_ => Err(error!(ill_formed_configuration,$cv).with_message(format!("Nothing to do with field {} in {}",name,$name)))?,
+				}
+			}
+		}
+		else
+		{
+			//panic!("Trying to create a {} from a non-Object",$name);
+			Err(error!(ill_formed_configuration,$cv).with_message(format!("Trying to create a {} from a non-Object",$name)))?
+		}
+	}};
+}
+///Like `match_object!` but panicking on errors.
+#[macro_export]
+macro_rules! match_object_panic{
+	($cv:expr, $name:literal, $valueid:ident, $($arm:tt)* ) => {{
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs) = $cv
+		{
+			if cv_name!= $name
+			{
+				panic!("A Pow must be created from a `{}` object not `{}`",$name,cv_name);
+			}
+			for &(ref name,ref $valueid) in cv_pairs
+			{
+				match AsRef::<str>::as_ref(&name)
+				{
+					$( $arm )*
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in {}",name,$name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a {} from a non-Object",$name);
+		}
+	}};
+}
+
+

@@ -9,6 +9,8 @@ Instead of `expect` or `unwrap_or_else` try
 Instead of `panic!` try
 * Return an error. E.g., by `return Err( Error::nonsense_command_output(source_location!()) );`
 
+The `error!` macro may easy up the writting a little. E.g., `error!(nonsense_command_output)` or `error!(command_not_found,"squeue".to_string(),e)`.
+
 To include arbitrary messages use the `with_message` method, like as `Error::undetermined(source_location!()).with_message(format!("A text like in a panic: {}",thing_to_dump))`.
 
 When displaying errors
@@ -98,6 +100,12 @@ macro_rules! source_location{
 			column: column!(),
 		}
 	}
+}
+#[macro_export]
+macro_rules! error{
+	($kind:ident,$($args:tt),*) => {{
+		Error::$kind( source_location!(), $($args),* )
+	}};
 }
 
 use ErrorKind::*;

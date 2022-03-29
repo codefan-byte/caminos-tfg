@@ -15,7 +15,7 @@ use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::CartesianData;//for CartesianTransform
 use crate::topology::{Topology,Location};
 use crate::quantify::Quantifiable;
-use crate::Plugs;
+use crate::{Plugs,match_object_panic};
 
 ///A `Pattern` describes how a set of entities decides destinations into another set of entities.
 ///The entities are initially servers, but after some operators it may mean router, rows/columns, or other agrupations.
@@ -974,68 +974,114 @@ impl CartesianTransform
 		let mut permute=None;
 		let mut complement=None;
 		let mut project=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="CartesianTransform"
+		//if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		//{
+		//	if cv_name!="CartesianTransform"
+		//	{
+		//		panic!("A CartesianTransform must be created from a `CartesianTransform` object not `{}`",cv_name);
+		//	}
+		//	for &(ref name,ref value) in cv_pairs
+		//	{
+		//		//match name.as_ref()
+		//		match AsRef::<str>::as_ref(&name)
+		//		{
+		//			"sides" => match value
+		//			{
+		//				&ConfigurationValue::Array(ref a) => sides=Some(a.iter().map(|v|match v{
+		//					&ConfigurationValue::Number(f) => f as usize,
+		//					_ => panic!("bad value in sides"),
+		//				}).collect()),
+		//				_ => panic!("bad value for sides"),
+		//			}
+		//			"shift" => match value
+		//			{
+		//				&ConfigurationValue::Array(ref a) => shift=Some(a.iter().map(|v|match v{
+		//					&ConfigurationValue::Number(f) => f as usize,
+		//					_ => panic!("bad value in shift"),
+		//				}).collect()),
+		//				_ => panic!("bad value for shift"),
+		//			}
+		//			"permute" => match value
+		//			{
+		//				&ConfigurationValue::Array(ref a) => permute=Some(a.iter().map(|v|match v{
+		//					&ConfigurationValue::Number(f) => f as usize,
+		//					_ => panic!("bad value in permute"),
+		//				}).collect()),
+		//				_ => panic!("bad value for permute"),
+		//			}
+		//			"complement" => match value
+		//			{
+		//				&ConfigurationValue::Array(ref a) => complement=Some(a.iter().map(|v|match v{
+		//					&ConfigurationValue::True => true,
+		//					&ConfigurationValue::False => false,
+		//					_ => panic!("bad value in complement"),
+		//				}).collect()),
+		//				_ => panic!("bad value for complement"),
+		//			}
+		//			"project" => match value
+		//			{
+		//				&ConfigurationValue::Array(ref a) => project=Some(a.iter().map(|v|match v{
+		//					&ConfigurationValue::True => true,
+		//					&ConfigurationValue::False => false,
+		//					_ => panic!("bad value in project"),
+		//				}).collect()),
+		//				_ => panic!("bad value for project"),
+		//			}
+		//			"legend_name" => (),
+		//			_ => panic!("Nothing to do with field {} in CartesianTransform",name),
+		//		}
+		//	}
+		//}
+		//else
+		//{
+		//	panic!("Trying to create a CartesianTransform from a non-Object");
+		//}
+		match_object_panic!(arg.cv,"CartesianTransform",value,
+			"sides" => match value
 			{
-				panic!("A CartesianTransform must be created from a `CartesianTransform` object not `{}`",cv_name);
+				&ConfigurationValue::Array(ref a) => sides=Some(a.iter().map(|v|match v{
+					&ConfigurationValue::Number(f) => f as usize,
+					_ => panic!("bad value in sides"),
+				}).collect()),
+				_ => panic!("bad value for sides"),
 			}
-			for &(ref name,ref value) in cv_pairs
+			"shift" => match value
 			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"sides" => match value
-					{
-						&ConfigurationValue::Array(ref a) => sides=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in sides"),
-						}).collect()),
-						_ => panic!("bad value for sides"),
-					}
-					"shift" => match value
-					{
-						&ConfigurationValue::Array(ref a) => shift=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in shift"),
-						}).collect()),
-						_ => panic!("bad value for shift"),
-					}
-					"permute" => match value
-					{
-						&ConfigurationValue::Array(ref a) => permute=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in permute"),
-						}).collect()),
-						_ => panic!("bad value for permute"),
-					}
-					"complement" => match value
-					{
-						&ConfigurationValue::Array(ref a) => complement=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::True => true,
-							&ConfigurationValue::False => false,
-							_ => panic!("bad value in complement"),
-						}).collect()),
-						_ => panic!("bad value for complement"),
-					}
-					"project" => match value
-					{
-						&ConfigurationValue::Array(ref a) => project=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::True => true,
-							&ConfigurationValue::False => false,
-							_ => panic!("bad value in project"),
-						}).collect()),
-						_ => panic!("bad value for project"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in CartesianTransform",name),
-				}
+				&ConfigurationValue::Array(ref a) => shift=Some(a.iter().map(|v|match v{
+					&ConfigurationValue::Number(f) => f as usize,
+					_ => panic!("bad value in shift"),
+				}).collect()),
+				_ => panic!("bad value for shift"),
 			}
-		}
-		else
-		{
-			panic!("Trying to create a CartesianTransform from a non-Object");
-		}
+			"permute" => match value
+			{
+				&ConfigurationValue::Array(ref a) => permute=Some(a.iter().map(|v|match v{
+					&ConfigurationValue::Number(f) => f as usize,
+					_ => panic!("bad value in permute"),
+				}).collect()),
+				_ => panic!("bad value for permute"),
+			}
+			"complement" => match value
+			{
+				&ConfigurationValue::Array(ref a) => complement=Some(a.iter().map(|v|match v{
+					&ConfigurationValue::True => true,
+					&ConfigurationValue::False => false,
+					_ => panic!("bad value in complement"),
+				}).collect()),
+				_ => panic!("bad value for complement"),
+			}
+			"project" => match value
+			{
+				&ConfigurationValue::Array(ref a) => project=Some(a.iter().map(|v|match v{
+					&ConfigurationValue::True => true,
+					&ConfigurationValue::False => false,
+					_ => panic!("bad value in project"),
+				}).collect()),
+				_ => panic!("bad value for project"),
+			}
+			//"legend_name" => (),
+			//_ => panic!("Nothing to do with field {} in CartesianTransform",name),
+		);
 		let sides=sides.expect("There were no sides");
 		//let permute=permute.expect("There were no permute");
 		//let complement=complement.expect("There were no complement");
@@ -1149,32 +1195,40 @@ impl Pow
 	{
 		let mut pattern=None;
 		let mut exponent=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Pow"
-			{
-				panic!("A Pow must be created from a `Pow` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
+		//if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		//{
+		//	if cv_name!="Pow"
+		//	{
+		//		panic!("A Pow must be created from a `Pow` object not `{}`",cv_name);
+		//	}
+		//	for &(ref name,ref value) in cv_pairs
+		//	{
+		//		//match name.as_ref()
+		//		match AsRef::<str>::as_ref(&name)
+		//		{
+		//			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+		//			"exponent" => match value
+		//			{
+		//				&ConfigurationValue::Number(x) => exponent=Some(x as usize),
+		//				_ => panic!("bad value for exponent"),
+		//			},
+		//			"legend_name" => (),
+		//			_ => panic!("Nothing to do with field {} in Pow",name),
+		//		}
+		//	}
+		//}
+		//else
+		//{
+		//	panic!("Trying to create a Pow from a non-Object");
+		//}
+		match_object_panic!(arg.cv,"Pow",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"exponent" => match value
 				{
-					"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					"exponent" => match value
-					{
-						&ConfigurationValue::Number(x) => exponent=Some(x as usize),
-						_ => panic!("bad value for exponent"),
-					},
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Pow",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Pow from a non-Object");
-		}
+					&ConfigurationValue::Number(x) => exponent=Some(x as usize),
+					_ => panic!("bad value for exponent"),
+				},
+		);
 		let pattern=pattern.expect("There were no pattern");
 		let exponent=exponent.expect("There were no exponent");
 		Pow{

@@ -2,8 +2,17 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-03-29
+git commit -m "error and match_object macros. With the action shell and source the remote folder name is rewritten."
+
+### 2022-03-26
+Minor improvements.
+
 ### 2022-03-25
 git commit -m "Added temporal statistics to the Basic router."
+In the action shell, when giving a source, rewrite the source folder name into the new folder name.
+Added an `error` macro for the sake of writting error management.
+Added macro `match_object` in the config module to ease up unpacking values.
 
 ### 2022-03-24
 New field `RouterBuilderArgument::statistics_temporal_step` to inform about the corresponding field in `Statistics`.

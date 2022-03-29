@@ -18,7 +18,7 @@ use ssh2::Session;
 use indicatif::{ProgressBar,ProgressStyle};
 
 use crate::config_parser::{self,ConfigurationValue};
-use crate::{Simulation,Plugs,source_location};
+use crate::{Simulation,Plugs,source_location,error};
 use crate::output::{create_output};
 use crate::config::{self,evaluate,flatten_configuration_value};
 use crate::error::{Error,ErrorKind,SourceLocation};
@@ -941,7 +941,8 @@ impl<'a> Experiment<'a>
 				{
 					//Copy files from the source path.
 					//fs::copy(path.join("main.cfg"),&cfg).expect("error copying main.cfg");
-					fs::copy(path.join("main.cfg"),&cfg).map_err(|e|Error::could_not_generate_file(source_location!(),cfg,e).with_message(format!("trying to copy it from {path:?}")))?;
+					//fs::copy(path.join("main.cfg"),&cfg).map_err(|e|Error::could_not_generate_file(source_location!(),cfg,e).with_message(format!("trying to copy it from {path:?}")))?;
+					fs::copy(path.join("main.cfg"),&cfg).map_err(|e|error!(could_not_generate_file,cfg,e).with_message(format!("trying to copy it from {path:?}")))?;
 					let external_main_od = path.join("main.od");
 					if external_main_od.exists(){
 						fs::copy(external_main_od,&path_main_od).map_err(|e|Error::could_not_generate_file(source_location!(),path_main_od,e))?;
@@ -953,7 +954,16 @@ impl<'a> Experiment<'a>
 					let external_remote = path.join("remote");
 					if external_remote.exists() {
 						//TODO: Try to update the paths in the remote file.
-						fs::copy(external_remote,&path_remote).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote,e))?;
+						//fs::copy(external_remote,&path_remote).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote,e))?;
+						let mut content=String::new();
+						let mut external_remote_file=File::open(&external_remote).map_err(|e|Error::could_not_open_file(source_location!(),external_remote.to_path_buf(),e))?;
+						external_remote_file.read_to_string(&mut content).map_err(|e|Error::could_not_generate_file(source_location!(),external_remote.to_path_buf(),e))?;
+						//TODO: rewrite
+						let external_directory_name = path.canonicalize().expect("path does not have canonical form").file_name().expect("could not get name of the external folder").to_str().unwrap().to_string();
+						let directory_name = self.files.root.as_ref().unwrap().canonicalize().expect("path does not have canonical form").file_name().expect("could not get name of the external folder").to_str().unwrap().to_string();
+						content = content.replace(&external_directory_name,&directory_name);
+						let mut new_remote_file=File::create(&path_remote).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote.to_path_buf(),e))?;
+						writeln!(new_remote_file,"{}",content).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote,e))?;
 					} else {
 						println!("There is not remote on the source given [{path:?}], creating a default one.");
 						let mut new_remote_file=File::create(&path_remote).map_err(|e|Error::could_not_generate_file(source_location!(),path_remote.to_path_buf(),e))?;
@@ -1695,7 +1705,7 @@ impl<'a> Experiment<'a>
 					od_file.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
 					match config_parser::parse(&od_contents)
 					{
-						Err(x) => panic!("error parsing output description file: {:?}",x),
+						Err(x) => return Err(error!(could_not_parse_file,od).with_message(format!("error parsing output description file: {:?}",x))),
 						Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
 						{
 							//println!("description={}",description);
