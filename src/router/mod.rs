@@ -1,7 +1,7 @@
 
 pub mod basic;
-
-use std::rc::{Rc};
+pub mod basic_ioq;
+use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::mem::{size_of};
@@ -10,9 +10,9 @@ use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use self::basic::Basic;
 use crate::config_parser::ConfigurationValue;
-use crate::topology::{Topology};
+use crate::topology::Topology;
 use crate::{Phit,Packet};
-use crate::event::{Eventful};
+use crate::event::Eventful;
 use crate::quantify::Quantifiable;
 use crate::Plugs;
 
