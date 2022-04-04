@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use rand::SeedableRng;
-use rand::{rngs::StdRng};
+use rand::rngs::StdRng;
 use rand::prelude::SliceRandom;
 use std::ops::DerefMut;
 
@@ -75,7 +75,6 @@ impl RandomPriorityAllocator {
     }
 }
 
-//TODO: This is the RandomAllocator implementation CHANGE IT to uses priority
 impl Allocator for RandomPriorityAllocator {
     /// Add a request to the allocator
     /// # Arguments

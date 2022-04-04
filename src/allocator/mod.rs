@@ -27,7 +27,7 @@ pub struct Request {
     /// The priority of the request (None if not specified)
     /// The priority is used to determine the order of the requests
     /// The lower the priority, the earlier the request is granted
-    /// If the priority is 0, the request is a intransit request
+    /// If the priority is 0, the request is an intransit request
     pub priority: Option<usize>,
 }
 
@@ -109,11 +109,11 @@ pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
 {
     if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
     {
-/*      match arg.plugs.allocators.get(cv_name)
+      match arg.plugs.allocators.get(cv_name)
         {
             Some(builder) => return builder(arg),
             _ => (),
-        }; */
+        };
         match cv_name.as_ref()
         {
             "Random" => return Box::new(RandomAllocator::new(arg)),

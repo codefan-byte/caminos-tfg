@@ -264,6 +264,8 @@ Both entries `directory_main` and `file_main` receive a `&Plugs` argument that m
 
 */
 
+use crate::allocator::AllocatorBuilderArgument;
+use allocator::Allocator;
 pub use quantifiable_derive::Quantifiable;//the derive macro
 
 pub mod config_parser;
@@ -1940,6 +1942,7 @@ pub struct Plugs
 	traffics: BTreeMap<String,fn(TrafficBuilderArgument) -> Box<dyn Traffic> >,
 	patterns: BTreeMap<String, fn(PatternBuilderArgument) -> Box<dyn Pattern> >,
 	policies: BTreeMap<String, fn(VCPolicyBuilderArgument) -> Box<dyn VirtualChannelPolicy> >,
+	allocators: BTreeMap<String, fn(AllocatorBuilderArgument) -> Box<dyn Allocator> >,
 }
 
 impl Plugs
