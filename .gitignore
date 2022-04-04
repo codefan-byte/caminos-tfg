@@ -3,3 +3,4 @@ Cargo.lock
 /.vscode
 *.swp
 caminos-lib.code-workspace
+src/.vscode/tasks.json

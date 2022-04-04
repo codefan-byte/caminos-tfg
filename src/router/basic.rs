@@ -379,6 +379,7 @@ impl Basic<SimpleVirtualChannels>
 			topology,
 			maximum_packet_size,
 			statistics_temporal_step,
+			..
 		} = arg;
 		//let mut servers=None;
 		//let mut load=None;
@@ -1019,6 +1020,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 				},
 			};
 		}
+
 
 		//-- For each output port decide which input actually uses it this cycle.
 		let mut events=vec![];

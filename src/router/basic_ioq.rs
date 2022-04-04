@@ -1,19 +1,19 @@
 use std::cell::RefCell;
 use std::rc::{Rc,Weak};
 use std::ops::Deref;
-use std::mem::{size_of};
-use ::rand::{Rng,StdRng};
+use std::mem::size_of;
+use ::rand::{Rng,rngs::StdRng};
 use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage};
-use crate::allocator::{Allocator,Request,GrantedRequests,AllocatorBuilderArgument, new_allocator};
-use crate::allocator::random::RandomAllocator;
+use crate::allocator::{Allocator,Request,AllocatorBuilderArgument, new_allocator};
 use crate::config_parser::ConfigurationValue;
-use crate::topology::{Topology,Location};
+use crate::router::RouterBuilderArgument;
+use crate::topology::Location;
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
 use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
-use crate::{Phit,Packet,Simulation};
+use crate::{Phit,Simulation};
 use crate::quantify::Quantifiable;
-use crate::Plugs;
+
 
 ///Strategy for the arbitration of the output port.
 enum OutputArbiter
@@ -47,8 +47,6 @@ pub struct BasicIOQ<TM:TransmissionMechanism>
 	///To allow to request a port even if some other packet is being transmitted throught it to a different virtual channel (as FSIN does).
 	///It may appear that should obviously be put to `true`, but in practice that just reduces performance.
 	allow_request_busy_port: bool,
-	///Use the labels provided by the routing to sort the petitions in the output arbiter.
-	output_priorize_lowest_label: bool,
 	///transmission_port_status[port] = status
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
 	///reception_port_space[port] = space
@@ -60,16 +58,22 @@ pub struct BasicIOQ<TM:TransmissionMechanism>
 	output_buffers: Vec<Vec<AugmentedBuffer<(usize,usize)>>>,
 	///If not None then the input port+virtual_channel which is either sending by this port+virtual_channel or writing to this output buffer.
 	///We keep the packet for debugging/check considerations.
-	selected_input: Vec<Vec<Option<(Rc<Packet>,usize,usize)>>>,
+	selected_input: Vec<Vec<Option<(usize,usize)>>>,
 	///If not None then all the phits should go through this port+virtual_channel or stored in this output buffer, since they are part of the same packet
 	///We keep the packet for debugging/check considerations.
-	selected_output: Vec<Vec<Option<(Rc<Packet>,usize,usize)>>>,
+	selected_output: Vec<Vec<Option<(usize,usize)>>>,
 	///Number of cycles that the current phit, if any, in the head of a given (port,virtual channel) input buffer the phit has been waiting.
 	time_at_input_head: Vec<Vec<usize>>,
-	///And arbiter of the physical output port.
+	///An arbiter of the physical output port.
 	output_arbiter: OutputArbiter,
 	///The maximum packet size that is allowed. Only for bubble consideration, that reserves space for a given packet plus maximum packet size.
 	maximum_packet_size: usize,
+
+	//allocator:
+	///The allocator for the croosbar.
+	crossbar_allocator: Box<dyn Allocator>,
+	///Use the labels provided by the routing to sort the petitions in the output arbiter.
+//	output_priorize_lowest_label: bool, // PLEASE USE RandomPriorityAllocator instead of this parameter.
 
 	//statistics:
 	///The first cycle included in the statistics.
@@ -256,10 +260,20 @@ impl<TM:'static+TransmissionMechanism> Router for BasicIOQ<TM>
         }
     }
 }
+
+
 impl BasicIOQ<SimpleVirtualChannels>
 {
-	pub fn new(router_index: usize, cv:&ConfigurationValue, plugs:&Plugs, topology:&dyn Topology, maximum_packet_size:usize) -> Rc<RefCell<BasicIOQ<SimpleVirtualChannels>>>
+	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<BasicIOQ<SimpleVirtualChannels>>>
 	{
+		let RouterBuilderArgument{
+			router_index,
+			cv,
+			plugs,
+			topology,
+			maximum_packet_size,
+			..
+		} = arg;
 		//let mut servers=None;
 		//let mut load=None;
 		let mut virtual_channels=None;
@@ -270,8 +284,9 @@ impl BasicIOQ<SimpleVirtualChannels>
 		let mut flit_size=None;
 		let mut intransit_priority=None;
 		let mut allow_request_busy_port=None;
-		let mut output_priorize_lowest_label=None;
+//		let mut output_priorize_lowest_label=None;
 		let mut output_buffer_size=None;
+		let mut allocator_value=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="BasicIOQ"
@@ -333,12 +348,14 @@ impl BasicIOQ<SimpleVirtualChannels>
 						&ConfigurationValue::False => allow_request_busy_port=Some(false),
 						_ => panic!("bad value for allow_request_busy_port"),
 					},
-					"output_priorize_lowest_label" => match value
+/*					"output_priorize_lowest_label" => match value
 					{
 						&ConfigurationValue::True => output_priorize_lowest_label=Some(true),
 						&ConfigurationValue::False => output_priorize_lowest_label=Some(false),
 						_ => panic!("bad value for output_priorize_lowest_label"),
-					},
+					};
+*/
+					"allocator" => allocator_value=Some(value.clone()),
 					_ => panic!("Nothing to do with field {} in BasicIOQ",name),
 				}
 			}
@@ -357,8 +374,15 @@ impl BasicIOQ<SimpleVirtualChannels>
 		let flit_size=flit_size.expect("There were no flit_size");
 		let intransit_priority=intransit_priority.expect("There were no intransit_priority");
 		let allow_request_busy_port=allow_request_busy_port.expect("There were no allow_request_busy_port");
-		let output_priorize_lowest_label=output_priorize_lowest_label.expect("There were no output_priorize_lowest_label");
+//		let output_priorize_lowest_label=output_priorize_lowest_label.expect("There were no output_priorize_lowest_label");
 		let input_ports=topology.ports(router_index);
+		let allocator = new_allocator(AllocatorBuilderArgument{
+			cv:&allocator_value.expect("There were no allocator"),
+			num_clients:input_ports * virtual_channels,
+			num_resources:input_ports * virtual_channels,
+			plugs,
+			rng:arg.rng,
+		});
 		let selected_input=(0..input_ports).map(|_|
 			(0..virtual_channels).map(|_|None).collect()
 		).collect();
@@ -411,7 +435,7 @@ impl BasicIOQ<SimpleVirtualChannels>
 			flit_size,
 			intransit_priority,
 			allow_request_busy_port,
-			output_priorize_lowest_label,
+//			output_priorize_lowest_label,
 			buffer_size,
 			transmission_port_status,
 			reception_port_space,
@@ -422,6 +446,7 @@ impl BasicIOQ<SimpleVirtualChannels>
 			time_at_input_head,
 			output_arbiter: OutputArbiter::Token{port_token: vec![0;input_ports]},
 			maximum_packet_size,
+			crossbar_allocator: allocator,
 			statistics_begin_cycle: 0,
 			statistics_output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
 			statistics_reception_space_occupation_per_vc: vec![0f64;virtual_channels],
@@ -461,14 +486,26 @@ impl<TM:TransmissionMechanism> BasicIOQ<TM>
 ///A phit in the virtual channel `virtual_channel` of the port `entry_port` is requesting to go to the virtual channel `requested_vc` of the port `requested_port`.
 ///The label is the one returned by the routing algorithm or 0 if it comes from a selection in a previous cycle.
 #[derive(Clone)]
-struct PortRequest
+pub struct PortRequest
 {
-	packet: Rc<Packet>,
-	entry_port: usize,
-	entry_vc: usize,
-	requested_port: usize,
-	requested_vc: usize,
-	label: i32,
+	pub entry_port: usize,
+	pub entry_vc: usize,
+	pub requested_port: usize,
+	pub requested_vc: usize,
+	pub label: i32,
+}
+
+impl PortRequest
+{
+	// method to transform a PortRequest into a `allocator::Request`.
+	fn to_allocator_request(&self, num_vcs: usize)->Request
+	{
+		Request::new(
+			self.entry_port*num_vcs+self.entry_vc,
+    		self.requested_port*num_vcs+self.requested_vc,
+    		if self.label<0 {None} else {	Some(self.label as usize) },
+		)
+	}
 }
 
 impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
@@ -532,7 +569,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 			let mut is_busy = false;
 			for vc in 0..amount_virtual_channels
 			{
-				if let Some((ref _packet,selected_port,selected_virtual_channel))=self.selected_input[port][vc]
+				if let Some((selected_port,selected_virtual_channel))=self.selected_input[port][vc]
 				{
 					if let Some(phit)=self.reception_port_space[selected_port].front_virtual_channel(selected_virtual_channel)
 					{
@@ -722,7 +759,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 							CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
 						}
 					},
-					Some((ref _packet,port,vc)) => (port,vc,0),//FIXME: perhaps 0 changes into None?
+					Some((port,vc)) => (port,vc,0),//FIXME: perhaps 0 changes into None?
 				};
 				//FIXME: this should not call known_available_space_for_virtual_channel
 				//In wormhole we may have a selected output but be unable to advance, but it is not clear whether makes any difference.
@@ -736,80 +773,122 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 					match self.selected_input[requested_port][requested_vc]
 					{
 						Some(_) => (),
-						None => request.push( PortRequest{packet:phit.packet.clone(),entry_port,entry_vc,requested_port,requested_vc,label} ),
+						None => request.push( PortRequest{entry_port,entry_vc,requested_port,requested_vc,label} ),
 					};
 				}
 				self.time_at_input_head[entry_port][entry_vc]+=1;
 			}
 		}
 
-		//-- Arbitrate the requests.
-		let request_len = request.len();
-		//FIXME: allocator policies
-		let min_label=match request.iter().map(|r|r.label).min()
-		{
-			Some(x)=>x,
-			None=>0,
-		};
-		let max_label=match request.iter().map(|r|r.label).max()
-		{
-			Some(x)=>x,
-			None=>0,
-		};
-		//Split que sequence in subsequences, where any items in a subsequence has more priority than any element in a later subsequence.
-		let request_sequence:Vec<Vec<PortRequest>>=if self.output_priorize_lowest_label
-		{
-			//(min_label..max_label+1).map(|label|request.iter().filter(|r|r.label==label).map(|&t|t).collect()).collect()
-			//(min_label..max_label+1).map(move |label|request.into_iter().filter(|r|r.label==label).collect()).collect()
-			let mut sequence : Vec<Vec<PortRequest>> = vec![ Vec::with_capacity(request.len()) ; (max_label+1-min_label) as usize];
-			for req in request.into_iter()
+		// //-- Arbitrate the requests.
+
+		// let request_len = request.len();
+		// //FIXME: allocator policies
+		// let min_label=match request.iter().map(|r|r.label).min()
+		// {
+		// 	Some(x)=>x,
+		// 	None=>0,
+		// };
+		// let max_label=match request.iter().map(|r|r.label).max()
+		// {
+		// 	Some(x)=>x,
+		// 	None=>0,
+		// };
+		// //Split que sequence in subsequences, where any items in a subsequence has more priority than any element in a later subsequence.
+		// let request_sequence:Vec<Vec<PortRequest>>=if self.output_priorize_lowest_label
+		// {
+		// 	//(min_label..max_label+1).map(|label|request.iter().filter(|r|r.label==label).map(|&t|t).collect()).collect()
+		// 	//(min_label..max_label+1).map(move |label|request.into_iter().filter(|r|r.label==label).collect()).collect()
+		// 	let mut sequence : Vec<Vec<PortRequest>> = vec![ Vec::with_capacity(request.len()) ; (max_label+1-min_label) as usize];
+		// 	for req in request.into_iter()
+		// 	{
+		// 		let index :usize = (req.label - min_label) as usize;
+		// 		sequence[index].push(req);
+		// 	}
+		// 	sequence
+		// }
+		// else
+		// {
+		// 	vec![request]
+		// };
+
+		// //Shuffle the subsequences. XXX Perhaps the separation transit/injection should be done in a similar as to the separation by labels.
+		// //for ref mut rx in request_sequence.iter_mut()
+
+ 		// let captured_intransit_priority=self.intransit_priority;//to move into closure
+		// let captured_router_index=self.router_index;//to move into closure
+
+		// let request_it = request_sequence.into_iter().flat_map(|mut rx|{
+		// 	if captured_intransit_priority
+		// 	{
+		// 		//let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = rx.into_iter().map(|&mut t|t).partition(|&req|{
+		// 		//	match simulation.network.topology.neighbour(self.router_index,req.entry_port)
+		// 		//	{
+		// 		//		( Location::RouterPort{..} ,_) => true,
+		// 		//		_ => false,
+		// 		//	}
+		// 		//});
+		// 		let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = rx.into_iter().partition(|req|{
+		// 			match simulation.network.topology.neighbour(captured_router_index,req.entry_port)
+		// 			{
+		// 				( Location::RouterPort{..} ,_) => true,
+		// 				_ => false,
+		// 			}
+		// 		});
+		// 		let mut rng = simulation.rng.borrow_mut();
+		// 		request_transit.shuffle(rng.deref_mut());
+		// 		request_injection.shuffle(rng.deref_mut());
+		// 		//**rx=request_transit;
+		// 		rx=request_transit;
+		// 		rx.append(&mut request_injection);
+		// 	}
+		// 	else
+		// 	{
+		// 		//simulation.rng.borrow_mut().shuffle(rx);
+		// 		rx.shuffle(simulation.rng.borrow_mut().deref_mut());
+		// 	}
+		// 	rx
+		// });
+		
+		let captured_intransit_priority=self.intransit_priority;
+		// Check if the allocator supports intransit priority.
+		if captured_intransit_priority && !self.crossbar_allocator.support_intransit_priority() {
+			panic!("Current crossbar allocator does not support intransit priority option");
+		} else {
+			// If the allocator supports intransit priority, then we need to partition the requests into transit and injection requests.
+			let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = request.into_iter().partition(|req|{
+				match simulation.network.topology.neighbour(self.router_index,req.entry_port)
+				{
+					( Location::RouterPort{..} ,_) => true,
+					_ => false,
+				}
+			});
+			// Change the priority of the intransit requests to 0
+			for req in request_transit.iter_mut()
 			{
-				let index :usize = (req.label - min_label) as usize;
-				sequence[index].push(req);
+				req.label = 0;
 			}
-			sequence
+			request = request_transit;
+			request.append(&mut request_injection);
 		}
-		else
-		{
-			vec![request]
-		};
-		//Shuffle the subsequences. XXX Perhaps the separation transit/injection should be done in a similar as to the separation by labels.
-		//for ref mut rx in request_sequence.iter_mut()
-		let captured_intransit_priority=self.intransit_priority;//to move into closure
-		let captured_router_index=self.router_index;//to move into closure
-		let request_it = request_sequence.into_iter().flat_map(|mut rx|{
-			if captured_intransit_priority
-			{
-				//let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = rx.into_iter().map(|&mut t|t).partition(|&req|{
-				//	match simulation.network.topology.neighbour(self.router_index,req.entry_port)
-				//	{
-				//		( Location::RouterPort{..} ,_) => true,
-				//		_ => false,
-				//	}
-				//});
-				let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = rx.into_iter().partition(|req|{
-					match simulation.network.topology.neighbour(captured_router_index,req.entry_port)
-					{
-						( Location::RouterPort{..} ,_) => true,
-						_ => false,
-					}
-				});
-				simulation.rng.borrow_mut().shuffle(&mut request_transit);
-				simulation.rng.borrow_mut().shuffle(&mut request_injection);
-				//**rx=request_transit;
-				rx=request_transit;
-				rx.append(&mut request_injection);
-			}
-			else
-			{
-				//simulation.rng.borrow_mut().shuffle(rx);
-				simulation.rng.borrow_mut().shuffle(&mut rx);
-			}
-			rx
+
+		// Add all the requests to the allocator.
+		request.iter_mut().for_each(|pr| {
+			self.crossbar_allocator.add_request(pr.to_allocator_request(amount_virtual_channels));
 		});
+
+		// Perform the allocation
+		let mut requests_granteds : Vec<PortRequest> = Vec::new();
+		for gr in &mut self.crossbar_allocator.perform_allocation(&simulation.rng) {
+			// convert from allocator Request to PortRequest
+			requests_granteds.push(gr.to_port_request(amount_virtual_channels));
+		}
+	
+		let request_it = requests_granteds.into_iter();
+
 		//Complete the arbitration of the requests by writing the selected_input of the output virtual ports.
 		//let request=request_sequence.concat();
-		for PortRequest{packet,entry_port,entry_vc,requested_port,requested_vc,..} in request_it
+		for PortRequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
 		{
 			//println!("processing request {},{},{},{}",entry_port,entry_vc,requested_port,requested_vc);
 			match self.selected_input[requested_port][requested_vc]
@@ -817,12 +896,10 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 				Some(_) => (),
 				None =>
 				{
-					self.selected_input[requested_port][requested_vc]=Some((packet,entry_port,entry_vc));
+					self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
 				},
 			};
 		}
-		// Create a Random Allocator (this should be done in the main)
-
 
 		//-- For each output port decide which input actually uses it this cycle.
 		let mut events=vec![];
@@ -835,7 +912,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 //			let mut undo_selected_input=Vec::with_capacity(nvc);
 			for exit_vc in 0..nvc
 			{
-				if let Some((ref entry_packet,entry_port,entry_vc))=self.selected_input[exit_port][exit_vc]
+				if let Some((entry_port,entry_vc))=self.selected_input[exit_port][exit_vc]
 				{
                     //-- Move phits into the internal output space
                     //Note that it is possible when flit_size<packet_size for the packet to not be in that buffer. The output arbiter can decide to advance other virtual channel.
@@ -858,15 +935,6 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
                                 event:Event::Acknowledge{location:previous_location,message},
                             });
                         }
-                        if let Some((ref s_exit_packet,s_exit_port,s_exit_vc))=self.selected_output[entry_port][entry_vc]
-                        {
-                            let entry_packet_ptr = entry_packet.as_ref() as *const Packet;
-                            let s_exit_packet_ptr = s_exit_packet.as_ref() as *const Packet;
-                            if s_exit_packet_ptr!=entry_packet_ptr || s_exit_port!=exit_port || s_exit_vc!=exit_vc
-                            {
-                                panic!("Mismatch between selected input and selected output: selected_input[{}][{}]=({:?},{},{}) selected_output[{}][{}]=({:?},{},{}).",exit_port,exit_vc,entry_packet_ptr,entry_port,entry_vc,  entry_port,entry_vc,s_exit_packet_ptr,s_exit_port,s_exit_vc);
-                            }
-                        }
                         if phit.is_end()
                         {
                             self.selected_input[exit_port][exit_vc]=None;
@@ -874,7 +942,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
                         }
                         else
                         {
-                            self.selected_output[entry_port][entry_vc]=Some((entry_packet.clone(),exit_port,exit_vc));
+                            self.selected_output[entry_port][entry_vc]=Some((exit_port,exit_vc));
                         }
                         self.output_buffers[exit_port][exit_vc].push(phit,(entry_port,entry_vc));
                     }
@@ -945,7 +1013,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
 				let selected_virtual_channel = match self.output_arbiter
 				{
-					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0,cand.len())],
+					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0..cand.len())],
 					OutputArbiter::Token{ref mut port_token}=>
 					{
 						//Or by tokens as in fsin
@@ -1003,7 +1071,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 			}
 		}
 		//TODO: what to do with probabilistic requests???
-		if undecided_channels>0 || moved_phits>0 || events.len()>0 || request_len>0
+		if undecided_channels>0 || moved_phits>0 || events.len()>0 || request.len()>0
 		//if undecided_channels>0 || moved_phits>0 || events.len()>0
 		//if true
 		{

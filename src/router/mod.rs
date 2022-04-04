@@ -4,7 +4,7 @@ pub mod basic_ioq;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::mem::{size_of};
+use std::mem::size_of;
 use std::collections::{BTreeMap};
 use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
@@ -63,6 +63,8 @@ pub struct RouterBuilderArgument<'a>
 	///The corresponding value of the `Statistics` struct.
 	///Available to the router for the case it want to use the same period.
 	pub statistics_temporal_step: usize,
+	///The random number generator.
+	pub rng: &'a RefCell<StdRng>,
 }
 
 ///Creates a router from a configuration value.

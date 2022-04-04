@@ -1327,6 +1327,7 @@ impl<'a> Simulation<'a>
 			topology:topology.as_ref(),
 			maximum_packet_size,
 			statistics_temporal_step,
+			rng:&rng,
 		})).collect();
 		let servers=(0..num_servers).map(|index|{
 			let port=topology.server_neighbour(index);
