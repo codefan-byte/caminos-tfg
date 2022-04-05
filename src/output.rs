@@ -988,7 +988,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	\begin{{center}}
 	\tikzpicturedependsonfile{{externalized-plots/external-{folder_id}-{prefix}-selector{selectorname}-kind0.md5}}
 	\tikzsetnextfilename{{externalized-legends/legend-{folder_id}-{prefix}-{selectorname}}}
-	\ref{{legend-{folder_id}-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix,folder_id=folder_id));
+	\pgfplotslegendfromname{{legend-{folder_id}-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix,folder_id=folder_id));
 			}
 			wrote+=1;
 			let mut pre_plots=String::new();
