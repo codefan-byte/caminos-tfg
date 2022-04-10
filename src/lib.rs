@@ -1284,6 +1284,7 @@ impl<'a> Simulation<'a>
 						_ => panic!("bad value for statistics_packet_definitions"),
 					}
 					"legend_name" => (),
+					"allocator" => (),
 					_ => panic!("Nothing to do with field {} in Configuration",name),
 				}
 			}

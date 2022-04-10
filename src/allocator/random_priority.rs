@@ -40,7 +40,7 @@ impl RandomPriorityAllocator {
         }
         // Get the seed from the configuration
         let mut seed = None;
-        match_object_panic!(args.cv, "RandomAllocator", value,
+        match_object_panic!(args.cv, "RandomWithPriority", value,
         "seed" => match value
         {
             &ConfigurationValue::Number(s) => seed = Some(s as u64),
