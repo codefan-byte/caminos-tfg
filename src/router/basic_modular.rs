@@ -24,13 +24,13 @@ enum OutputArbiter
 		port_token: Vec<usize>,
 	},
 }
-pub struct BasicIOQ<TM:TransmissionMechanism>
+pub struct BasicModular<TM:TransmissionMechanism>
 {
     ///Weak pointer to itself, see https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3
-	self_rc: Weak<RefCell<BasicIOQ<TM>>>,
+	self_rc: Weak<RefCell<BasicModular<TM>>>,
 	///If there is an event pending
 	event_pending: bool,
-	///The cycle number of the last time BasicIOQ::process was called. Only for debugging/assertion purposes.
+	///The cycle number of the last time BasicModular::process was called. Only for debugging/assertion purposes.
 	last_process_at_cycle: Option<usize>,
 	///Its index in the topology
 	router_index: usize,
@@ -73,7 +73,7 @@ pub struct BasicIOQ<TM:TransmissionMechanism>
 	///The allocator for the croosbar.
 	crossbar_allocator: Box<dyn Allocator>,
 	///Use the labels provided by the routing to sort the petitions in the output arbiter.
-//	output_priorize_lowest_label: bool, // PLEASE USE RandomPriorityAllocator instead of this parameter.
+//	output_priorize_lowest_label: bool, // USE RandomPriorityAllocator instead of this parameter.
 
 	//statistics:
 	///The first cycle included in the statistics.
@@ -84,7 +84,7 @@ pub struct BasicIOQ<TM:TransmissionMechanism>
 	statistics_reception_space_occupation_per_vc: Vec<f64>,
 }
 
-impl<TM:'static+TransmissionMechanism> Router for BasicIOQ<TM>
+impl<TM:'static+TransmissionMechanism> Router for BasicModular<TM>
 {
     fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &RefCell<StdRng>)
     {
@@ -140,9 +140,9 @@ impl<TM:'static+TransmissionMechanism> Router for BasicIOQ<TM>
         {
             if let ConfigurationValue::Object(cv_name,previous_pairs) = previous
             {
-                if cv_name!="BasicIOQ"
+                if cv_name!="BasicModular"
                 {
-                    panic!("incompatible statistics, should be `BasicIOQ` object not `{}`",cv_name);
+                    panic!("incompatible statistics, should be `BasicModular` object not `{}`",cv_name);
                 }
                 for (ref name,ref value) in previous_pairs
                 {
@@ -198,7 +198,7 @@ impl<TM:'static+TransmissionMechanism> Router for BasicIOQ<TM>
                             }
                             _ => panic!("bad value for average_output_buffer_occupation_per_vc"),
                         },
-                        _ => panic!("Nothing to do with field {} in BasicIOQ statistics",name),
+                        _ => panic!("Nothing to do with field {} in BasicModular statistics",name),
                     }
                 }
             }
@@ -244,7 +244,7 @@ impl<TM:'static+TransmissionMechanism> Router for BasicIOQ<TM>
             }
             result_content.push((String::from("average_reception_space_occupation_per_vc"),ConfigurationValue::Array(content.iter().map(|x|ConfigurationValue::Number(*x)).collect())));
         }
-        Some(ConfigurationValue::Object(String::from("BasicIOQ"),result_content))
+        Some(ConfigurationValue::Object(String::from("BasicModular"),result_content))
     }
 
     fn reset_statistics(&mut self, next_cycle:usize)
@@ -262,9 +262,9 @@ impl<TM:'static+TransmissionMechanism> Router for BasicIOQ<TM>
 }
 
 
-impl BasicIOQ<SimpleVirtualChannels>
+impl BasicModular<SimpleVirtualChannels>
 {
-	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<BasicIOQ<SimpleVirtualChannels>>>
+	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<BasicModular<SimpleVirtualChannels>>>
 	{
 		let RouterBuilderArgument{
 			router_index,
@@ -289,9 +289,9 @@ impl BasicIOQ<SimpleVirtualChannels>
 		let mut allocator_value=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
-			if cv_name!="BasicIOQ"
+			if cv_name!="BasicModular"
 			{
-				panic!("A BasicIOQ must be created from a `BasicIOQ` object not `{}`",cv_name);
+				panic!("A BasicModular must be created from a `BasicModular` object not `{}`",cv_name);
 			}
 			for &(ref name,ref value) in cv_pairs
 			{
@@ -356,13 +356,13 @@ impl BasicIOQ<SimpleVirtualChannels>
 					};
 */
 					"allocator" => allocator_value=Some(value.clone()),
-					_ => panic!("Nothing to do with field {} in BasicIOQ",name),
+					_ => panic!("Nothing to do with field {} in BasicModular",name),
 				}
 			}
 		}
 		else
 		{
-			panic!("Trying to create a BasicIOQ from a non-Object");
+			panic!("Trying to create a BasicModular from a non-Object");
 		}
 		//let sides=sides.expect("There were no sides");
 		let virtual_channels=virtual_channels.expect("There were no virtual_channels");
@@ -424,7 +424,7 @@ impl BasicIOQ<SimpleVirtualChannels>
 				(0..virtual_channels).map(|_|AugmentedBuffer::new()).collect()
 			).collect()
 		};
-		let r=Rc::new(RefCell::new(BasicIOQ{
+		let r=Rc::new(RefCell::new(BasicModular{
 			self_rc: Weak::new(),
 			event_pending: false,
 			last_process_at_cycle: None,
@@ -457,7 +457,7 @@ impl BasicIOQ<SimpleVirtualChannels>
 	}
 }
 
-impl<TM:TransmissionMechanism> BasicIOQ<TM>
+impl<TM:TransmissionMechanism> BasicModular<TM>
 {
 	///Whether a phit in an input buffer can advance.
 	///bubble_in_use should be true only for leading phits that require the additional space.
@@ -508,7 +508,7 @@ impl PortRequest
 	}
 }
 
-impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
+impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
 	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>
@@ -519,7 +519,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 			cycles_span = simulation.cycle - *last;
 			if *last >= simulation.cycle
 			{
-				panic!("Trying to process at cycle {} a router::BasicIOQ already processed at {}",simulation.cycle,last);
+				panic!("Trying to process at cycle {} a router::BasicModular already processed at {}",simulation.cycle,last);
 			}
 			//if *last +1 < simulation.cycle
 			//{
@@ -969,7 +969,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
                         }
                         else
                         {
-                            panic!("BasicIOQ router requires knowledge of available space to apply bubble.");
+                            panic!("BasicModular router requires knowledge of available space to apply bubble.");
                         }
                     }
                     else
@@ -1106,13 +1106,13 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicIOQ<TM>
 	}
 }
 
-impl<TM:TransmissionMechanism> Quantifiable for BasicIOQ<TM>
+impl<TM:TransmissionMechanism> Quantifiable for BasicModular<TM>
 {
 	fn total_memory(&self) -> usize
 	{
 		//FIXME: redo
-		//return size_of::<BasicIOQ<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
-		return size_of::<BasicIOQ<TM>>();
+		//return size_of::<BasicModular<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
+		return size_of::<BasicModular<TM>>();
 	}
 	fn print_memory_breakdown(&self)
 	{

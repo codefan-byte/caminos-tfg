@@ -9,7 +9,7 @@ pub mod random_priority;
 
 use crate::Plugs;
 use crate::config_parser::ConfigurationValue;
-use crate::router::basic_ioq::PortRequest;
+use crate::router::basic_modular::PortRequest;
 
 use std::cell::RefCell;
 use ::rand::rngs::StdRng;

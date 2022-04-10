@@ -1,6 +1,6 @@
 
 pub mod basic;
-pub mod basic_ioq;
+pub mod basic_modular;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -9,6 +9,7 @@ use std::collections::{BTreeMap};
 use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use self::basic::Basic;
+use self::basic_modular::BasicModular;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::Topology;
 use crate::{Phit,Packet};
@@ -82,6 +83,7 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 		{
 			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
 			"Basic" => Basic::<SimpleVirtualChannels>::new(arg),
+			"BasicModular" => BasicModular::<SimpleVirtualChannels>::new(arg),
 			_ => panic!("Unknown router {}",cv_name),
 		}
 	}
