@@ -11,6 +11,8 @@ use crate::allocator::{Allocator, Request, GrantedRequests, AllocatorBuilderArgu
 use crate::config_parser::ConfigurationValue;
 use crate::match_object_panic;
 
+
+#[derive(Default, Clone)]
 pub struct Resource {
     /// Index of the client that has the resource (or None if the resource is free)
     client: Option<usize>,
@@ -99,16 +101,7 @@ impl Allocator for RandomAllocator {
         let mut gr = GrantedRequests { granted_requests: Vec::new() };
         
         // The resources allocated to the clients
-        let mut resources: Vec<Resource> = Vec::new();
-
-        // Fill the resources vector with the free resources
-        for _ in 0..self.num_resources {
-            if let Some(client) = self.requests.first().map(|r| r.client) {
-                resources.push(Resource { client: Some(client) });
-            } else {
-                resources.push(Resource { client: None });
-            }
-        }
+        let mut resources: Vec<Resource> = vec![Resource::default(); self.num_resources];
 
         // Shuffle the requests using the RNG passed as parameter
         // Except if the seed is set, in which case we use it
