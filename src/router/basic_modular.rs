@@ -852,24 +852,37 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 		
 		let captured_intransit_priority=self.intransit_priority;
 		// Check if the allocator supports intransit priority.
-		if captured_intransit_priority && !self.crossbar_allocator.support_intransit_priority() {
-			panic!("Current crossbar allocator does not support intransit priority option");
-		} else {
-			// If the allocator supports intransit priority, then we need to partition the requests into transit and injection requests.
-			let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = request.into_iter().partition(|req|{
-				match simulation.network.topology.neighbour(self.router_index,req.entry_port)
-				{
-					( Location::RouterPort{..} ,_) => true,
-					_ => false,
-				}
-			});
-			// Change the priority of the intransit requests to 0
-			for req in request_transit.iter_mut()
-			{
-				req.label = 0;
+		if captured_intransit_priority {
+			// If the allocator supports intransit priority
+			if !self.crossbar_allocator.support_intransit_priority() {
+				panic!("Current crossbar allocator does not support intransit priority option");
 			}
-			request = request_transit;
-			request.append(&mut request_injection);
+			// If the allocator supports intransit priority, then we need to partition the requests into transit and injection requests.
+			// let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = request.into_iter().partition(|req|{
+			// 	match simulation.network.topology.neighbour(self.router_index,req.entry_port)
+			// 	{
+			// 		( Location::RouterPort{..} ,_) => true,
+			// 		_ => false,
+			// 	}
+			// });
+			// // Change the priority of the intransit requests to 0
+			// for req in request_transit.iter_mut()
+			// {
+			// 	req.label = 0;
+			// }
+			//request = request_transit;
+			//request.append(&mut request_injection);
+
+			// ** The above code is equivalent to the following code. **
+
+			//to each request in request, set label to 0 if it is a transit request.
+			request = request.into_iter().map(|mut req|{
+				if let (Location::RouterPort { .. },_) = simulation.network.topology.neighbour(self.router_index,req.entry_port)
+				{
+					req.label = 0;
+				}
+				req
+			}).collect();
 		}
 
 		// Add all the requests to the allocator.
