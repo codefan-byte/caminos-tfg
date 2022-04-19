@@ -1,8 +1,7 @@
-
 use std::cell::RefCell;
 
 use rand::SeedableRng;
-use rand::{rngs::StdRng};
+use rand::rngs::StdRng;
 use rand::prelude::SliceRandom;
 use std::ops::DerefMut;
 
