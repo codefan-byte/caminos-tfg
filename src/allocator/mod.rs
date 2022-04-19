@@ -4,7 +4,7 @@
 
 pub mod random;
 pub mod random_priority;
-//pub mod islip;
+pub mod islip;
 //pub mod separable_input_first;
 
 use crate::Plugs;
@@ -15,6 +15,7 @@ use std::cell::RefCell;
 use ::rand::rngs::StdRng;
 use random::RandomAllocator;
 use random_priority::RandomPriorityAllocator;
+use islip::IslipAllocator;
 
 
 /// A client (input of crossbar) want a resource (output of crossbar) with a certain priority.
@@ -118,7 +119,7 @@ pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
         {
             "Random" => return Box::new(RandomAllocator::new(arg)),
             "RandomWithPriority" => return Box::new(RandomPriorityAllocator::new(arg)),
-          //  "Islip" => return Box::new(IslipAllocator::new(arg)),
+            "Islip" => return Box::new(IslipAllocator::new(arg)),
           //  "SeparableInputFirst" => return Box::new(SeparableInputFirstAllocator::new(arg)),
             _ => panic!("Unknown allocator: {}", cv_name),
         }
