@@ -49,15 +49,21 @@ impl Request {
 }
 
 /// A collection of granted requests
+#[derive(Default)]
 pub struct GrantedRequests {
     /// The granted requests
-    pub granted_requests: Vec<Request>,
+    granted_requests: Vec<Request>,
 }
-
+impl GrantedRequests {
+    /// Add a granted request to the collection
+    fn add_granted_request(&mut self, request: Request) {
+        self.granted_requests.push(request);
+    }
+}
 impl Iterator for GrantedRequests {
     type Item = Request;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.granted_requests.len() > 0 {
+        if self.granted_requests.is_empty() {
             let r = self.granted_requests.remove(0);
             Some(r)
         } else {
@@ -110,17 +116,14 @@ pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
 {
     if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
     {
-      match arg.plugs.allocators.get(cv_name)
-        {
-            Some(builder) => return builder(arg),
-            _ => (),
+        if let Some(builder) = arg.plugs.allocators.get(cv_name) {
+            return builder(arg)
         };
         match cv_name.as_ref()
         {
-            "Random" => return Box::new(RandomAllocator::new(arg)),
-            "RandomWithPriority" => return Box::new(RandomPriorityAllocator::new(arg)),
-            "Islip" => return Box::new(IslipAllocator::new(arg)),
-          //  "SeparableInputFirst" => return Box::new(SeparableInputFirstAllocator::new(arg)),
+            "Random" => Box::new(RandomAllocator::new(arg)),
+            "RandomWithPriority" => Box::new(RandomPriorityAllocator::new(arg)),
+            "Islip" => Box::new(IslipAllocator::new(arg)),
             _ => panic!("Unknown allocator: {}", cv_name),
         }
     }

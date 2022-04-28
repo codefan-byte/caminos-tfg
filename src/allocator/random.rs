@@ -37,7 +37,7 @@ impl RandomAllocator {
     /// * `RandomAllocator` - The new random allocator
     pub fn new(args: AllocatorBuilderArgument) -> RandomAllocator {
         // Check if the arguments are valid
-        if args.num_clients <= 0 || args.num_resources <= 0 {
+        if args.num_clients == 0 || args.num_resources == 0 {
             panic!("Invalid arguments")
         }
         // Get the seed from the configuration
@@ -97,7 +97,7 @@ impl Allocator for RandomAllocator {
     /// The granted requests are the requests that are granted
     fn perform_allocation(&mut self, rng : &RefCell<StdRng>) -> GrantedRequests {
         // Create the granted requests vector
-        let mut gr = GrantedRequests { granted_requests: Vec::new() };
+        let mut gr = GrantedRequests::default();
         
         // The resources allocated to the clients
         let mut resources: Vec<Resource> = vec![Resource::default(); self.num_resources];
@@ -112,7 +112,7 @@ impl Allocator for RandomAllocator {
             // Check if the wanted resource is available
             if resources[*resource].client.is_none() {
                 // Add the request to the granted requests
-                gr.granted_requests.push(Request{
+                gr.add_granted_request(Request{
                     client: *client,
                     resource: *resource,
                     priority: None, // Don't care about the priority on this allocator

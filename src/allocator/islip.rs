@@ -98,7 +98,6 @@ impl IslipAllocator {
         }
         );
         if num_iterations.is_none() {
-            //TODO: is that the correct way to inform the user?
             // Warn the user that the default value will be used
             println!("Warning: num_iter for the iSLIP allocator is not specified in the configuration file, the default value (1) will be used");
         }
@@ -165,9 +164,8 @@ impl Allocator for IslipAllocator {
     fn perform_allocation(&mut self, _rng: &RefCell<StdRng>) -> GrantedRequests {
 
         // Create the granted requests vector
-        //FIXME: igual hay que cambiar el tipo GrantedRequests para que sea un alias de un vector de Request
-        let mut gr = GrantedRequests { granted_requests: Vec::new() };
-
+        let mut gr = GrantedRequests::default();
+        
         // Sort the input requests
         for client in 0..self.num_clients {
             self.in_requests[client].sort();
@@ -218,12 +216,6 @@ impl Allocator for IslipAllocator {
                 for request in &self.in_requests[client].clients {
                     let resource = *request;
 
-                    if grants[resource] == Some (client) {
-                        self.out_match[resource] = Some(client);
-                        self.in_match[client] = Some(resource);
-                        break; // break the inner loop
-                    }
-
                     // we know the output is free (above) and
                     // if the input is free, grant request
                     if grants[resource] == Some(client) {
@@ -236,9 +228,10 @@ impl Allocator for IslipAllocator {
                             resource,
                             priority: Some(0),
                         };
-                        gr.granted_requests.push(req);
+                        gr.add_granted_request(req);
                         
                         // only update pointers if accepted during the 1st iteration
+                        // (This is to avoid starvation, see the iSLIP paper)
                         if islip_iter == 0 {
                             // update the input/output requests lists pointers
                             self.in_requests[client].increment_pointer();
@@ -252,129 +245,6 @@ impl Allocator for IslipAllocator {
         // return the granted requests
         gr
     }
-
-
-    /// OLD VERSION
-/*     ///  for islip_iter in 0..self.num_iterations {
-            // Grant phase
-            for output in 0..self.num_resources {
-                // if self.out_match[output].is_some() || self.output_requests[output].is_empty() {
-                //     continue;
-                // }
-                
-                // skip if the output is already matched OR if there is no request for the output
-                if self.out_match[output].is_some() || self.out_requests[output].is_empty() {
-                    continue;
-                }
-                
-                // a round-robin arbiter between the input requests
-                input_offset = self.g_ptrs[output];
-
-                // The Booksim version, using funny C++ iterators syntax
-                // iter = _out_req[output].begin( );
-                // while( ( iter != _out_req[output].end( ) ) && ( iter->second.port < input_offset ) ) { iter++; }
-
-                // The Rust version
-                iter = self.output_requests[output].iter().peekable();
-                while let Some((_, ref req)) = iter.peek() {
-                    if req.port < Some(input_offset) {
-                        iter.next(); // skip the request
-                    } else {
-                        break; // found the first request that can be granted
-                    }
-                }
-                wrapped = false;
-                while !wrapped || iter.peek().map_or(false, |(k, _)| *k < &input_offset) {
-                    if iter.peek().is_none() {
-                        if wrapped {
-                            break;
-                        }
-                        // p is valid here because empty lists
-                        // are skipped (above)
-                        iter = self.output_requests[output].iter().peekable();
-                        wrapped = true;
-                    }
-                    // get the input
-                    input = *iter.peek().unwrap().0;
-                    // we know the output is free (above) and
-                    // if the input is free, grant request
-                    if self.in_match[input].is_none() {
-                        grants[output] = Some(input);
-                        break;
-                    }
-                    iter.next();
-                }
-            } // end of the GRANT phase
-
-            // Accept phase
-            for input in 0..self.num_clients {
-                if self.input_requests[input].is_empty() {
-                    continue;
-                }
-                // a round-robin arbiter between the output requests
-                output_offset = self.a_ptrs[input];
-
-                // TODO: This will be the same?
-                // while iter.peek().map_or(false, |(k, _)| *k < Some(output_offset) ) {
-                //    iter.next();
-                // }
-                iter = self.input_requests[input].iter().peekable();
-                while let Some((_, ref req)) = iter.peek() {
-                    if req.port < Some(output_offset) {
-                        iter.next(); // skip the request
-                    } else {
-                        break; // found the first request that can be accepted
-                    }
-                }
-                wrapped = false;
-                while !wrapped || iter.peek().map_or(false, |(k, _)| *k < &output_offset) {
-                    if iter.peek().is_none() {
-                        if wrapped {
-                            break;
-                        }
-                        // iter is valid here because empty lists
-                        // are skipped (above)
-                        iter = self.input_requests[input].iter().peekable();
-                        wrapped = true;
-                    }
-                    // get the output
-                    output = *iter.peek().unwrap().0;
-
-                    // we know the output is free (above) and
-                    // if the input is free, grant request
-                    if grants[output] == Some(input) {
-                        // accept
-                        self.in_match[input] = Some(output);
-                        self.out_match[output] = Some(input);
-                        // only update pointers if accepted during the 1st iteration
-                        if islip_iter == 0 {
-                            self.g_ptrs[output] = (input + 1) % self.num_clients;
-                            self.a_ptrs[input] = (output + 1) % self.num_resources;
-                        }
-                        break;
-                    }
-                    iter.next();
-                }
-            } // end of the ACCEPT phase
-        }
-
-        let mut gr = GrantedRequests {
-            granted_requests: vec![],
-        };
-        // fill the granted requests vector
-        for output in 0..self.num_resources {
-            if grants[output].is_some() {
-                let req = Request {
-                    client: grants[output].unwrap(),
-                    resource: output,
-                    priority: Some(0),
-                };
-                gr.granted_requests.push(req);
-            }
-        }
-        gr
-    } */
-
 
     fn support_intransit_priority(&self) -> bool {
         false
