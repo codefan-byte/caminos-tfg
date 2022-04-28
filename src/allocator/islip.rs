@@ -90,7 +90,7 @@ impl IslipAllocator {
         }
         // Get the number of iterations to perform
         let mut num_iterations = None;
-        match_object_panic!(args.cv, "islip", value,
+        match_object_panic!(args.cv, "Islip", value,
         "num_iter" => match value
         {
             &ConfigurationValue::Number(i) => num_iterations = Some(i as usize),
