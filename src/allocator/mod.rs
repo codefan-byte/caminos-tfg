@@ -63,7 +63,7 @@ impl GrantedRequests {
 impl Iterator for GrantedRequests {
     type Item = Request;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.granted_requests.is_empty() {
+        if !self.granted_requests.is_empty() {
             let r = self.granted_requests.remove(0);
             Some(r)
         } else {
