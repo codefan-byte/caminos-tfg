@@ -56,6 +56,10 @@ impl RoundVec {
     fn is_empty(&self) -> bool {
         self.clients.is_empty()
     }
+    /// Clear the round vector
+    fn clear(&mut self) {
+        self.clients.clear();
+    }
 }
 
 
@@ -242,6 +246,14 @@ impl Allocator for IslipAllocator {
                 }
             } // end of the ACCEPT phase
         } // end of the ITERATIONS phase
+        
+        // clear the input requests and output requests
+        for client in 0..self.num_clients {
+            self.in_requests[client].clear();
+        }
+        for resource in 0..self.num_resources {
+            self.out_requests[resource].clear();
+        }
         // return the granted requests
         gr
     }
