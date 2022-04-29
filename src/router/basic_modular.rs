@@ -665,7 +665,8 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 				let entry_vc={
 					phit.virtual_channel.borrow().expect("it should have an associated virtual channel")
 				};
-				let (requested_port,requested_vc,label)=match self.selected_output[entry_port][entry_vc]
+				//let (requested_port,requested_vc,label)=
+				match self.selected_output[entry_port][entry_vc]
 				{
 					None =>
 					{
@@ -749,21 +750,27 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 						{
 							continue;//There is no available port satisfying the policies. Hopefully there will in the future.
 						}
-						else if good_ports.len()>=2
+						//else if good_ports.len()>=2
+						//{
+						//	panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
+						//}
+						//simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+						//match good_ports[0]
+						//{
+						//	CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
+						//}
+						for candidate in good_ports
 						{
-							panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
-						}
-						simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
-						match good_ports[0]
-						{
-							CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
+							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
+							request.push( PortRequest{entry_port,entry_vc,requested_port,requested_vc,label});
 						}
 					},
-					Some((port,vc)) => (port,vc,0),//FIXME: perhaps 0 changes into None?
+					Some((_port,_vc)) => (),//(port,vc,0),//FIXME: perhaps 0 changes into None?
 				};
 				//FIXME: this should not call known_available_space_for_virtual_channel
 				//In wormhole we may have a selected output but be unable to advance, but it is not clear whether makes any difference.
-				let credits= self
+				/*let credits= self
                     .transmission_port_status[requested_port]
                     .known_available_space_for_virtual_channel(requested_vc)
                     .expect("no available space known");
@@ -775,7 +782,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 						Some(_) => (),
 						None => request.push( PortRequest{entry_port,entry_vc,requested_port,requested_vc,label} ),
 					};
-				}
+				}*/
 				self.time_at_input_head[entry_port][entry_vc]+=1;
 			}
 		}
@@ -904,14 +911,8 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 		for PortRequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
 		{
 			//println!("processing request {},{},{},{}",entry_port,entry_vc,requested_port,requested_vc);
-			match self.selected_input[requested_port][requested_vc]
-			{
-				Some(_) => (),
-				None =>
-				{
-					self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
-				},
-			};
+			//if self.selected_input[requested_port][requested_vc].is_none()// && self.selected_output[entry_port][entry_vc].is_none()
+			self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
 		}
 
 		//-- For each output port decide which input actually uses it this cycle.
