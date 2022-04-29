@@ -763,7 +763,10 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 						{
 							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
 							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
-							request.push( PortRequest{entry_port,entry_vc,requested_port,requested_vc,label});
+//							if self.selected_input[requested_port][requested_vc].is_none()
+//							{
+								request.push( PortRequest{entry_port,entry_vc,requested_port,requested_vc,label});
+//							}
 						}
 					},
 					Some((_port,_vc)) => (),//(port,vc,0),//FIXME: perhaps 0 changes into None?
@@ -911,8 +914,11 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 		for PortRequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
 		{
 			//println!("processing request {},{},{},{}",entry_port,entry_vc,requested_port,requested_vc);
-			//if self.selected_input[requested_port][requested_vc].is_none()// && self.selected_output[entry_port][entry_vc].is_none()
-			self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
+//			if self.selected_input[requested_port][requested_vc].is_none() && self.selected_output[entry_port][entry_vc].is_none()
+//			{
+				self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
+				self.selected_output[entry_port][entry_vc]=Some((requested_port,requested_vc));
+//			}
 		}
 
 		//-- For each output port decide which input actually uses it this cycle.

@@ -12,11 +12,16 @@ use crate::match_object_panic;
 
 
 #[derive(Default, Clone)]
-pub struct Resource {
+struct Resource {
     /// Index of the client that has the resource (or None if the resource is free)
     client: Option<usize>,
 }
 
+#[derive(Default, Clone)]
+struct Client {
+    /// Index of the resource that the client has (or None if the client has no resource)
+    resource: Option<usize>,
+}
 /// A random allocator that randomly allocates requests to resources
 pub struct RandomPriorityAllocator {
     /// The max number of outputs of the router crossbar
@@ -105,6 +110,8 @@ impl Allocator for RandomPriorityAllocator {
         
         // The resources allocated to the clients
         let mut resources: Vec<Resource> = vec![Resource::default(); self.num_resources];
+        // The clients allocated to the resources
+        let mut clients: Vec<Client> = vec![Client::default(); self.num_clients];
 
 
         // Shuffle the requests using the RNG passed as parameter
@@ -118,8 +125,8 @@ impl Allocator for RandomPriorityAllocator {
 
         // Allocate the requests with an iterator
         for Request{ref resource, ref client, ref priority } in self.requests.iter() {
-            // Check if the wanted resource is available
-            if resources[*resource].client.is_none() {
+            // Check if the wanted resource is available and the client has no resource
+            if resources[*resource].client.is_none() && clients[*client].resource.is_none() {
                 // Add the request to the granted requests
                 gr.add_granted_request(Request{
                     client: *client,
@@ -128,14 +135,16 @@ impl Allocator for RandomPriorityAllocator {
                 });
                 // Allocate the resource
                 resources[*resource].client = Some(*client);
+                // Allocate the client
+                clients[*client].resource = Some(*resource);
             } else {
-                // The resource is not available, so we can't grant the request
+                // The resource is not available or the client has a resource,
+                // so we can't allocate the request
                 continue;
             }
         }
-        // Clear the requests and resources
+        // Clear the requests vector
         self.requests.clear();
-        resources.clear();
         // Return the granted requests
         gr
     }
