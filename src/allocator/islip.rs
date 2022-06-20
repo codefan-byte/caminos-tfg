@@ -9,11 +9,11 @@ use crate::match_object_panic;
 
 #[derive(Clone, Debug)]
 struct RoundVec {
-    /// The client with the highest priority in the round.
+    /// The index with the highest priority in the round.
     pointer : usize,
-    /// Have the indices of the clients that have been requested
-    pub clients : Vec<usize>,
-    /// The number of clients
+    /// Have the indices of the clients/resources that have been requested.
+    pub requested_indices : Vec<usize>,
+    /// The number of indices.
     n : usize,
 }
 
@@ -21,24 +21,24 @@ impl RoundVec {
     fn new(size : usize) -> RoundVec {
         RoundVec {
             pointer : 0,
-            clients : Vec::with_capacity(size),
+            requested_indices : Vec::with_capacity(size),
             n : size,
         }
     }
     /// Add an element to the round vector
     fn add (&mut self, element : usize) {
-        self.clients.push(element);
+        self.requested_indices.push(element);
     }
     /// Increment the pointer
     fn increment_pointer(&mut self) {
         self.pointer = (self.pointer + 1) % self.n;
     }
-    /// Sort the clients using the pointer as the pivot
+    /// Sort the requested indices vector using the pointer as the pivot
     fn sort(&mut self) {
         // We need to extract the pivot and the size because we only can have one mutable reference
         let pointer = self.pointer;
         let size = self.size();
-        self.clients.sort_unstable_by_key(| k|
+        self.requested_indices.sort_unstable_by_key(| k|
             if *k < pointer {
                 *k + size
             } else {
@@ -54,11 +54,11 @@ impl RoundVec {
     /// # Returns
     /// `true` if the round vector is empty, `false` otherwise
     fn is_empty(&self) -> bool {
-        self.clients.is_empty()
+        self.requested_indices.is_empty()
     }
     /// Clear the round vector
     fn clear(&mut self) {
-        self.clients.clear();
+        self.requested_indices.clear();
     }
 }
 
@@ -199,7 +199,7 @@ impl Allocator for IslipAllocator {
                     continue;
                 }
                 
-                for request in &self.out_requests[resource].clients {
+                for request in &self.out_requests[resource].requested_indices {
                     let client = *request;
                     // know that the output is not matched (see above) and 
                     // if the input is free (no match) then grant the request
@@ -217,7 +217,7 @@ impl Allocator for IslipAllocator {
                     continue;
                 }
                 
-                for request in &self.in_requests[client].clients {
+                for request in &self.in_requests[client].requested_indices {
                     let resource = *request;
 
                     // we know the output is free (above) and
