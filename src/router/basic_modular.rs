@@ -790,76 +790,6 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 			}
 		}
 
-		// //-- Arbitrate the requests.
-
-		// let request_len = request.len();
-		// //FIXME: allocator policies
-		// let min_label=match request.iter().map(|r|r.label).min()
-		// {
-		// 	Some(x)=>x,
-		// 	None=>0,
-		// };
-		// let max_label=match request.iter().map(|r|r.label).max()
-		// {
-		// 	Some(x)=>x,
-		// 	None=>0,
-		// };
-		// //Split que sequence in subsequences, where any items in a subsequence has more priority than any element in a later subsequence.
-		// let request_sequence:Vec<Vec<PortRequest>>=if self.output_priorize_lowest_label
-		// {
-		// 	//(min_label..max_label+1).map(|label|request.iter().filter(|r|r.label==label).map(|&t|t).collect()).collect()
-		// 	//(min_label..max_label+1).map(move |label|request.into_iter().filter(|r|r.label==label).collect()).collect()
-		// 	let mut sequence : Vec<Vec<PortRequest>> = vec![ Vec::with_capacity(request.len()) ; (max_label+1-min_label) as usize];
-		// 	for req in request.into_iter()
-		// 	{
-		// 		let index :usize = (req.label - min_label) as usize;
-		// 		sequence[index].push(req);
-		// 	}
-		// 	sequence
-		// }
-		// else
-		// {
-		// 	vec![request]
-		// };
-
-		// //Shuffle the subsequences. XXX Perhaps the separation transit/injection should be done in a similar as to the separation by labels.
-		// //for ref mut rx in request_sequence.iter_mut()
-
- 		// let captured_intransit_priority=self.intransit_priority;//to move into closure
-		// let captured_router_index=self.router_index;//to move into closure
-
-		// let request_it = request_sequence.into_iter().flat_map(|mut rx|{
-		// 	if captured_intransit_priority
-		// 	{
-		// 		//let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = rx.into_iter().map(|&mut t|t).partition(|&req|{
-		// 		//	match simulation.network.topology.neighbour(self.router_index,req.entry_port)
-		// 		//	{
-		// 		//		( Location::RouterPort{..} ,_) => true,
-		// 		//		_ => false,
-		// 		//	}
-		// 		//});
-		// 		let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = rx.into_iter().partition(|req|{
-		// 			match simulation.network.topology.neighbour(captured_router_index,req.entry_port)
-		// 			{
-		// 				( Location::RouterPort{..} ,_) => true,
-		// 				_ => false,
-		// 			}
-		// 		});
-		// 		let mut rng = simulation.rng.borrow_mut();
-		// 		request_transit.shuffle(rng.deref_mut());
-		// 		request_injection.shuffle(rng.deref_mut());
-		// 		//**rx=request_transit;
-		// 		rx=request_transit;
-		// 		rx.append(&mut request_injection);
-		// 	}
-		// 	else
-		// 	{
-		// 		//simulation.rng.borrow_mut().shuffle(rx);
-		// 		rx.shuffle(simulation.rng.borrow_mut().deref_mut());
-		// 	}
-		// 	rx
-		// });
-		
 		let captured_intransit_priority=self.intransit_priority;
 		// Check if the allocator supports intransit priority.
 		if captured_intransit_priority {
@@ -867,23 +797,6 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 			if !self.crossbar_allocator.support_intransit_priority() {
 				panic!("Current crossbar allocator does not support intransit priority option");
 			}
-			// If the allocator supports intransit priority, then we need to partition the requests into transit and injection requests.
-			// let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = request.into_iter().partition(|req|{
-			// 	match simulation.network.topology.neighbour(self.router_index,req.entry_port)
-			// 	{
-			// 		( Location::RouterPort{..} ,_) => true,
-			// 		_ => false,
-			// 	}
-			// });
-			// // Change the priority of the intransit requests to 0
-			// for req in request_transit.iter_mut()
-			// {
-			// 	req.label = 0;
-			// }
-			//request = request_transit;
-			//request.append(&mut request_injection);
-
-			// ** The above code is equivalent to the following code. **
 
 			//to each request in request, set label to 0 if it is a transit request.
 			request = request.into_iter().map(|mut req|{
@@ -913,12 +826,8 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 		//let request=request_sequence.concat();
 		for PortRequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
 		{
-			//println!("processing request {},{},{},{}",entry_port,entry_vc,requested_port,requested_vc);
-//			if self.selected_input[requested_port][requested_vc].is_none() && self.selected_output[entry_port][entry_vc].is_none()
-//			{
-				self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
-				self.selected_output[entry_port][entry_vc]=Some((requested_port,requested_vc));
-//			}
+			self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
+			self.selected_output[entry_port][entry_vc]=Some((requested_port,requested_vc));
 		}
 
 		//-- For each output port decide which input actually uses it this cycle.
