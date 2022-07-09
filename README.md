@@ -1,6 +1,8 @@
 # **Implementación realizada para el TFG "Simuladores de Redes de Interconexión: Estudio Comparativo y Evaluación"**
 # Autor: Daniel Postigo
 
+[![DOI](https://zenodo.org/badge/512299281.svg)](https://zenodo.org/badge/latestdoi/512299281)
+
 caminos-lib
 =====
 
